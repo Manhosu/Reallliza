@@ -1,0 +1,16 @@
+{
+  "name": "reallliza",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reallliza Revestimentos - Sistema Corporativo",
+  "workspaces": [
+    "backend",
+    "web"
+  ],
+  "scripts": {
+    "dev:backend": "cd backend && npm run start:dev",
+    "dev:web": "cd web && npm run dev",
+    "build:backend": "cd backend && npm run build",
+    "build:web": "cd web && npm run build"
+  }
+}

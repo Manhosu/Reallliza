@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "Reallliza Revestimentos",
+    "slug": "reallliza-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#09090B"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "O app precisa acessar a camera para tirar fotos das ordens de servico.",
+        "NSPhotoLibraryUsageDescription": "O app precisa acessar a galeria para selecionar fotos.",
+        "NSLocationWhenInUseUsageDescription": "O app precisa acessar a localizacao para registrar onde as fotos foram tiradas."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#09090B"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "O app precisa acessar a camera para tirar fotos das ordens de servico."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "O app precisa acessar a localizacao para registrar onde as fotos foram tiradas."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O app precisa acessar a galeria para selecionar fotos."
+        }
+      ]
+    ]
+  }
+}
