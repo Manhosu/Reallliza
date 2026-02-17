@@ -38,31 +38,46 @@ function formatDateTime(dateStr: string): string {
 }
 
 const ACTION_BADGE_VARIANT: Record<string, string> = {
+  created: "success",
   create: "success",
+  updated: "info",
   update: "info",
+  deleted: "destructive",
   delete: "destructive",
   login: "purple",
   logout: "gray",
+  status_changed: "warning",
   status_change: "warning",
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  create: "Criar",
-  update: "Atualizar",
-  delete: "Excluir",
+  created: "Criação",
+  create: "Criação",
+  updated: "Atualização",
+  update: "Atualização",
+  deleted: "Exclusão",
+  delete: "Exclusão",
   login: "Login",
   logout: "Logout",
-  status_change: "Alteracao Status",
+  status_changed: "Alteração Status",
+  status_change: "Alteração Status",
 };
 
+function parseAction(action: string): string {
+  // Backend uses compound actions like "service_order.created", "user.updated"
+  const parts = action.split(".");
+  return parts.length > 1 ? parts[parts.length - 1] : action;
+}
+
+
 const ENTITY_LABELS: Record<string, string> = {
-  service_order: "Ordem de Servico",
-  user: "Usuario",
+  service_order: "Ordem de Serviço",
+  user: "Usuário",
   partner: "Parceiro",
   tool: "Ferramenta",
   checklist: "Checklist",
   schedule: "Agenda",
-  notification: "Notificacao",
+  notification: "Notificação",
 };
 
 // ============================================================
@@ -172,7 +187,7 @@ export default function AuditoriaPage() {
               {/* Date From */}
               <div className="w-full lg:w-44">
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  Data inicio
+                  Data início
                 </label>
                 <input
                   type="date"
@@ -208,19 +223,19 @@ export default function AuditoriaPage() {
               {/* Action Filter */}
               <div className="w-full lg:w-48">
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  Acao
+                  Ação
                 </label>
                 <SelectNative
                   value={actionFilter}
                   onChange={(e) => setActionFilter(e.target.value)}
                 >
-                  <option value="all">Todas as acoes</option>
+                  <option value="all">Todas as ações</option>
                   <option value="create">Criar</option>
                   <option value="update">Atualizar</option>
                   <option value="delete">Excluir</option>
                   <option value="login">Login</option>
                   <option value="logout">Logout</option>
-                  <option value="status_change">Alteracao Status</option>
+                  <option value="status_change">Alteração Status</option>
                 </SelectNative>
               </div>
 
@@ -234,8 +249,8 @@ export default function AuditoriaPage() {
                   onChange={(e) => setEntityFilter(e.target.value)}
                 >
                   <option value="all">Todas as entidades</option>
-                  <option value="service_order">Ordem de Servico</option>
-                  <option value="user">Usuario</option>
+                  <option value="service_order">Ordem de Serviço</option>
+                  <option value="user">Usuário</option>
                   <option value="partner">Parceiro</option>
                   <option value="tool">Ferramenta</option>
                   <option value="checklist">Checklist</option>
@@ -273,10 +288,10 @@ export default function AuditoriaPage() {
                       Data
                     </th>
                     <th className="whitespace-nowrap px-6 py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Usuario
+                      Usuário
                     </th>
                     <th className="whitespace-nowrap px-6 py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Acao
+                      Ação
                     </th>
                     <th className="whitespace-nowrap px-6 py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Entidade
@@ -309,11 +324,11 @@ export default function AuditoriaPage() {
                       <td className="whitespace-nowrap px-6 py-4">
                         <Badge
                           variant={
-                            (ACTION_BADGE_VARIANT[log.action] ||
+                            (ACTION_BADGE_VARIANT[parseAction(log.action)] ||
                               "gray") as "success" | "info" | "destructive" | "purple" | "gray" | "warning"
                           }
                         >
-                          {ACTION_LABELS[log.action] || log.action}
+                          {ACTION_LABELS[parseAction(log.action)] || log.action}
                         </Badge>
                       </td>
                       <td className="whitespace-nowrap px-6 py-4">
@@ -338,7 +353,7 @@ export default function AuditoriaPage() {
             {meta && totalPages > 1 && (
               <div className="flex items-center justify-between border-t px-6 py-4">
                 <p className="text-sm text-muted-foreground">
-                  Pagina {page} de {totalPages}
+                  Página {page} de {totalPages}
                 </p>
                 <div className="flex items-center gap-2">
                   <Button
@@ -356,7 +371,7 @@ export default function AuditoriaPage() {
                     disabled={page >= totalPages}
                     onClick={() => setPage(page + 1)}
                   >
-                    Proximo
+                    Próximo
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>

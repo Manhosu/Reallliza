@@ -437,7 +437,7 @@ export class ChecklistsService {
       // PGRST116 = "JSON object requested, multiple (or no) rows returned" -> 0 rows = version mismatch
       if (version !== undefined && error.code === 'PGRST116') {
         throw new ConflictException(
-          'Dados desatualizados. Recarregue a pagina e tente novamente.',
+          'Dados desatualizados. Recarregue a página e tente novamente.',
         );
       }
       this.logger.error(
@@ -524,7 +524,7 @@ export class ChecklistsService {
       // PGRST116 = "JSON object requested, multiple (or no) rows returned" -> 0 rows = version mismatch
       if (version !== undefined && error.code === 'PGRST116') {
         throw new ConflictException(
-          'Dados desatualizados. Recarregue a pagina e tente novamente.',
+          'Dados desatualizados. Recarregue a página e tente novamente.',
         );
       }
       this.logger.error(

@@ -35,9 +35,9 @@ import { useApi, usePaginatedApi } from "@/hooks/use-api";
 // ============================================================
 
 const TOOL_STATUS_LABELS: Record<ToolStatus, string> = {
-  [ToolStatus.AVAILABLE]: "Disponivel",
+  [ToolStatus.AVAILABLE]: "Disponível",
   [ToolStatus.IN_USE]: "Em Uso",
-  [ToolStatus.MAINTENANCE]: "Manutencao",
+  [ToolStatus.MAINTENANCE]: "Manutenção",
   [ToolStatus.RETIRED]: "Aposentada",
 };
 
@@ -245,26 +245,26 @@ export default function FerramentasPage() {
 
   const statusFilterOptions: { value: ToolStatus | "all"; label: string }[] = [
     { value: "all", label: "Todos" },
-    { value: ToolStatus.AVAILABLE, label: "Disponivel" },
+    { value: ToolStatus.AVAILABLE, label: "Disponível" },
     { value: ToolStatus.IN_USE, label: "Em Uso" },
-    { value: ToolStatus.MAINTENANCE, label: "Manutencao" },
+    { value: ToolStatus.MAINTENANCE, label: "Manutenção" },
     { value: ToolStatus.RETIRED, label: "Aposentada" },
   ];
 
   const handleCheckin = async (custodyId: string) => {
     try {
       await toolsApi.checkin(custodyId, { condition_in: ToolCondition.GOOD });
-      toast.success("Devolucao registrada com sucesso!");
+      toast.success("Devolução registrada com sucesso!");
       mutateCustodies();
       mutateTools();
     } catch (err: any) {
-      toast.error(err?.message || "Erro ao registrar devolucao");
+      toast.error(err?.message || "Erro ao registrar devolução");
     }
   };
 
   const handleCreateTool = async () => {
     if (!createForm.name.trim()) {
-      toast.error("Nome da ferramenta e obrigatorio");
+      toast.error("Nome da ferramenta é obrigatório");
       return;
     }
 
@@ -311,7 +311,7 @@ export default function FerramentasPage() {
             </span>
           </div>
           <p className="text-muted-foreground">
-            Gerenciamento do inventario e custodia de ferramentas.
+            Gerenciamento do inventário e custódia de ferramentas.
           </p>
         </div>
         <Button onClick={() => setShowCreateModal(true)}>
@@ -345,7 +345,7 @@ export default function FerramentasPage() {
           )}
           <span className="relative z-10 flex items-center gap-2">
             <Package className="h-4 w-4" />
-            Inventario
+            Inventário
           </span>
         </button>
         <button
@@ -366,7 +366,7 @@ export default function FerramentasPage() {
           )}
           <span className="relative z-10 flex items-center gap-2">
             <ArrowLeftRight className="h-4 w-4" />
-            Custodia
+            Custódia
             {custodies && custodies.length > 0 && (
               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white">
                 {custodies.length}
@@ -437,7 +437,7 @@ export default function FerramentasPage() {
                     <EmptyState
                       icon={<Wrench className="h-6 w-6" />}
                       title="Nenhuma ferramenta encontrada"
-                      description="Cadastre uma nova ferramenta para comecar ou ajuste os filtros de busca."
+                      description="Cadastre uma nova ferramenta para começar ou ajuste os filtros de busca."
                       action={
                         <Button onClick={() => setShowCreateModal(true)}>
                           <Plus className="h-4 w-4" />
@@ -533,8 +533,8 @@ export default function FerramentasPage() {
                   <CardContent>
                     <EmptyState
                       icon={<ArrowLeftRight className="h-6 w-6" />}
-                      title="Nenhuma custodia ativa"
-                      description="Todas as ferramentas estao disponiveis no momento."
+                      title="Nenhuma custódia ativa"
+                      description="Todas as ferramentas estão disponíveis no momento."
                     />
                   </CardContent>
                 </Card>
@@ -561,7 +561,7 @@ export default function FerramentasPage() {
                               Ferramenta
                             </th>
                             <th className="pb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                              Tecnico
+                              Técnico
                             </th>
                             <th className="pb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                               OS Vinculada
@@ -570,10 +570,10 @@ export default function FerramentasPage() {
                               Retirada Em
                             </th>
                             <th className="pb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                              Condicao
+                              Condição
                             </th>
                             <th className="pb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                              Acoes
+                              Ações
                             </th>
                           </tr>
                         </thead>
@@ -637,7 +637,7 @@ export default function FerramentasPage() {
                                   onClick={() => handleCheckin(custody.id)}
                                 >
                                   <CheckCircle2 className="h-3.5 w-3.5" />
-                                  Registrar Devolucao
+                                  Registrar Devolução
                                 </Button>
                               </td>
                             </motion.tr>
@@ -683,7 +683,7 @@ export default function FerramentasPage() {
                           </div>
                           <div>
                             <span className="text-muted-foreground">
-                              Condicao:{" "}
+                              Condição:{" "}
                             </span>
                             <ConditionBadge
                               condition={custody.condition_out}
@@ -735,25 +735,25 @@ export default function FerramentasPage() {
                 onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
               />
               <Input
-                label="Descricao"
-                placeholder="Descricao da ferramenta"
+                label="Descrição"
+                placeholder="Descrição da ferramenta"
                 value={createForm.description}
                 onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
               />
               <Input
-                label="Numero de Serie"
+                label="Número de Serie"
                 placeholder="Serial number"
                 value={createForm.serial_number}
                 onChange={(e) => setCreateForm({ ...createForm, serial_number: e.target.value })}
               />
               <Input
                 label="Categoria"
-                placeholder="Ex: Eletrica, Medicao..."
+                placeholder="Ex: Elétrica, Medição..."
                 value={createForm.category}
                 onChange={(e) => setCreateForm({ ...createForm, category: e.target.value })}
               />
               <SelectNative
-                label="Condicao"
+                label="Condição"
                 value={createForm.condition}
                 onChange={(e) => setCreateForm({ ...createForm, condition: e.target.value })}
               >
@@ -779,9 +779,9 @@ export default function FerramentasPage() {
                 onChange={(e) => setCreateForm({ ...createForm, purchase_date: e.target.value })}
               />
               <div className="w-full space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">Observacoes</label>
+                <label className="text-sm font-medium leading-none text-foreground/80">Observações</label>
                 <textarea
-                  placeholder="Observacoes sobre a ferramenta..."
+                  placeholder="Observações sobre a ferramenta..."
                   value={createForm.notes}
                   onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })}
                   rows={3}

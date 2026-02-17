@@ -45,7 +45,7 @@ const allNavItems = [
     roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.PARTNER],
   },
   {
-    label: "Ordens de Servico",
+    label: "Ordens de Serviço",
     href: "/os",
     icon: ClipboardList,
     roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.PARTNER],
@@ -57,7 +57,7 @@ const allNavItems = [
     roles: [UserRole.ADMIN, UserRole.TECHNICIAN],
   },
   {
-    label: "Usuarios",
+    label: "Usuários",
     href: "/usuarios",
     icon: Users,
     roles: [UserRole.ADMIN],
@@ -81,7 +81,7 @@ const allNavItems = [
     roles: [UserRole.ADMIN, UserRole.TECHNICIAN],
   },
   {
-    label: "Relatorios",
+    label: "Relatórios",
     href: "/relatorios",
     icon: FileBarChart,
     roles: [UserRole.ADMIN],
@@ -93,13 +93,13 @@ const allNavItems = [
     roles: [UserRole.ADMIN],
   },
   {
-    label: "Notificacoes",
+    label: "Notificações",
     href: "/notificacoes",
     icon: Bell,
     roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.PARTNER],
   },
   {
-    label: "Configuracoes",
+    label: "Configurações",
     href: "/configuracoes",
     icon: Settings,
     roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.PARTNER],
@@ -112,16 +112,16 @@ const allNavItems = [
 
 const breadcrumbLabels: Record<string, string> = {
   dashboard: "Dashboard",
-  os: "Ordens de Servico",
+  os: "Ordens de Serviço",
   agenda: "Agenda",
-  usuarios: "Usuarios",
+  usuarios: "Usuários",
   parceiros: "Parceiros",
   ferramentas: "Ferramentas",
   checklists: "Checklists",
-  relatorios: "Relatorios",
+  relatorios: "Relatórios",
   auditoria: "Auditoria",
-  notificacoes: "Notificacoes",
-  configuracoes: "Configuracoes",
+  notificacoes: "Notificações",
+  configuracoes: "Configurações",
 };
 
 // ============================================================
@@ -154,7 +154,7 @@ export default function DashboardLayout({
     const filtered = allNavItems.filter((item) =>
       role ? item.roles.includes(role) : true
     );
-    // For partner, rename "Ordens de Servico" to "Meus Chamados"
+    // For partner, rename "Ordens de Serviço" to "Meus Chamados"
     if (role === UserRole.PARTNER) {
       return filtered.map((item) =>
         item.href === "/os"
@@ -297,11 +297,11 @@ export default function DashboardLayout({
     const diffMs = now.getTime() - date.getTime();
     const diffMin = Math.floor(diffMs / 60000);
     if (diffMin < 1) return "Agora";
-    if (diffMin < 60) return `${diffMin}min atras`;
+    if (diffMin < 60) return `${diffMin}min atrás`;
     const diffHours = Math.floor(diffMin / 60);
-    if (diffHours < 24) return `${diffHours}h atras`;
+    if (diffHours < 24) return `${diffHours}h atrás`;
     const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 7) return `${diffDays}d atras`;
+    if (diffDays < 7) return `${diffDays}d atrás`;
     return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
   };
 
@@ -461,7 +461,7 @@ export default function DashboardLayout({
             {!isCollapsed && (
               <div className="flex-1 overflow-hidden text-left">
                 <p className="truncate text-sm font-medium text-sidebar-foreground">
-                  {user?.full_name || "Usuario"}
+                  {user?.full_name || "Usuário"}
                 </p>
                 <p className="truncate text-xs text-sidebar-muted">
                   {user?.email || ""}
@@ -500,7 +500,7 @@ export default function DashboardLayout({
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="relative flex flex-1 flex-col">
         {/* Top Header Bar */}
         <header className="flex h-16 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-xl lg:px-6">
           <div className="flex items-center gap-4">
@@ -520,7 +520,7 @@ export default function DashboardLayout({
                 href="/dashboard"
                 className="text-muted-foreground transition-colors hover:text-foreground"
               >
-                Inicio
+                Início
               </Link>
               {breadcrumbs.map((crumb) => (
                 <span key={crumb.href} className="flex items-center gap-1.5">
@@ -587,7 +587,7 @@ export default function DashboardLayout({
                     {/* Dropdown Header */}
                     <div className="flex items-center justify-between border-b px-4 py-3">
                       <h4 className="text-sm font-semibold text-foreground">
-                        Notificacoes
+                        Notificações
                       </h4>
                       {notificationCount > 0 && (
                         <button
@@ -610,7 +610,7 @@ export default function DashboardLayout({
                         <div className="flex flex-col items-center gap-2 py-8">
                           <Bell className="h-8 w-8 text-muted-foreground/30" />
                           <p className="text-xs text-muted-foreground">
-                            Nenhuma notificacao
+                            Nenhuma notificação
                           </p>
                         </div>
                       ) : (

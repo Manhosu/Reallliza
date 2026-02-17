@@ -53,8 +53,8 @@ interface ReportFilter {
 const reportTypes: ReportType[] = [
   {
     id: "os-periodo",
-    title: "OS por Periodo",
-    description: "Relatorio de ordens de servico filtrado por periodo",
+    title: "OS por Período",
+    description: "Relatório de ordens de serviço filtrado por período",
     icon: <FileBarChart className="h-6 w-6" />,
     accentColor: "#EAB308",
     filters: [
@@ -66,7 +66,7 @@ const reportTypes: ReportType[] = [
           { value: "all", label: "Todos" },
           { value: "pending", label: "Pendente" },
           { value: "in_progress", label: "Em Andamento" },
-          { value: "completed", label: "Concluida" },
+          { value: "completed", label: "Concluída" },
           { value: "cancelled", label: "Cancelada" },
         ],
       },
@@ -74,19 +74,19 @@ const reportTypes: ReportType[] = [
   },
   {
     id: "os-tecnico",
-    title: "OS por Tecnico",
-    description: "Performance e produtividade por tecnico",
+    title: "OS por Técnico",
+    description: "Performance e produtividade por técnico",
     icon: <Users className="h-6 w-6" />,
     accentColor: "#3B82F6",
     filters: [
       {
         id: "technician",
-        label: "Tecnico",
+        label: "Técnico",
         type: "select",
         options: [
           { value: "all", label: "Todos" },
           { value: "u1", label: "Carlos Silva" },
-          { value: "u2", label: "Joao Mendes" },
+          { value: "u2", label: "João Mendes" },
           { value: "u3", label: "Ana Costa" },
           { value: "u4", label: "Pedro Lima" },
         ],
@@ -96,7 +96,7 @@ const reportTypes: ReportType[] = [
   {
     id: "os-parceiro",
     title: "OS por Parceiro",
-    description: "Servicos realizados por parceiro",
+    description: "Serviços realizados por parceiro",
     icon: <Building2 className="h-6 w-6" />,
     accentColor: "#22C55E",
     filters: [
@@ -107,7 +107,7 @@ const reportTypes: ReportType[] = [
         options: [
           { value: "all", label: "Todos" },
           { value: "p1", label: "Construtora Alpha" },
-          { value: "p2", label: "Imobiliaria Beta" },
+          { value: "p2", label: "Imobiliária Beta" },
           { value: "p3", label: "Engenharia Gamma" },
         ],
       },
@@ -115,19 +115,19 @@ const reportTypes: ReportType[] = [
   },
   {
     id: "ferramentas-custodia",
-    title: "Ferramentas em Custodia",
-    description: "Controle de ferramentas em posse dos tecnicos",
+    title: "Ferramentas em Custódia",
+    description: "Controle de ferramentas em posse dos técnicos",
     icon: <Wrench className="h-6 w-6" />,
     accentColor: "#F97316",
     filters: [
       {
         id: "technician",
-        label: "Tecnico",
+        label: "Técnico",
         type: "select",
         options: [
           { value: "all", label: "Todos" },
           { value: "u1", label: "Carlos Silva" },
-          { value: "u2", label: "Joao Mendes" },
+          { value: "u2", label: "João Mendes" },
           { value: "u3", label: "Ana Costa" },
           { value: "u4", label: "Pedro Lima" },
         ],
@@ -137,7 +137,7 @@ const reportTypes: ReportType[] = [
   {
     id: "financeiro",
     title: "Financeiro",
-    description: "Receitas, custos e margens por periodo",
+    description: "Receitas, custos e margens por período",
     icon: <DollarSign className="h-6 w-6" />,
     accentColor: "#8B5CF6",
     filters: [
@@ -157,30 +157,30 @@ const reportTypes: ReportType[] = [
   {
     id: "auditoria",
     title: "Auditoria",
-    description: "Log de acoes dos usuarios no sistema",
+    description: "Log de ações dos usuários no sistema",
     icon: <Shield className="h-6 w-6" />,
     accentColor: "#EC4899",
     filters: [
       {
         id: "user",
-        label: "Usuario",
+        label: "Usuário",
         type: "select",
         options: [
           { value: "all", label: "Todos" },
           { value: "u1", label: "Carlos Silva" },
-          { value: "u2", label: "Joao Mendes" },
+          { value: "u2", label: "João Mendes" },
           { value: "admin", label: "Administrador" },
         ],
       },
       {
         id: "action",
-        label: "Acao",
+        label: "Ação",
         type: "select",
         options: [
           { value: "all", label: "Todas" },
-          { value: "create", label: "Criacao" },
-          { value: "update", label: "Atualizacao" },
-          { value: "delete", label: "Exclusao" },
+          { value: "create", label: "Criação" },
+          { value: "update", label: "Atualização" },
+          { value: "delete", label: "Exclusão" },
         ],
       },
     ],
@@ -273,7 +273,7 @@ export default function RelatoriosPage() {
 
     const endpoint = reportEndpointMap[selectedReport.id];
     if (!endpoint) {
-      toast.error("Tipo de relatorio nao suportado.");
+      toast.error("Tipo de relatório não suportado.");
       return;
     }
 
@@ -295,10 +295,10 @@ export default function RelatoriosPage() {
       }
 
       await reportsApi.download(endpoint, params);
-      toast.success("Relatorio baixado com sucesso!");
+      toast.success("Relatório baixado com sucesso!");
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Erro ao gerar relatorio.";
+        error instanceof Error ? error.message : "Erro ao gerar relatório.";
       toast.error(message);
     } finally {
       setDownloadingFormat(null);
@@ -327,12 +327,12 @@ export default function RelatoriosPage() {
           )}
           <div>
             <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-              {selectedReport ? selectedReport.title : "Relatorios"}
+              {selectedReport ? selectedReport.title : "Relatórios"}
             </h1>
             <p className="text-muted-foreground">
               {selectedReport
                 ? selectedReport.description
-                : "Gere relatorios detalhados para analise e tomada de decisao."}
+                : "Gere relatórios detalhados para análise e tomada de decisão."}
             </p>
           </div>
         </div>
@@ -429,7 +429,7 @@ export default function RelatoriosPage() {
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <CalendarDays className="h-5 w-5 text-primary" />
-                  Filtros do Relatorio
+                  Filtros do Relatório
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -548,7 +548,7 @@ export default function RelatoriosPage() {
                       <CardHeader className="pb-4">
                         <CardTitle className="flex items-center gap-2 text-base">
                           <Eye className="h-5 w-5 text-primary" />
-                          Pre-visualizacao do Relatorio
+                          Pré-visualização do Relatório
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
@@ -557,7 +557,7 @@ export default function RelatoriosPage() {
                           <div className="flex items-center gap-2">
                             <CheckCircle2 className="h-4 w-4 text-green-500" />
                             <span className="text-sm font-medium">
-                              Relatorio pronto para gerar
+                              Relatório pronto para gerar
                             </span>
                           </div>
 
@@ -565,7 +565,7 @@ export default function RelatoriosPage() {
                           <div className="space-y-2">
                             <div className="flex items-center justify-between border-b border-border py-2">
                               <span className="text-sm text-muted-foreground">
-                                Tipo de Relatorio
+                                Tipo de Relatório
                               </span>
                               <span className="text-sm font-medium">
                                 {selectedReport.title}
@@ -574,7 +574,7 @@ export default function RelatoriosPage() {
 
                             <div className="flex items-center justify-between border-b border-border py-2">
                               <span className="text-sm text-muted-foreground">
-                                Periodo
+                                Período
                               </span>
                               <span className="text-sm font-medium">
                                 {dateFrom && dateTo
@@ -582,8 +582,8 @@ export default function RelatoriosPage() {
                                   : dateFrom
                                   ? `A partir de ${formatDateBR(dateFrom)}`
                                   : dateTo
-                                  ? `Ate ${formatDateBR(dateTo)}`
-                                  : "Todos os periodos"}
+                                  ? `Até ${formatDateBR(dateTo)}`
+                                  : "Todos os períodos"}
                               </span>
                             </div>
 
@@ -613,7 +613,7 @@ export default function RelatoriosPage() {
                             <p>
                               Clique em <strong>Baixar PDF</strong> ou{" "}
                               <strong>Baixar Excel</strong> acima para gerar e
-                              baixar o relatorio com os parametros configurados.
+                              baixar o relatório com os parâmetros configurados.
                             </p>
                           </div>
                         </div>
@@ -668,11 +668,11 @@ export default function RelatoriosPage() {
                         </div>
                         <p className="text-center text-sm font-medium text-muted-foreground">
                           Selecione os filtros e clique em{" "}
-                          <strong>Visualizar</strong> para conferir os parametros,
+                          <strong>Visualizar</strong> para conferir os parâmetros,
                           ou exporte diretamente
                         </p>
                         <p className="mt-1 text-center text-xs text-muted-foreground/60">
-                          O relatorio sera gerado com base nos parametros
+                          O relatório será gerado com base nos parâmetros
                           definidos acima
                         </p>
                       </CardContent>

@@ -54,7 +54,7 @@ const SCHEDULE_STATUS_LABELS: Record<ScheduleStatus, string> = {
   [ScheduleStatus.SCHEDULED]: "Agendado",
   [ScheduleStatus.CONFIRMED]: "Confirmado",
   [ScheduleStatus.IN_PROGRESS]: "Em Andamento",
-  [ScheduleStatus.COMPLETED]: "Concluido",
+  [ScheduleStatus.COMPLETED]: "Concluído",
   [ScheduleStatus.CANCELLED]: "Cancelado",
   [ScheduleStatus.RESCHEDULED]: "Reagendado",
 };
@@ -370,7 +370,7 @@ export default function AgendaPage() {
       return;
     }
     if (!scheduleForm.technician_id) {
-      toast.error("Selecione um tecnico");
+      toast.error("Selecione um técnico");
       return;
     }
     if (!scheduleForm.date) {
@@ -400,7 +400,7 @@ export default function AgendaPage() {
 
   const viewModeOptions: { value: ViewMode; label: string; icon: React.ReactNode }[] = [
     { value: "week", label: "Semana", icon: <CalendarDays className="h-4 w-4" /> },
-    { value: "month", label: "Mes", icon: <Grid3X3 className="h-4 w-4" /> },
+    { value: "month", label: "Mês", icon: <Grid3X3 className="h-4 w-4" /> },
     { value: "list", label: "Lista", icon: <List className="h-4 w-4" /> },
   ];
 
@@ -789,7 +789,7 @@ export default function AgendaPage() {
                     <EmptyState
                       icon={<Calendar className="h-6 w-6" />}
                       title="Nenhum agendamento encontrado"
-                      description="Crie um novo agendamento para comecar a organizar sua agenda."
+                      description="Crie um novo agendamento para começar a organizar sua agenda."
                       action={
                         <Button onClick={handleOpenCreateModal}>
                           <Plus className="h-4 w-4" />
@@ -895,7 +895,7 @@ export default function AgendaPage() {
             </div>
             <div className="space-y-4">
               <SelectNative
-                label="Ordem de Servico *"
+                label="Ordem de Serviço *"
                 value={scheduleForm.service_order_id}
                 onChange={(e) => setScheduleForm({ ...scheduleForm, service_order_id: e.target.value })}
                 disabled={loadingDropdowns}
@@ -908,12 +908,12 @@ export default function AgendaPage() {
                 ))}
               </SelectNative>
               <SelectNative
-                label="Tecnico *"
+                label="Técnico *"
                 value={scheduleForm.technician_id}
                 onChange={(e) => setScheduleForm({ ...scheduleForm, technician_id: e.target.value })}
                 disabled={loadingDropdowns}
               >
-                <option value="">{loadingDropdowns ? "Carregando..." : "Selecione um tecnico"}</option>
+                <option value="">{loadingDropdowns ? "Carregando..." : "Selecione um técnico"}</option>
                 {techniciansList.map((tech) => (
                   <option key={tech.id} value={tech.id}>
                     {tech.full_name}
@@ -928,7 +928,7 @@ export default function AgendaPage() {
               />
               <div className="grid grid-cols-2 gap-4">
                 <Input
-                  label="Hora Inicio"
+                  label="Hora Início"
                   type="time"
                   value={scheduleForm.start_time}
                   onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_start_time: e.target.value })}
@@ -941,12 +941,12 @@ export default function AgendaPage() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">Observacoes</label>
+                <label className="text-sm font-medium leading-none text-foreground/80">Observações</label>
                 <textarea
                   value={scheduleForm.notes}
                   onChange={(e) => setScheduleForm({ ...scheduleForm, notes: e.target.value })}
                   rows={3}
-                  placeholder="Observacoes sobre o agendamento..."
+                  placeholder="Observações sobre o agendamento..."
                   className={cn(
                     "flex w-full rounded-xl border border-input bg-background px-4 py-3 text-sm",
                     "placeholder:text-muted-foreground",

@@ -270,7 +270,7 @@ export class ServiceOrdersService {
       from_status: null,
       to_status: initialStatus,
       changed_by: userId,
-      notes: 'Service order created',
+      notes: 'Ordem de serviço criada',
     });
 
     // Audit log
@@ -287,8 +287,8 @@ export class ServiceOrdersService {
       try {
         await this.notificationsService.create(
           data.technician_id,
-          'Nova OS atribuida',
-          `Voce foi atribuido a OS "${data.title}"`,
+          'Nova OS atribuída',
+          `Você foi atribuído à OS "${data.title}"`,
           NotificationType.OS_ASSIGNED,
           { service_order_id: order.id },
         );
@@ -350,7 +350,7 @@ export class ServiceOrdersService {
       // PGRST116 = "JSON object requested, multiple (or no) rows returned" -> 0 rows = version mismatch
       if (version !== undefined && error.code === 'PGRST116') {
         throw new ConflictException(
-          'Dados desatualizados. Recarregue a pagina e tente novamente.',
+          'Dados desatualizados. Recarregue a página e tente novamente.',
         );
       }
       this.logger.error(
@@ -440,7 +440,7 @@ export class ServiceOrdersService {
       // PGRST116 = "JSON object requested, multiple (or no) rows returned" -> 0 rows = version mismatch
       if (version !== undefined && error.code === 'PGRST116') {
         throw new ConflictException(
-          'Dados desatualizados. Recarregue a pagina e tente novamente.',
+          'Dados desatualizados. Recarregue a página e tente novamente.',
         );
       }
       this.logger.error(

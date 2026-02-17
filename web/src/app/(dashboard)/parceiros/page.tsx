@@ -163,7 +163,7 @@ export default function ParceirosPage() {
 
   const handleCreate = async () => {
     if (!createForm.company_name.trim() || !createForm.contact_name.trim()) {
-      toast.error("Razao social e nome do contato sao obrigatorios");
+      toast.error("Razão social e nome do contato são obrigatórios");
       return;
     }
 
@@ -207,7 +207,7 @@ export default function ParceirosPage() {
   const handleUpdate = async () => {
     if (!editingPartner) return;
     if (!editForm.company_name.trim() || !editForm.contact_name.trim()) {
-      toast.error("Razao social e nome do contato sao obrigatorios");
+      toast.error("Razão social e nome do contato são obrigatórios");
       return;
     }
 
@@ -318,7 +318,7 @@ export default function ParceirosPage() {
               <EmptyState
                 icon={<Building2 className="h-6 w-6" />}
                 title="Nenhum parceiro encontrado"
-                description="Cadastre um novo parceiro para comecar ou ajuste a busca."
+                description="Cadastre um novo parceiro para começar ou ajuste a busca."
                 action={
                   <Button onClick={() => setShowCreateModal(true)}>
                     <Plus className="h-4 w-4" />
@@ -486,8 +486,8 @@ export default function ParceirosPage() {
             <h2 className="text-lg font-semibold mb-4">Novo Parceiro</h2>
             <div className="space-y-4">
               <Input
-                label="Razao Social *"
-                placeholder="Razao social da empresa"
+                label="Razão Social *"
+                placeholder="Razão social da empresa"
                 value={createForm.company_name}
                 onChange={(e) => setCreateForm({ ...createForm, company_name: e.target.value })}
               />
@@ -523,15 +523,15 @@ export default function ParceirosPage() {
                 onChange={(e) => setCreateForm({ ...createForm, contact_phone: e.target.value })}
               />
               <Input
-                label="Endereco"
-                placeholder="Endereco completo"
+                label="Endereço"
+                placeholder="Endereço completo"
                 value={createForm.address}
                 onChange={(e) => setCreateForm({ ...createForm, address: e.target.value })}
               />
               <div className="w-full space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">Observacoes</label>
+                <label className="text-sm font-medium leading-none text-foreground/80">Observações</label>
                 <textarea
-                  placeholder="Observacoes sobre o parceiro..."
+                  placeholder="Observações sobre o parceiro..."
                   value={createForm.notes}
                   onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })}
                   rows={3}
@@ -563,8 +563,8 @@ export default function ParceirosPage() {
             <h2 className="text-lg font-semibold mb-4">Editar Parceiro</h2>
             <div className="space-y-4">
               <Input
-                label="Razao Social *"
-                placeholder="Razao social da empresa"
+                label="Razão Social *"
+                placeholder="Razão social da empresa"
                 value={editForm.company_name}
                 onChange={(e) => setEditForm({ ...editForm, company_name: e.target.value })}
               />
@@ -600,15 +600,15 @@ export default function ParceirosPage() {
                 onChange={(e) => setEditForm({ ...editForm, contact_phone: e.target.value })}
               />
               <Input
-                label="Endereco"
-                placeholder="Endereco completo"
+                label="Endereço"
+                placeholder="Endereço completo"
                 value={editForm.address}
                 onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
               />
               <div className="w-full space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">Observacoes</label>
+                <label className="text-sm font-medium leading-none text-foreground/80">Observações</label>
                 <textarea
-                  placeholder="Observacoes sobre o parceiro..."
+                  placeholder="Observações sobre o parceiro..."
                   value={editForm.notes}
                   onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
                   rows={3}
@@ -624,7 +624,7 @@ export default function ParceirosPage() {
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <Button variant="outline" onClick={() => setEditingPartner(null)}>Cancelar</Button>
-              <Button onClick={handleUpdate} isLoading={isUpdating}>Salvar Alteracoes</Button>
+              <Button onClick={handleUpdate} isLoading={isUpdating}>Salvar Alterações</Button>
             </div>
           </div>
         </div>

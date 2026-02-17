@@ -130,7 +130,7 @@ export class LgpdService {
     const { error: profileError } = await supabase
       .from('profiles')
       .update({
-        full_name: 'Usuario Removido',
+        full_name: 'Usuário Removido',
         email: anonymizedEmail,
         phone: null,
         cpf: null,
@@ -164,7 +164,7 @@ export class LgpdService {
       await supabase
         .from('partners')
         .update({
-          contact_name: 'Usuario Removido',
+          contact_name: 'Usuário Removido',
           contact_phone: null,
           contact_email: null,
           cnpj: null,
@@ -205,7 +205,7 @@ export class LgpdService {
         email: existing.email,
       },
       newData: {
-        full_name: 'Usuario Removido',
+        full_name: 'Usuário Removido',
         email: anonymizedEmail,
       },
     });

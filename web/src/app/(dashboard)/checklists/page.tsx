@@ -168,7 +168,7 @@ function TemplateForm({ template, onSave, onCancel }: TemplateFormProps) {
     setNameError(null);
 
     if (!name.trim()) {
-      setNameError("O nome do template e obrigatorio.");
+      setNameError("O nome do template é obrigatório.");
       return;
     }
 
@@ -245,7 +245,7 @@ function TemplateForm({ template, onSave, onCancel }: TemplateFormProps) {
             {/* Description */}
             <div className="w-full space-y-2">
               <label className="text-sm font-medium leading-none text-foreground/80">
-                Descricao
+                Descrição
               </label>
               <textarea
                 placeholder="Descreva o objetivo deste template de checklist..."
@@ -303,7 +303,7 @@ function TemplateForm({ template, onSave, onCancel }: TemplateFormProps) {
                       {/* Label input */}
                       <input
                         type="text"
-                        placeholder="Descricao do item..."
+                        placeholder="Descrição do item..."
                         value={item.label}
                         onChange={(e) =>
                           updateItemLabel(item.id, e.target.value)
@@ -327,7 +327,7 @@ function TemplateForm({ template, onSave, onCancel }: TemplateFormProps) {
                           className="h-4 w-4 rounded border-input accent-primary"
                         />
                         <span className="text-xs text-muted-foreground">
-                          Obrigatorio
+                          Obrigatório
                         </span>
                       </label>
 
@@ -520,7 +520,7 @@ export default function ChecklistsPage() {
           </h1>
           <p className="text-muted-foreground">
             {editingTemplate
-              ? "Altere as informacoes do template de checklist."
+              ? "Altere as informações do template de checklist."
               : "Preencha os dados para criar um novo template de checklist."}
           </p>
         </motion.div>

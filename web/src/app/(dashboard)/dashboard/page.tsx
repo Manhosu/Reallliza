@@ -47,9 +47,9 @@ function formatRelativeTime(dateStr: string): string {
   const diffDays = Math.floor(diffMs / 86400000);
 
   if (diffMinutes < 1) return "Agora";
-  if (diffMinutes < 60) return `Ha ${diffMinutes} minuto${diffMinutes !== 1 ? "s" : ""}`;
-  if (diffHours < 24) return `Ha ${diffHours} hora${diffHours !== 1 ? "s" : ""}`;
-  return `Ha ${diffDays} dia${diffDays !== 1 ? "s" : ""}`;
+  if (diffMinutes < 60) return `Há ${diffMinutes} minuto${diffMinutes !== 1 ? "s" : ""}`;
+  if (diffHours < 24) return `Há ${diffHours} hora${diffHours !== 1 ? "s" : ""}`;
+  return `Há ${diffDays} dia${diffDays !== 1 ? "s" : ""}`;
 }
 
 function formatScheduleDate(dateStr: string, timeStr: string | null): string {
@@ -64,8 +64,23 @@ function formatScheduleDate(dateStr: string, timeStr: string | null): string {
   const timeDisplay = timeStr ? `, ${timeStr.slice(0, 5)}` : "";
 
   if (isToday) return `Hoje${timeDisplay}`;
-  if (isTomorrow) return `Amanha${timeDisplay}`;
+  if (isTomorrow) return `Amanhã${timeDisplay}`;
   return `${date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}${timeDisplay}`;
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  draft: "Rascunho",
+  pending: "Pendente",
+  assigned: "Atribuída",
+  in_progress: "Em Andamento",
+  paused: "Pausada",
+  completed: "Concluída",
+  cancelled: "Cancelada",
+  rejected: "Rejeitada",
+};
+
+function translateStatus(status: string): string {
+  return STATUS_LABELS[status] || status;
 }
 
 // ============================================================
@@ -226,12 +241,12 @@ export default function DashboardPage() {
       ? [
           { name: "Abertos", value: stats.openOs, color: "#EAB308" },
           { name: "Em Andamento", value: stats.inProgressOs, color: "#3B82F6" },
-          { name: "Concluidos", value: stats.completedOs, color: "#22C55E" },
+          { name: "Concluídos", value: stats.completedOs, color: "#22C55E" },
         ].filter(d => d.value > 0)
       : [
           { name: "Abertas", value: stats.openOs, color: "#EAB308" },
           { name: "Em Andamento", value: stats.inProgressOs, color: "#3B82F6" },
-          { name: "Concluidas", value: stats.completedOs, color: "#22C55E" },
+          { name: "Concluídas", value: stats.completedOs, color: "#22C55E" },
           { name: "Atrasadas", value: stats.overdueOs, color: "#EF4444" },
         ].filter(d => d.value > 0)
   ) : [];
@@ -248,13 +263,13 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
           {getGreeting()},{" "}
           <span className="text-gradient">
-            {user?.full_name?.split(" ")[0] || "Usuario"}
+            {user?.full_name?.split(" ")[0] || "Usuário"}
           </span>
         </h1>
         <p className="text-muted-foreground">
           {isPartner
-            ? "Acompanhe seus chamados e servicos."
-            : "Aqui esta o resumo das suas operacoes."}
+            ? "Acompanhe seus chamados e serviços."
+            : "Aqui está o resumo das suas operações."}
         </p>
       </motion.div>
 
@@ -293,7 +308,7 @@ export default function DashboardPage() {
               delay={0.1}
             />
             <MetricCard
-              title="Concluidos"
+              title="Concluídos"
               value={String(stats?.completedOs ?? 0)}
               change="Total geral"
               changeType="up"
@@ -330,7 +345,7 @@ export default function DashboardPage() {
               delay={0.1}
             />
             <MetricCard
-              title="Concluidas"
+              title="Concluídas"
               value={String(stats?.completedOs ?? 0)}
               change="Total geral"
               changeType="up"
@@ -346,7 +361,7 @@ export default function DashboardPage() {
             <MetricCard
               title="Atrasadas"
               value={String(stats?.overdueOs ?? 0)}
-              change={stats?.overdueOs ? "Requer atencao" : "Tudo em dia"}
+              change={stats?.overdueOs ? "Requer atenção" : "Tudo em dia"}
               changeType={stats?.overdueOs ? "down" : "neutral"}
               icon={
                 <AlertTriangle
@@ -375,12 +390,12 @@ export default function DashboardPage() {
               <div className="space-y-1">
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="h-5 w-5 text-primary" />
-                  {isPartner ? "Meus Chamados por Mes" : "OS por Mes"}
+                  {isPartner ? "Meus Chamados por Mês" : "OS por Mês"}
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">
                   {isPartner
-                    ? "Evolucao dos seus chamados nos ultimos 12 meses"
-                    : "Evolucao das ordens de servico nos ultimos 12 meses"}
+                    ? "Evolução dos seus chamados nos últimos 12 meses"
+                    : "Evolução das ordens de serviço nos últimos 12 meses"}
                 </p>
               </div>
             </CardHeader>
@@ -464,7 +479,7 @@ export default function DashboardPage() {
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2">
                 <CalendarDays className="h-5 w-5 text-primary" />
-                Proximos Agendamentos
+                Próximos Agendamentos
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -481,7 +496,7 @@ export default function DashboardPage() {
                 <div className="flex flex-col items-center gap-3 py-8">
                   <CalendarDays className="h-8 w-8 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">
-                    Nenhum agendamento proximo
+                    Nenhum agendamento próximo
                   </p>
                 </div>
               ) : (
@@ -533,7 +548,7 @@ export default function DashboardPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <PieChartIcon className="h-5 w-5 text-primary" />
-                {isPartner ? "Distribuicao dos Chamados" : "Distribuicao por Status"}
+                {isPartner ? "Distribuição dos Chamados" : "Distribuição por Status"}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -585,7 +600,7 @@ export default function DashboardPage() {
                 <div className="flex flex-col items-center gap-3 py-8">
                   <PieChartIcon className="h-8 w-8 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">
-                    Nenhum dado disponivel
+                    Nenhum dado disponível
                   </p>
                 </div>
               )}
@@ -648,8 +663,8 @@ export default function DashboardPage() {
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">
                           {item.from_status
-                            ? `OS alterada de ${item.from_status} para ${item.to_status}`
-                            : `OS criada como ${item.to_status}`}
+                            ? `OS alterada de ${translateStatus(item.from_status)} para ${translateStatus(item.to_status)}`
+                            : `OS criada como ${translateStatus(item.to_status)}`}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {(item as any).changed_by_user?.full_name || item.changed_by}

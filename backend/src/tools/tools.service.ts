@@ -255,8 +255,8 @@ export class ToolsService {
     try {
       await this.notificationsService.create(
         userId,
-        'Ferramenta atribuida',
-        `A ferramenta "${tool.name}" foi atribuida a voce`,
+        'Ferramenta atribuída',
+        `A ferramenta "${tool.name}" foi atribuída a você`,
         NotificationType.TOOL_CUSTODY,
         { tool_id: toolId },
       );

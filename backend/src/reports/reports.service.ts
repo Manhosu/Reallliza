@@ -102,13 +102,13 @@ export class ReportsService {
     );
 
     const columns = [
-      'Numero OS',
-      'Titulo',
+      'Número OS',
+      'Título',
       'Status',
       'Prioridade',
-      'Tecnico',
+      'Técnico',
       'Parceiro',
-      'Data Criacao',
+      'Data Criação',
       'Valor Estimado',
     ];
     const keys = [
@@ -122,8 +122,8 @@ export class ReportsService {
       'estimated_value',
     ] as const;
 
-    const title = 'Relatorio de OS por Periodo';
-    const subtitle = `Periodo: ${this.formatDate(filters.date_from)} a ${this.formatDate(filters.date_to)}`;
+    const title = 'Relatório de OS por Período';
+    const subtitle = `Período: ${this.formatDate(filters.date_from)} a ${this.formatDate(filters.date_to)}`;
     const footer = `Total OS: ${totalOs} | Valor Total Estimado: ${this.formatCurrency(totalValue)}`;
 
     if (format === 'excel') {
@@ -174,7 +174,7 @@ export class ReportsService {
 
     for (const row of data || []) {
       const r = row as any;
-      const techName = r.technician?.full_name || 'Sem tecnico';
+      const techName = r.technician?.full_name || 'Sem técnico';
       const techId = r.technician_id || 'unknown';
 
       if (!techMap.has(techId)) {
@@ -205,12 +205,12 @@ export class ReportsService {
     }));
 
     const columns = [
-      'Tecnico',
+      'Técnico',
       'Total OS',
-      'Concluidas',
+      'Concluídas',
       'Em Andamento',
       'Canceladas',
-      'Taxa Conclusao (%)',
+      'Taxa Conclusão (%)',
     ];
     const keys = [
       'technician',
@@ -221,8 +221,8 @@ export class ReportsService {
       'completion_rate',
     ];
 
-    const title = 'Relatorio de OS por Tecnico';
-    const subtitle = `Periodo: ${this.formatDate(filters.date_from)} a ${this.formatDate(filters.date_to)}`;
+    const title = 'Relatório de OS por Técnico';
+    const subtitle = `Período: ${this.formatDate(filters.date_from)} a ${this.formatDate(filters.date_to)}`;
 
     if (format === 'excel') {
       return this.generateExcel(title, subtitle, columns, rows, keys);
@@ -321,14 +321,14 @@ export class ReportsService {
       'Parceiro',
       'CNPJ',
       'Total OS',
-      'Concluidas',
+      'Concluídas',
       'Pendentes',
       'Valor Total',
     ];
     const keys = ['partner', 'cnpj', 'total', 'completed', 'pending', 'total_value'];
 
-    const title = 'Relatorio de OS por Parceiro';
-    const subtitle = `Periodo: ${this.formatDate(filters.date_from)} a ${this.formatDate(filters.date_to)}`;
+    const title = 'Relatório de OS por Parceiro';
+    const subtitle = `Período: ${this.formatDate(filters.date_from)} a ${this.formatDate(filters.date_to)}`;
 
     if (format === 'excel') {
       return this.generateExcel(title, subtitle, columns, rows, keys);
@@ -377,11 +377,11 @@ export class ReportsService {
 
     const columns = [
       'Ferramenta',
-      'Num Serie',
-      'Tecnico',
+      'Num Série',
+      'Técnico',
       'OS Vinculada',
       'Data Retirada',
-      'Condicao',
+      'Condição',
     ];
     const keys = [
       'tool_name',
@@ -392,8 +392,8 @@ export class ReportsService {
       'condition',
     ];
 
-    const title = 'Relatorio de Ferramentas em Custodia';
-    const subtitle = `Data de geracao: ${this.formatDate(new Date().toISOString())}`;
+    const title = 'Relatório de Ferramentas em Custódia';
+    const subtitle = `Data de geração: ${this.formatDate(new Date().toISOString())}`;
 
     if (format === 'excel') {
       return this.generateExcel(title, subtitle, columns, rows, keys);
@@ -466,21 +466,21 @@ export class ReportsService {
     }));
 
     const columns = [
-      'Mes',
+      'Mês',
       'Qtd OS',
       'Valor Estimado',
       'Valor Final',
-      'Ticket Medio',
+      'Ticket Médio',
     ];
     const keys = ['month', 'count', 'estimated', 'final_val', 'ticket'];
 
-    const title = 'Relatorio Financeiro';
-    const subtitle = `Periodo: ${this.formatDate(filters.date_from)} a ${this.formatDate(filters.date_to)}`;
+    const title = 'Relatório Financeiro';
+    const subtitle = `Período: ${this.formatDate(filters.date_from)} a ${this.formatDate(filters.date_to)}`;
     const footer =
       `Total OS: ${totalOs} | ` +
       `Valor Estimado Total: ${this.formatCurrency(totalEstimated)} | ` +
       `Valor Final Total: ${this.formatCurrency(totalFinal)} | ` +
-      `Ticket Medio: ${this.formatCurrency(ticketMedio)}`;
+      `Ticket Médio: ${this.formatCurrency(ticketMedio)}`;
 
     if (format === 'excel') {
       return this.generateExcel(title, subtitle, columns, rows, keys, footer);
@@ -537,11 +537,11 @@ export class ReportsService {
       ip: row.ip_address || '-',
     }));
 
-    const columns = ['Data', 'Usuario', 'Acao', 'Entidade', 'IP'];
+    const columns = ['Data', 'Usuário', 'Ação', 'Entidade', 'IP'];
     const keys = ['date', 'user', 'action', 'entity', 'ip'];
 
-    const title = 'Relatorio de Auditoria';
-    const subtitle = `Periodo: ${this.formatDate(filters.date_from)} a ${this.formatDate(filters.date_to)}`;
+    const title = 'Relatório de Auditoria';
+    const subtitle = `Período: ${this.formatDate(filters.date_from)} a ${this.formatDate(filters.date_to)}`;
 
     if (format === 'excel') {
       return this.generateExcel(title, subtitle, columns, rows, keys);
@@ -717,7 +717,7 @@ export class ReportsService {
     workbook.creator = 'Reallliza Revestimentos';
     workbook.created = new Date();
 
-    const sheet = workbook.addWorksheet('Relatorio');
+    const sheet = workbook.addWorksheet('Relatório');
 
     // ----- Title rows -----
     const titleRow = sheet.addRow(['Reallliza Revestimentos']);
@@ -850,10 +850,10 @@ export class ReportsService {
     const map: Record<string, string> = {
       draft: 'Rascunho',
       pending: 'Pendente',
-      assigned: 'Atribuida',
+      assigned: 'Atribuída',
       in_progress: 'Em Andamento',
       paused: 'Pausada',
-      completed: 'Concluida',
+      completed: 'Concluída',
       cancelled: 'Cancelada',
       rejected: 'Rejeitada',
     };
@@ -863,7 +863,7 @@ export class ReportsService {
   private translatePriority(priority: string): string {
     const map: Record<string, string> = {
       low: 'Baixa',
-      medium: 'Media',
+      medium: 'Média',
       high: 'Alta',
       urgent: 'Urgente',
     };

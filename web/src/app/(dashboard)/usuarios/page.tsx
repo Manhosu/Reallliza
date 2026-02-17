@@ -180,11 +180,11 @@ export default function UsuariosPage() {
 
   const handleCreate = async () => {
     if (!createForm.full_name.trim() || !createForm.email.trim()) {
-      toast.error("Nome e e-mail sao obrigatorios");
+      toast.error("Nome e e-mail são obrigatórios");
       return;
     }
     if (!createForm.password || createForm.password.length < 6) {
-      toast.error("Senha deve ter no minimo 6 caracteres");
+      toast.error("Senha deve ter no mínimo 6 caracteres");
       return;
     }
 
@@ -197,12 +197,12 @@ export default function UsuariosPage() {
         role: createForm.role,
         password: createForm.password,
       });
-      toast.success("Usuario criado com sucesso!");
+      toast.success("Usuário criado com sucesso!");
       setShowCreateModal(false);
       setCreateForm({ full_name: "", email: "", phone: "", role: UserRole.TECHNICIAN, password: "" });
       mutate();
     } catch (err: any) {
-      toast.error(err?.message || "Erro ao criar usuario");
+      toast.error(err?.message || "Erro ao criar usuário");
     } finally {
       setIsCreating(false);
     }
@@ -222,7 +222,7 @@ export default function UsuariosPage() {
   const handleUpdate = async () => {
     if (!editingUser) return;
     if (!editForm.full_name.trim()) {
-      toast.error("Nome e obrigatorio");
+      toast.error("Nome é obrigatório");
       return;
     }
 
@@ -234,11 +234,11 @@ export default function UsuariosPage() {
         role: editForm.role as UserRole,
         status: editForm.status as UserStatus,
       });
-      toast.success("Usuario atualizado com sucesso!");
+      toast.success("Usuário atualizado com sucesso!");
       setEditingUser(null);
       mutate();
     } catch (err: any) {
-      toast.error(err?.message || "Erro ao atualizar usuario");
+      toast.error(err?.message || "Erro ao atualizar usuário");
     } finally {
       setIsUpdating(false);
     }
@@ -252,10 +252,10 @@ export default function UsuariosPage() {
     setActionMenuId(null);
     try {
       await usersApi.updateStatus(user.id, newStatus);
-      toast.success(`Usuario ${newStatus === UserStatus.ACTIVE ? "ativado" : "desativado"} com sucesso!`);
+      toast.success(`Usuário ${newStatus === UserStatus.ACTIVE ? "ativado" : "desativado"} com sucesso!`);
       mutate();
     } catch (err: any) {
-      toast.error(err?.message || `Erro ao ${actionLabel} usuario`);
+      toast.error(err?.message || `Erro ao ${actionLabel} usuário`);
     } finally {
       setIsTogglingStatus(null);
     }
@@ -272,17 +272,17 @@ export default function UsuariosPage() {
       >
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-            Usuarios
+            Usuários
           </h1>
           <p className="text-muted-foreground">
             {isLoading
               ? "Carregando..."
-              : `${totalUsers} usuario${totalUsers !== 1 ? "s" : ""} encontrado${totalUsers !== 1 ? "s" : ""}`}
+              : `${totalUsers} usuário${totalUsers !== 1 ? "s" : ""} encontrado${totalUsers !== 1 ? "s" : ""}`}
           </p>
         </div>
         <Button onClick={() => setShowCreateModal(true)}>
           <Plus className="h-4 w-4" />
-          Novo Usuario
+          Novo Usuário
         </Button>
       </motion.div>
 
@@ -379,7 +379,7 @@ export default function UsuariosPage() {
                       Data Cadastro
                     </th>
                     <th className="whitespace-nowrap px-6 py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Acoes
+                      Ações
                     </th>
                   </tr>
                 </thead>
@@ -389,12 +389,12 @@ export default function UsuariosPage() {
                       <td colSpan={7}>
                         <EmptyState
                           icon={<Users className="h-6 w-6" />}
-                          title="Nenhum usuario encontrado"
-                          description="Cadastre um novo usuario para comecar ou ajuste os filtros de busca."
+                          title="Nenhum usuário encontrado"
+                          description="Cadastre um novo usuário para começar ou ajuste os filtros de busca."
                           action={
                             <Button onClick={() => setShowCreateModal(true)}>
                               <Plus className="h-4 w-4" />
-                              Novo Usuario
+                              Novo Usuário
                             </Button>
                           }
                         />
@@ -528,7 +528,7 @@ export default function UsuariosPage() {
             {meta && totalPages > 1 && (
               <div className="flex items-center justify-between border-t px-6 py-4">
                 <p className="text-sm text-muted-foreground">
-                  Pagina {page} de {totalPages}
+                  Página {page} de {totalPages}
                 </p>
                 <div className="flex items-center gap-2">
                   <Button
@@ -546,7 +546,7 @@ export default function UsuariosPage() {
                     disabled={page >= totalPages}
                     onClick={() => setPage(page + 1)}
                   >
-                    Proximo
+                    Próximo
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
@@ -563,11 +563,11 @@ export default function UsuariosPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCreateModal(false)} />
           <div className="relative z-10 w-full max-w-lg rounded-xl bg-card border p-6 shadow-xl mx-4">
-            <h2 className="text-lg font-semibold mb-4">Novo Usuario</h2>
+            <h2 className="text-lg font-semibold mb-4">Novo Usuário</h2>
             <div className="space-y-4">
               <Input
                 label="Nome Completo *"
-                placeholder="Nome completo do usuario"
+                placeholder="Nome completo do usuário"
                 value={createForm.full_name}
                 onChange={(e) => setCreateForm({ ...createForm, full_name: e.target.value })}
               />
@@ -587,7 +587,7 @@ export default function UsuariosPage() {
               <Input
                 label="Senha *"
                 type="password"
-                placeholder="Minimo 6 caracteres"
+                placeholder="Mínimo 6 caracteres"
                 value={createForm.password}
                 onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
               />
@@ -608,7 +608,7 @@ export default function UsuariosPage() {
                 Cancelar
               </Button>
               <Button onClick={handleCreate} isLoading={isCreating}>
-                Criar Usuario
+                Criar Usuário
               </Button>
             </div>
           </div>
@@ -622,7 +622,7 @@ export default function UsuariosPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setEditingUser(null)} />
           <div className="relative z-10 w-full max-w-lg rounded-xl bg-card border p-6 shadow-xl mx-4">
-            <h2 className="text-lg font-semibold mb-4">Editar Usuario</h2>
+            <h2 className="text-lg font-semibold mb-4">Editar Usuário</h2>
             <div className="space-y-4">
               <Input
                 label="Nome Completo *"
@@ -664,7 +664,7 @@ export default function UsuariosPage() {
                 Cancelar
               </Button>
               <Button onClick={handleUpdate} isLoading={isUpdating}>
-                Salvar Alteracoes
+                Salvar Alterações
               </Button>
             </div>
           </div>

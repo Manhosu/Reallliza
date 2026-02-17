@@ -68,7 +68,7 @@ const PRIORITY_BADGE_VARIANT: Record<OsPriority, string> = {
 const KANBAN_COLUMNS = [
   { status: OsStatus.PENDING, label: "Abertas", color: "#EAB308" },
   { status: OsStatus.IN_PROGRESS, label: "Em Andamento", color: "#3B82F6" },
-  { status: OsStatus.COMPLETED, label: "Concluidas", color: "#22C55E" },
+  { status: OsStatus.COMPLETED, label: "Concluídas", color: "#22C55E" },
   { status: OsStatus.CANCELLED, label: "Canceladas", color: "#EF4444" },
 ];
 
@@ -236,7 +236,7 @@ export default function OsListingPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-              {isPartner ? "Meus Chamados" : "Ordens de Servico"}
+              {isPartner ? "Meus Chamados" : "Ordens de Serviço"}
             </h1>
           </div>
           <Button onClick={() => router.push("/os/nova")}>
@@ -251,7 +251,7 @@ export default function OsListingPage() {
             </div>
             <div className="space-y-1 text-center">
               <p className="font-medium text-foreground">
-                Erro ao carregar ordens de servico
+                Erro ao carregar ordens de serviço
               </p>
               <p className="text-sm text-muted-foreground">
                 {error.message || "Ocorreu um erro inesperado. Tente novamente."}
@@ -277,14 +277,14 @@ export default function OsListingPage() {
       >
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-            {isPartner ? "Meus Chamados" : "Ordens de Servico"}
+            {isPartner ? "Meus Chamados" : "Ordens de Serviço"}
           </h1>
           <p className="text-muted-foreground">
             {isLoading
               ? "Carregando..."
               : isPartner
               ? `${totalItems} chamado${totalItems !== 1 ? "s" : ""} encontrado${totalItems !== 1 ? "s" : ""}`
-              : `${totalItems} ordem${totalItems !== 1 ? "s" : ""} encontrada${totalItems !== 1 ? "s" : ""}`}
+              : `${totalItems} ${totalItems !== 1 ? "ordens encontradas" : "ordem encontrada"}`}
           </p>
         </div>
         <Button onClick={() => router.push("/os/nova")}>
@@ -398,7 +398,7 @@ export default function OsListingPage() {
                       #
                     </th>
                     <th className="whitespace-nowrap px-6 py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Titulo
+                      Título
                     </th>
                     <th className="whitespace-nowrap px-6 py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Cliente
@@ -410,13 +410,13 @@ export default function OsListingPage() {
                       Prioridade
                     </th>
                     <th className="whitespace-nowrap px-6 py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Tecnico
+                      Técnico
                     </th>
                     <th className="whitespace-nowrap px-6 py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Data Agendada
                     </th>
                     <th className="whitespace-nowrap px-6 py-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Acoes
+                      Ações
                     </th>
                   </tr>
                 </thead>
@@ -433,7 +433,7 @@ export default function OsListingPage() {
                               Nenhuma OS encontrada
                             </p>
                             <p className="text-sm text-muted-foreground">
-                              Tente alterar os filtros ou crie uma nova ordem de servico.
+                              Tente alterar os filtros ou crie uma nova ordem de serviço.
                             </p>
                           </div>
                         </div>
@@ -708,12 +708,12 @@ export default function OsListingPage() {
                                     T
                                   </div>
                                   <span className="text-xs text-muted-foreground">
-                                    Tecnico
+                                    Técnico
                                   </span>
                                 </>
                               ) : (
                                 <span className="text-xs italic text-muted-foreground">
-                                  Sem tecnico
+                                  Sem técnico
                                 </span>
                               )}
                             </div>

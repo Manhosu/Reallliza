@@ -197,7 +197,7 @@ function NotFoundState() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-          OS nao encontrada
+          OS não encontrada
         </h1>
       </div>
       <Card>
@@ -207,10 +207,10 @@ function NotFoundState() {
           </div>
           <div className="space-y-1 text-center">
             <p className="font-medium text-foreground">
-              Ordem de servico nao encontrada
+              Ordem de serviço não encontrada
             </p>
             <p className="text-sm text-muted-foreground">
-              A OS solicitada nao existe ou foi removida.
+              A OS solicitada não existe ou foi removida.
             </p>
           </div>
           <Button variant="outline" onClick={() => router.push("/os")}>
@@ -274,7 +274,7 @@ function ChecklistSection({
     try {
       await checklistsApi.complete(checklistId);
       mutateChecklists();
-      toast.success("Checklist concluido com sucesso");
+      toast.success("Checklist concluído com sucesso");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro ao concluir checklist";
       toast.error(message);
@@ -395,7 +395,7 @@ function ChecklistSection({
                   <p className="font-medium">{checklist.title}</p>
                   {isComplete && (
                     <Badge variant="success" size="sm">
-                      Concluido
+                      Concluído
                     </Badge>
                   )}
                 </div>
@@ -560,7 +560,7 @@ function PhotosSection({
       await photosApi.delete(photoId);
       mutatePhotos();
       mutateCounts();
-      toast.success("Foto excluida com sucesso");
+      toast.success("Foto excluída com sucesso");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro ao excluir foto";
       toast.error(message);
@@ -695,7 +695,7 @@ function PhotosSection({
             <div className="text-center">
               <p className="font-medium">Nenhuma foto registrada</p>
               <p className="text-sm text-muted-foreground">
-                Fotos do antes, durante e depois do servico aparecerao aqui
+                Fotos do antes, durante e depois do serviço aparecerão aqui
               </p>
             </div>
             <Button
@@ -938,11 +938,11 @@ export default function OsDetailPage() {
 
   const handleUpdate = async () => {
     if (!editForm.title.trim()) {
-      toast.error("Titulo e obrigatorio");
+      toast.error("Título é obrigatório");
       return;
     }
     if (!editForm.client_name.trim()) {
-      toast.error("Nome do cliente e obrigatorio");
+      toast.error("Nome do cliente é obrigatório");
       return;
     }
     setIsUpdating(true);
@@ -1161,13 +1161,13 @@ export default function OsDetailPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Left Column - 2 cols */}
         <div className="space-y-6 lg:col-span-2">
-          {/* Informacoes */}
+          {/* Informações */}
           <motion.div variants={itemVariants}>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5 text-primary" />
-                  Informacoes
+                  Informações
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -1175,7 +1175,7 @@ export default function OsDetailPage() {
                 {order.description && (
                   <div className="space-y-1.5">
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Descricao
+                      Descrição
                     </p>
                     <p className="text-sm leading-relaxed">{order.description}</p>
                   </div>
@@ -1216,7 +1216,7 @@ export default function OsDetailPage() {
                   {/* Address */}
                   <div className="space-y-3">
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Endereco
+                      Endereço
                     </p>
                     <div className="flex items-start gap-2">
                       <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1255,7 +1255,7 @@ export default function OsDetailPage() {
                 {order.notes && (
                   <div className="space-y-1.5 rounded-xl bg-muted/50 p-4">
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Observacoes
+                      Observações
                     </p>
                     <p className="text-sm leading-relaxed">{order.notes}</p>
                   </div>
@@ -1270,7 +1270,7 @@ export default function OsDetailPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Clock className="h-5 w-5 text-primary" />
-                  Historico de Status
+                  Histórico de Status
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -1292,7 +1292,7 @@ export default function OsDetailPage() {
                       <Clock className="h-7 w-7 text-muted-foreground" />
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Nenhum historico disponivel
+                      Nenhum histórico disponível
                     </p>
                   </div>
                 ) : (
@@ -1391,9 +1391,9 @@ export default function OsDetailPage() {
                     <MapPin className="h-7 w-7 text-muted-foreground" />
                   </div>
                   <div className="text-center">
-                    <p className="font-medium">Localizacao nao disponivel</p>
+                    <p className="font-medium">Localização não disponível</p>
                     <p className="text-sm text-muted-foreground">
-                      As coordenadas GPS serao capturadas pelo tecnico no local
+                      As coordenadas GPS serão capturadas pelo técnico no local
                     </p>
                   </div>
                 </div>
@@ -1404,12 +1404,12 @@ export default function OsDetailPage() {
 
         {/* Right Column - Sidebar */}
         <div className="space-y-6">
-          {/* Tecnico */}
+          {/* Técnico */}
           <motion.div variants={itemVariants}>
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                  Tecnico Atribuido
+                  Técnico Atribuído
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -1422,14 +1422,14 @@ export default function OsDetailPage() {
                       <p className="text-sm font-medium">
                         {(order as any).technician?.full_name || order.technician_id}
                       </p>
-                      <p className="text-xs text-muted-foreground">Tecnico</p>
+                      <p className="text-xs text-muted-foreground">Técnico</p>
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-center gap-3 rounded-xl border border-dashed p-3">
                     <User className="h-5 w-5 text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">
-                      Nenhum tecnico atribuido
+                      Nenhum técnico atribuído
                     </span>
                   </div>
                 )}
@@ -1482,7 +1482,7 @@ export default function OsDetailPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="h-4 w-4" />
-                    Criacao
+                    Criação
                   </div>
                   <span className="text-sm font-medium">
                     {formatDate(order.created_at)}
@@ -1500,7 +1500,7 @@ export default function OsDetailPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <PlayCircle className="h-4 w-4" />
-                    Inicio
+                    Início
                   </div>
                   <span className="text-sm font-medium">
                     {formatDateTime(order.started_at)}
@@ -1509,7 +1509,7 @@ export default function OsDetailPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <CheckCircle2 className="h-4 w-4" />
-                    Conclusao
+                    Conclusão
                   </div>
                   <span className="text-sm font-medium">
                     {formatDateTime(order.completed_at)}
@@ -1562,7 +1562,7 @@ export default function OsDetailPage() {
               <h2 className="text-lg font-semibold">Cancelar OS</h2>
             </div>
             <p className="text-sm text-muted-foreground mb-6">
-              Tem certeza que deseja cancelar esta OS? Esta acao nao pode ser desfeita. A OS sera marcada como &quot;Cancelada&quot;.
+              Tem certeza que deseja cancelar esta OS? Esta ação não pode ser desfeita. A OS será marcada como &quot;Cancelada&quot;.
             </p>
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => setShowDeleteConfirmModal(false)} disabled={isCancelling}>
@@ -1589,12 +1589,12 @@ export default function OsDetailPage() {
             </div>
             <div className="space-y-4">
               <Input
-                label="Titulo *"
+                label="Título *"
                 value={editForm.title}
                 onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
               />
               <div className="space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">Descricao</label>
+                <label className="text-sm font-medium leading-none text-foreground/80">Descrição</label>
                 <textarea
                   value={editForm.description}
                   onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
@@ -1663,7 +1663,7 @@ export default function OsDetailPage() {
                   />
                 </div>
                 <Input
-                  label="Numero"
+                  label="Número"
                   value={editForm.address_number}
                   onChange={(e) => setEditForm({ ...editForm, address_number: e.target.value })}
                 />
@@ -1699,12 +1699,12 @@ export default function OsDetailPage() {
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <SelectNative
-                  label="Tecnico"
+                  label="Técnico"
                   value={editForm.technician_id}
                   onChange={(e) => setEditForm({ ...editForm, technician_id: e.target.value })}
                   disabled={loadingDropdowns}
                 >
-                  <option value="">{loadingDropdowns ? "Carregando..." : "Nenhum tecnico"}</option>
+                  <option value="">{loadingDropdowns ? "Carregando..." : "Nenhum técnico"}</option>
                   {technicians.map((t) => (
                     <option key={t.id} value={t.id}>{t.full_name}</option>
                   ))}
@@ -1725,7 +1725,7 @@ export default function OsDetailPage() {
                 onChange={(e) => setEditForm({ ...editForm, estimated_value: e.target.value })}
               />
               <div className="space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">Observacoes</label>
+                <label className="text-sm font-medium leading-none text-foreground/80">Observações</label>
                 <textarea
                   value={editForm.notes}
                   onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
@@ -1746,7 +1746,7 @@ export default function OsDetailPage() {
               </Button>
               <Button onClick={handleUpdate} isLoading={isUpdating}>
                 <Save className="h-4 w-4" />
-                Salvar Alteracoes
+                Salvar Alterações
               </Button>
             </div>
           </div>

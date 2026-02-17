@@ -100,7 +100,7 @@ export default function NotificacoesPage() {
       await notificationsApi.markAsRead(id);
       mutate();
     } catch {
-      toast.error("Erro ao marcar notificacao como lida.");
+      toast.error("Erro ao marcar notificação como lida.");
     }
   };
 
@@ -108,10 +108,10 @@ export default function NotificacoesPage() {
     setMarkingAll(true);
     try {
       await notificationsApi.markAllAsRead();
-      toast.success("Todas as notificacoes foram marcadas como lidas.");
+      toast.success("Todas as notificações foram marcadas como lidas.");
       mutate();
     } catch {
-      toast.error("Erro ao marcar notificacoes como lidas.");
+      toast.error("Erro ao marcar notificações como lidas.");
     } finally {
       setMarkingAll(false);
     }
@@ -139,12 +139,12 @@ export default function NotificacoesPage() {
       >
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-            Notificacoes
+            Notificações
           </h1>
           <p className="text-muted-foreground">
             {isLoading
               ? "Carregando..."
-              : `${totalNotifications} notificac${totalNotifications !== 1 ? "oes" : "ao"}`}
+              : `${totalNotifications} notificaç${totalNotifications !== 1 ? "ões" : "ão"}`}
           </p>
         </div>
         <Button
@@ -165,8 +165,8 @@ export default function NotificacoesPage() {
         <Card>
           <EmptyState
             icon={<Bell className="h-6 w-6" />}
-            title="Nenhuma notificacao"
-            description="Voce nao possui notificacoes no momento. Novas notificacoes aparecero aqui."
+            title="Nenhuma notificação"
+            description="Você não possui notificações no momento. Novas notificações aparecerão aqui."
           />
         </Card>
       ) : (
@@ -250,7 +250,7 @@ export default function NotificacoesPage() {
             <Card>
               <div className="flex items-center justify-between px-6 py-4">
                 <p className="text-sm text-muted-foreground">
-                  Pagina {page} de {totalPages}
+                  Página {page} de {totalPages}
                 </p>
                 <div className="flex items-center gap-2">
                   <Button
@@ -268,7 +268,7 @@ export default function NotificacoesPage() {
                     disabled={page >= totalPages}
                     onClick={() => setPage(page + 1)}
                   >
-                    Proximo
+                    Próximo
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>

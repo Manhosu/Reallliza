@@ -89,7 +89,7 @@ function ToggleSwitch({
 }
 
 // ============================================================
-// Configuracoes Page
+// Configurações Page
 // ============================================================
 
 export default function ConfiguracoesPage() {
@@ -147,11 +147,11 @@ export default function ConfiguracoesPage() {
         return;
       }
       if (newPassword !== confirmPassword) {
-        setPasswordError("As senhas nao coincidem");
+        setPasswordError("As senhas não coincidem");
         return;
       }
       if (newPassword.length < 6) {
-        setPasswordError("A nova senha deve ter no minimo 6 caracteres");
+        setPasswordError("A nova senha deve ter no mínimo 6 caracteres");
         return;
       }
     }
@@ -182,10 +182,10 @@ export default function ConfiguracoesPage() {
         className="space-y-1"
       >
         <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-          Configuracoes
+          Configurações
         </h1>
         <p className="text-muted-foreground">
-          Gerencie seu perfil, preferencias e seguranca.
+          Gerencie seu perfil, preferências e segurança.
         </p>
       </motion.div>
 
@@ -267,7 +267,7 @@ export default function ConfiguracoesPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Settings className="h-5 w-5 text-primary" />
-                  Preferencias
+                  Preferências
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
@@ -279,7 +279,7 @@ export default function ConfiguracoesPage() {
                     // Visual only - actual toggle is in the header
                   }}
                   label="Modo Escuro"
-                  description="Alterne pelo botao no cabecalho para aplicar"
+                  description="Alterne pelo botão no cabeçalho para aplicar"
                 />
 
                 {/* Language */}
@@ -298,7 +298,7 @@ export default function ConfiguracoesPage() {
                     onChange={(e) => setLanguage(e.target.value)}
                     className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-200"
                   >
-                    <option value="pt-BR">Portugues (BR)</option>
+                    <option value="pt-BR">Português (BR)</option>
                   </select>
                 </div>
 
@@ -306,29 +306,29 @@ export default function ConfiguracoesPage() {
                 <div className="border-t border-border pt-2">
                   <p className="mb-2 flex items-center gap-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     <Bell className="h-3.5 w-3.5" />
-                    Notificacoes
+                    Notificações
                   </p>
                 </div>
 
                 <ToggleSwitch
                   checked={notifyEmail}
                   onChange={setNotifyEmail}
-                  label="Notificacoes por E-mail"
-                  description="Receba atualizacoes importantes por e-mail"
+                  label="Notificações por E-mail"
+                  description="Receba atualizações importantes por e-mail"
                 />
 
                 <ToggleSwitch
                   checked={notifyPush}
                   onChange={setNotifyPush}
-                  label="Notificacoes Push"
-                  description="Receba notificacoes push no navegador"
+                  label="Notificações Push"
+                  description="Receba notificações push no navegador"
                 />
 
                 <ToggleSwitch
                   checked={notifyInApp}
                   onChange={setNotifyInApp}
-                  label="Notificacoes no Aplicativo"
-                  description="Exibir notificacoes dentro do sistema"
+                  label="Notificações no Aplicativo"
+                  description="Exibir notificações dentro do sistema"
                 />
               </CardContent>
             </Card>
@@ -344,7 +344,7 @@ export default function ConfiguracoesPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Lock className="h-5 w-5 text-primary" />
-                  Seguranca
+                  Segurança
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -386,7 +386,7 @@ export default function ConfiguracoesPage() {
                         type={showNewPassword ? "text" : "password"}
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Minimo 6 caracteres"
+                        placeholder="Mínimo 6 caracteres"
                       />
                       <button
                         type="button"
@@ -453,11 +453,11 @@ export default function ConfiguracoesPage() {
                     <Settings className="h-6 w-6 text-muted-foreground" />
                   </div>
                   <p className="text-sm font-medium text-muted-foreground">
-                    Configuracoes do sistema em breve
+                    Configurações do sistema em breve
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground/60">
-                    Esta secao esta sendo desenvolvida e estara disponivel em
-                    uma futura atualizacao.
+                    Esta seção está sendo desenvolvida e estará disponível em
+                    uma futura atualização.
                   </p>
                 </div>
               </CardContent>
@@ -477,7 +477,7 @@ export default function ConfiguracoesPage() {
               isLoading={isSaving}
             >
               <Save className="h-4 w-4" />
-              Salvar Alteracoes
+              Salvar Alterações
             </Button>
           </motion.div>
         </div>

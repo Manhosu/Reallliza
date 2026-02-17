@@ -31,29 +31,29 @@ import { useAuthStore } from "@/stores/auth-store";
 const BR_STATES = [
   { value: "AC", label: "Acre" },
   { value: "AL", label: "Alagoas" },
-  { value: "AP", label: "Amapa" },
+  { value: "AP", label: "Amapá" },
   { value: "AM", label: "Amazonas" },
   { value: "BA", label: "Bahia" },
-  { value: "CE", label: "Ceara" },
+  { value: "CE", label: "Ceará" },
   { value: "DF", label: "Distrito Federal" },
-  { value: "ES", label: "Espirito Santo" },
-  { value: "GO", label: "Goias" },
-  { value: "MA", label: "Maranhao" },
+  { value: "ES", label: "Espírito Santo" },
+  { value: "GO", label: "Goiás" },
+  { value: "MA", label: "Maranhão" },
   { value: "MT", label: "Mato Grosso" },
   { value: "MS", label: "Mato Grosso do Sul" },
   { value: "MG", label: "Minas Gerais" },
-  { value: "PA", label: "Para" },
-  { value: "PB", label: "Paraiba" },
-  { value: "PR", label: "Parana" },
+  { value: "PA", label: "Pará" },
+  { value: "PB", label: "Paraíba" },
+  { value: "PR", label: "Paraná" },
   { value: "PE", label: "Pernambuco" },
-  { value: "PI", label: "Piaui" },
+  { value: "PI", label: "Piauí" },
   { value: "RJ", label: "Rio de Janeiro" },
   { value: "RN", label: "Rio Grande do Norte" },
   { value: "RS", label: "Rio Grande do Sul" },
-  { value: "RO", label: "Rondonia" },
+  { value: "RO", label: "Rondônia" },
   { value: "RR", label: "Roraima" },
   { value: "SC", label: "Santa Catarina" },
-  { value: "SP", label: "Sao Paulo" },
+  { value: "SP", label: "São Paulo" },
   { value: "SE", label: "Sergipe" },
   { value: "TO", label: "Tocantins" },
 ];
@@ -149,7 +149,7 @@ export default function NovaOsPage() {
           setTechnicians(techniciansRes.data);
         }
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Erro ao carregar dados dos formularios";
+        const message = err instanceof Error ? err.message : "Erro ao carregar dados dos formulários";
         toast.error(message);
       } finally {
         if (!cancelled) {
@@ -178,8 +178,8 @@ export default function NovaOsPage() {
 
   const validate = (): boolean => {
     const newErrors: FormErrors = {};
-    if (!form.title.trim()) newErrors.title = "Titulo e obrigatorio";
-    if (!form.client_name.trim()) newErrors.client_name = "Nome do cliente e obrigatorio";
+    if (!form.title.trim()) newErrors.title = "Título é obrigatório";
+    if (!form.client_name.trim()) newErrors.client_name = "Nome do cliente é obrigatório";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -295,12 +295,12 @@ export default function NovaOsPage() {
         </Button>
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-            {isPartner ? "Novo Chamado" : "Nova Ordem de Servico"}
+            {isPartner ? "Novo Chamado" : "Nova Ordem de Serviço"}
           </h1>
           <p className="text-muted-foreground">
             {isPartner
-              ? "Preencha as informacoes para abrir um chamado"
-              : "Preencha as informacoes para criar uma nova OS"}
+              ? "Preencha as informações para abrir um chamado"
+              : "Preencha as informações para criar uma nova OS"}
           </p>
         </div>
       </motion.div>
@@ -312,19 +312,19 @@ export default function NovaOsPage() {
         animate="show"
         className="space-y-6"
       >
-        {/* Informacoes Gerais */}
+        {/* Informações Gerais */}
         <motion.div variants={itemVariants}>
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5 text-primary" />
-                Informacoes Gerais
+                Informações Gerais
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <Input
-                label="Titulo *"
-                placeholder="Ex: Instalacao Piso Porcelanato - Sala"
+                label="Título *"
+                placeholder="Ex: Instalação Piso Porcelanato - Sala"
                 value={form.title}
                 onChange={(e) => updateField("title", e.target.value)}
                 error={errors.title}
@@ -332,10 +332,10 @@ export default function NovaOsPage() {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium leading-none text-foreground/80">
-                  Descricao
+                  Descrição
                 </label>
                 <textarea
-                  placeholder="Descreva os detalhes do servico..."
+                  placeholder="Descreva os detalhes do serviço..."
                   value={form.description}
                   onChange={(e) => updateField("description", e.target.value)}
                   rows={4}
@@ -402,7 +402,7 @@ export default function NovaOsPage() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Input
                   label="Nome do Cliente *"
-                  placeholder="Nome completo ou razao social"
+                  placeholder="Nome completo ou razão social"
                   value={form.client_name}
                   onChange={(e) => updateField("client_name", e.target.value)}
                   error={errors.client_name}
@@ -435,13 +435,13 @@ export default function NovaOsPage() {
           </Card>
         </motion.div>
 
-        {/* Endereco */}
+        {/* Endereço */}
         <motion.div variants={itemVariants}>
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MapPin className="h-5 w-5 text-primary" />
-                Endereco
+                Endereço
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -457,7 +457,7 @@ export default function NovaOsPage() {
                   />
                 </div>
                 <Input
-                  label="Numero"
+                  label="Número"
                   placeholder="123"
                   value={form.address_number}
                   onChange={(e) =>
@@ -536,7 +536,7 @@ export default function NovaOsPage() {
                   }
                 />
                 <Input
-                  label="Horario Inicio"
+                  label="Horário Início"
                   type="time"
                   value={form.scheduled_start_time}
                   onChange={(e) =>
@@ -544,7 +544,7 @@ export default function NovaOsPage() {
                   }
                 />
                 <Input
-                  label="Horario Fim"
+                  label="Horário Fim"
                   type="time"
                   value={form.scheduled_end_time}
                   onChange={(e) =>
@@ -553,7 +553,7 @@ export default function NovaOsPage() {
                 />
                 {!isPartner && (
                   <SelectNative
-                    label="Tecnico"
+                    label="Técnico"
                     value={form.technician_id}
                     onChange={(e) =>
                       updateField("technician_id", e.target.value)
@@ -562,8 +562,8 @@ export default function NovaOsPage() {
                   >
                     <option value="">
                       {loadingDropdowns
-                        ? "Carregando tecnicos..."
-                        : "Selecione um tecnico"}
+                        ? "Carregando técnicos..."
+                        : "Selecione um técnico"}
                     </option>
                     {technicians.map((tech) => (
                       <option key={tech.id} value={tech.id}>
@@ -606,18 +606,18 @@ export default function NovaOsPage() {
           </motion.div>
         )}
 
-        {/* Observacoes */}
+        {/* Observações */}
         <motion.div variants={itemVariants}>
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MessageSquare className="h-5 w-5 text-primary" />
-                Observacoes
+                Observações
               </CardTitle>
             </CardHeader>
             <CardContent>
               <textarea
-                placeholder="Observacoes adicionais sobre a OS..."
+                placeholder="Observações adicionais sobre a OS..."
                 value={form.notes}
                 onChange={(e) => updateField("notes", e.target.value)}
                 rows={4}
