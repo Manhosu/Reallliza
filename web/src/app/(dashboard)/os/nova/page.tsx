@@ -190,31 +190,29 @@ export default function NovaOsPage() {
     setIsSubmitting(true);
 
     try {
-      await serviceOrdersApi.create({
+      const payload: Record<string, unknown> = {
         title: form.title,
-        description: form.description || null,
-        priority: form.priority as OsPriority,
-        partner_id: form.partner_id || null,
-        technician_id: form.technician_id || null,
         client_name: form.client_name,
-        client_phone: form.client_phone || null,
-        client_email: form.client_email || null,
-        client_document: form.client_document || null,
-        address_street: form.address_street || null,
-        address_number: form.address_number || null,
-        address_complement: form.address_complement || null,
-        address_neighborhood: form.address_neighborhood || null,
-        address_city: form.address_city || null,
-        address_state: form.address_state || null,
-        address_zip: form.address_zip || null,
-        geo_lat: null,
-        geo_lng: null,
-        scheduled_date: form.scheduled_date || null,
-        estimated_value: form.estimated_value ? parseFloat(form.estimated_value) : null,
-        final_value: null,
-        notes: form.notes || null,
-        metadata: null,
-      });
+      };
+      if (form.description) payload.description = form.description;
+      if (form.priority) payload.priority = form.priority;
+      if (form.partner_id) payload.partner_id = form.partner_id;
+      if (form.technician_id) payload.technician_id = form.technician_id;
+      if (form.client_phone) payload.client_phone = form.client_phone;
+      if (form.client_email) payload.client_email = form.client_email;
+      if (form.client_document) payload.client_document = form.client_document;
+      if (form.address_street) payload.address_street = form.address_street;
+      if (form.address_number) payload.address_number = form.address_number;
+      if (form.address_complement) payload.address_complement = form.address_complement;
+      if (form.address_neighborhood) payload.address_neighborhood = form.address_neighborhood;
+      if (form.address_city) payload.address_city = form.address_city;
+      if (form.address_state) payload.address_state = form.address_state;
+      if (form.address_zip) payload.address_zip = form.address_zip;
+      if (form.scheduled_date) payload.scheduled_date = form.scheduled_date;
+      if (form.estimated_value) payload.estimated_value = parseFloat(form.estimated_value);
+      if (form.notes) payload.notes = form.notes;
+
+      await serviceOrdersApi.create(payload as any);
 
       setToastError(false);
       setToastMessage("OS criada com sucesso");

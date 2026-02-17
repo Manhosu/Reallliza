@@ -3,6 +3,7 @@ import {
   IsEmail,
   IsEnum,
   IsNotEmpty,
+  IsOptional,
   IsString,
   MinLength,
 } from 'class-validator';
@@ -34,6 +35,15 @@ export class RegisterDto {
   @IsString()
   @IsNotEmpty({ message: 'Full name is required' })
   full_name: string;
+
+  @ApiProperty({
+    description: 'User phone number',
+    example: '(11) 99999-0001',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  phone?: string;
 
   @ApiProperty({
     description: 'Role to assign to the user',

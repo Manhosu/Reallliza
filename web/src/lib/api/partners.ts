@@ -40,7 +40,7 @@ export const partnersApi = {
   },
 
   update(id: string, data: UpdatePartnerPayload) {
-    return apiClient.patch<Partner>(`/partners/${id}`, data);
+    return apiClient.put<Partner>(`/partners/${id}`, data);
   },
 
   activate(id: string) {

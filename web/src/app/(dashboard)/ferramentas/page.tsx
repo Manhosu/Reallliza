@@ -223,7 +223,7 @@ export default function FerramentasPage() {
     page: toolsPage,
     setPage: setToolsPage,
     mutate: mutateTools,
-  } = usePaginatedApi<ToolInventory>(toolsFetcher, 1, 12);
+  } = usePaginatedApi<ToolInventory>(toolsFetcher, 1, 12, [debouncedSearch, statusFilter]);
 
   // Reset to page 1 when filters change
   useEffect(() => {

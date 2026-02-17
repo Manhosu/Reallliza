@@ -49,6 +49,16 @@ function getCompanyInitials(name: string): string {
     .toUpperCase();
 }
 
+function getAddressString(address: unknown): string {
+  if (!address) return "";
+  if (typeof address === "string") return address;
+  if (typeof address === "object" && address !== null) {
+    const addr = address as Record<string, unknown>;
+    return (addr.full_address as string) || JSON.stringify(address);
+  }
+  return String(address);
+}
+
 // ============================================================
 // Card Skeleton
 // ============================================================
@@ -138,7 +148,7 @@ export default function ParceirosPage() {
     page,
     setPage,
     mutate,
-  } = usePaginatedApi<Partner>(fetcher, 1, 12);
+  } = usePaginatedApi<Partner>(fetcher, 1, 12, [debouncedSearch]);
 
   // Reset to page 1 when search changes
   useEffect(() => {
@@ -189,7 +199,7 @@ export default function ParceirosPage() {
       contact_name: partner.contact_name,
       contact_email: partner.contact_email || "",
       contact_phone: partner.contact_phone || "",
-      address: partner.address || "",
+      address: getAddressString(partner.address),
       notes: partner.notes || "",
     });
   };
@@ -408,7 +418,7 @@ export default function ParceirosPage() {
                         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
                           <MapPin className="h-3.5 w-3.5" />
                         </div>
-                        <span className="leading-snug">{partner.address}</span>
+                        <span className="leading-snug">{getAddressString(partner.address)}</span>
                       </div>
                     )}
                   </div>

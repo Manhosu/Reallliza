@@ -113,7 +113,8 @@ export function usePaginatedApi<T>(
     signal: AbortSignal
   ) => Promise<PaginatedResponse<T>>,
   initialPage = 1,
-  initialLimit = 10
+  initialLimit = 10,
+  deps: unknown[] = []
 ): UsePaginatedApiReturn<T> {
   const [page, setPage] = useState(initialPage);
   const [limit, setLimit] = useState(initialLimit);
@@ -128,7 +129,8 @@ export function usePaginatedApi<T>(
     mutate,
   } = useApi<PaginatedResponse<T>>(
     (signal) => fetcherRef.current(page, limit, signal),
-    [page, limit]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [page, limit, ...deps]
   );
 
   return {

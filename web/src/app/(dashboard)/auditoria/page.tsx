@@ -127,7 +127,7 @@ export default function AuditoriaPage() {
     isLoading,
     page,
     setPage,
-  } = usePaginatedApi<AuditLog>(fetcher, 1, 20);
+  } = usePaginatedApi<AuditLog>(fetcher, 1, 20, [actionFilter, entityFilter, searchUser, dateFrom, dateTo]);
 
   const totalPages = meta?.total_pages ?? 1;
   const totalLogs = meta?.total ?? 0;

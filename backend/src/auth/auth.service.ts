@@ -66,6 +66,7 @@ export class AuthService {
     password: string,
     fullName: string,
     role: UserRole,
+    phone?: string,
   ) {
     const supabase = this.supabaseService.getClient();
 
@@ -103,14 +104,17 @@ export class AuthService {
 
     // The profile should be created automatically by a Supabase trigger,
     // but we'll upsert to be safe
+    const profileData: Record<string, unknown> = {
+      id: authData.user.id,
+      email,
+      full_name: fullName,
+      role,
+      status: 'active',
+    };
+    if (phone) profileData.phone = phone;
+
     const { error: profileError } = await supabase.from('profiles').upsert(
-      {
-        id: authData.user.id,
-        email,
-        full_name: fullName,
-        role,
-        status: 'active',
-      },
+      profileData,
       { onConflict: 'id' },
     );
 

@@ -445,7 +445,8 @@ export default function ChecklistsPage() {
       [debouncedSearch, activeFilter]
     ),
     1,
-    ITEMS_PER_PAGE
+    ITEMS_PER_PAGE,
+    [debouncedSearch, activeFilter]
   );
 
   // Reset page on filter change

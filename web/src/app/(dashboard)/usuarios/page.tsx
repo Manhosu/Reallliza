@@ -164,7 +164,7 @@ export default function UsuariosPage() {
     page,
     setPage,
     mutate,
-  } = usePaginatedApi<Profile>(fetcher, 1, 10);
+  } = usePaginatedApi<Profile>(fetcher, 1, 10, [debouncedSearch, roleFilter, statusFilter]);
 
   // Reset to page 1 when filters change
   useEffect(() => {

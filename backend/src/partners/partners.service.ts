@@ -136,12 +136,50 @@ export class PartnersService {
       }
     }
 
+    // Build insert data
+    const insertData: Record<string, unknown> = {
+      company_name: data.company_name,
+      contact_name: data.contact_name,
+      is_active: true,
+    };
+    if (data.cnpj) insertData.cnpj = data.cnpj;
+    if (data.trading_name) insertData.trading_name = data.trading_name;
+    if (data.contact_phone) insertData.contact_phone = data.contact_phone;
+    if (data.contact_email) insertData.contact_email = data.contact_email;
+    if (data.notes) insertData.notes = data.notes;
+
+    // Handle address: convert string to JSONB if needed
+    if (data.address) {
+      insertData.address = typeof data.address === 'string'
+        ? { full_address: data.address }
+        : data.address;
+    }
+
+    // Handle user_id: if not provided, try to find partner user by contact_email
+    if (data.user_id) {
+      insertData.user_id = data.user_id;
+    } else if (data.contact_email) {
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', data.contact_email)
+        .eq('role', UserRole.PARTNER)
+        .single();
+      if (userProfile) {
+        insertData.user_id = userProfile.id;
+      }
+    }
+
+    // user_id is required by the database
+    if (!insertData.user_id) {
+      throw new BadRequestException(
+        'A partner user must be associated. Provide user_id or use an email that matches a partner user.',
+      );
+    }
+
     const { data: partner, error } = await supabase
       .from('partners')
-      .insert({
-        ...data,
-        is_active: true,
-      })
+      .insert(insertData)
       .select()
       .single();
 

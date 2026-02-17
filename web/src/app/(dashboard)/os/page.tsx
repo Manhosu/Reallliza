@@ -183,7 +183,8 @@ export default function OsListingPage() {
       [debouncedSearch, statusFilter, priorityFilter]
     ),
     1,
-    ITEMS_PER_PAGE
+    ITEMS_PER_PAGE,
+    [debouncedSearch, statusFilter, priorityFilter]
   );
 
   // Reset page on filter change
@@ -480,7 +481,7 @@ export default function OsListingPage() {
                         </td>
                         <td className="whitespace-nowrap px-6 py-4">
                           <span className="text-sm text-muted-foreground">
-                            {order.technician_id || "-"}
+                            {(order as any).technician?.full_name || "-"}
                           </span>
                         </td>
                         <td className="whitespace-nowrap px-6 py-4">

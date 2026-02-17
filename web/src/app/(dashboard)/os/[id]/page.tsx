@@ -1420,7 +1420,7 @@ export default function OsDetailPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium">
-                        {order.technician_id}
+                        {(order as any).technician?.full_name || order.technician_id}
                       </p>
                       <p className="text-xs text-muted-foreground">Tecnico</p>
                     </div>
@@ -1453,7 +1453,7 @@ export default function OsDetailPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium">
-                        {order.partner_id}
+                        {(order as any).partner?.company_name || (order as any).partner?.trading_name || order.partner_id}
                       </p>
                       <p className="text-xs text-muted-foreground">Parceiro</p>
                     </div>
