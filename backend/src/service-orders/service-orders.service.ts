@@ -133,7 +133,7 @@ export class ServiceOrdersService {
 
     if (search) {
       query = query.or(
-        `order_number.ilike.%${search}%,title.ilike.%${search}%,client_name.ilike.%${search}%,address_city.ilike.%${search}%`,
+        `title.ilike.%${search}%,client_name.ilike.%${search}%,address_city.ilike.%${search}%`,
       );
     }
 

@@ -500,7 +500,7 @@ export default function DashboardPage() {
                       <div className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">
-                          {schedule.service_order_id}
+                          {(schedule as any).service_order?.title || (schedule as any).service_order?.order_number || schedule.service_order_id}
                         </p>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <span>
@@ -510,7 +510,7 @@ export default function DashboardPage() {
                             )}
                           </span>
                           <span>&middot;</span>
-                          <span>{schedule.technician_id}</span>
+                          <span>{(schedule as any).technician?.full_name || schedule.technician_id}</span>
                         </div>
                       </div>
                     </motion.div>
@@ -652,7 +652,7 @@ export default function DashboardPage() {
                             : `OS criada como ${item.to_status}`}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {item.changed_by}
+                          {(item as any).changed_by_user?.full_name || item.changed_by}
                         </p>
                       </div>
                       <span className="shrink-0 text-xs text-muted-foreground">

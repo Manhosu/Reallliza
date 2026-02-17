@@ -22,12 +22,12 @@ export interface ListAuditLogsParams {
 export const auditApi = {
   search(params?: ListAuditLogsParams) {
     return apiClient.get<PaginatedResponse<AuditLog>>(
-      "/audit-logs",
+      "/audit",
       params as Record<string, unknown>
     );
   },
 
   getByEntity(type: string, id: string) {
-    return apiClient.get<AuditLog[]>(`/audit-logs/entity/${type}/${id}`);
+    return apiClient.get<AuditLog[]>(`/audit/entity/${type}/${id}`);
   },
 };

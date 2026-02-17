@@ -302,9 +302,8 @@ export default function AuditoriaPage() {
                       </td>
                       <td className="whitespace-nowrap px-6 py-4">
                         <span className="text-sm font-medium">
-                          {log.user_id
-                            ? log.user_id.substring(0, 8) + "..."
-                            : "Sistema"}
+                          {(log as any).user?.full_name
+                            || (log.user_id ? log.user_id.substring(0, 8) + "..." : "Sistema")}
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-6 py-4">

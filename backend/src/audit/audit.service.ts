@@ -132,7 +132,7 @@ export class AuditService {
 
     let query = supabase
       .from('audit_logs')
-      .select('*', { count: 'exact' });
+      .select('*, user:profiles!audit_logs_user_id_fkey(id, full_name, email)', { count: 'exact' });
 
     if (filters.date_from) {
       query = query.gte('created_at', filters.date_from);
@@ -143,7 +143,7 @@ export class AuditService {
     }
 
     if (filters.action) {
-      query = query.eq('action', filters.action);
+      query = query.ilike('action', `%${filters.action}%`);
     }
 
     if (filters.entity_type) {
