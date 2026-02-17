@@ -1353,7 +1353,7 @@ export default function OsDetailPage() {
                               </p>
                             )}
                             <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                              <span>{entry.changed_by}</span>
+                              <span>{(entry as any).changed_by_user?.full_name || entry.changed_by}</span>
                               <span>&middot;</span>
                               <span>{formatDateTime(entry.created_at)}</span>
                             </div>

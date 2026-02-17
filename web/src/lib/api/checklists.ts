@@ -51,7 +51,7 @@ export const checklistTemplatesApi = {
   },
 
   update(id: string, data: UpdateTemplatePayload) {
-    return apiClient.patch<ChecklistTemplate>(
+    return apiClient.put<ChecklistTemplate>(
       `/checklists/templates/${id}`,
       data
     );
@@ -82,7 +82,7 @@ export const checklistsApi = {
   },
 
   updateItems(id: string, items: ChecklistItem[]) {
-    return apiClient.patch<Checklist>(`/checklists/${id}/items`, { items });
+    return apiClient.put<Checklist>(`/checklists/${id}/items`, { items });
   },
 
   complete(id: string) {

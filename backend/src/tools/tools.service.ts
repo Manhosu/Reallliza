@@ -119,11 +119,16 @@ export class ToolsService {
   async createTool(data: CreateToolDto) {
     const supabase = this.supabaseService.getClient();
 
+    // Map DTO fields to DB column names
+    const { image_url, purchase_value, ...rest } = data;
+    const insertData: Record<string, unknown> = { ...rest };
+    if (image_url) insertData.photo_url = image_url;
+    // purchase_value is not a DB column – store in notes or ignore
+    // (DB schema does not have a purchase_value column)
+
     const { data: tool, error } = await supabase
       .from('tool_inventory')
-      .insert({
-        ...data,
-      })
+      .insert(insertData)
       .select()
       .single();
 
@@ -152,12 +157,17 @@ export class ToolsService {
       throw new NotFoundException(`Tool with ID ${id} not found`);
     }
 
+    // Map DTO fields to DB column names
+    const { image_url, purchase_value, ...rest } = data;
+    const updateData: Record<string, unknown> = {
+      ...rest,
+      updated_at: new Date().toISOString(),
+    };
+    if (image_url !== undefined) updateData.photo_url = image_url;
+
     const { data: tool, error } = await supabase
       .from('tool_inventory')
-      .update({
-        ...data,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('id', id)
       .select()
       .single();

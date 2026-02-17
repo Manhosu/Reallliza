@@ -58,7 +58,7 @@ export const serviceOrdersApi = {
   },
 
   update(id: string, data: UpdateServiceOrderPayload) {
-    return apiClient.patch<ServiceOrder>(`/service-orders/${id}`, data);
+    return apiClient.put<ServiceOrder>(`/service-orders/${id}`, data);
   },
 
   changeStatus(id: string, status: OsStatus, notes?: string) {

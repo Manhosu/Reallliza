@@ -39,7 +39,7 @@ export const usersApi = {
   },
 
   update(id: string, data: UpdateUserPayload) {
-    return apiClient.patch<Profile>(`/users/${id}`, data);
+    return apiClient.put<Profile>(`/users/${id}`, data);
   },
 
   updateStatus(id: string, status: UserStatus) {

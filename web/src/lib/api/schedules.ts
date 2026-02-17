@@ -54,7 +54,7 @@ export const schedulesApi = {
   },
 
   update(id: string, data: UpdateSchedulePayload) {
-    return apiClient.patch<Schedule>(`/schedules/${id}`, data);
+    return apiClient.put<Schedule>(`/schedules/${id}`, data);
   },
 
   getByTechnician(

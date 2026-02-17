@@ -61,7 +61,7 @@ export const toolsApi = {
   },
 
   update(id: string, data: UpdateToolPayload) {
-    return apiClient.patch<ToolInventory>(`/tools/${id}`, data);
+    return apiClient.put<ToolInventory>(`/tools/${id}`, data);
   },
 
   checkout(toolId: string, data: CheckoutToolPayload) {
