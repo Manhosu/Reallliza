@@ -743,7 +743,7 @@ function PhotosSection({
                     {showDeleteConfirm === photo.id ? (
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => handleDelete(photo.id)}
+                          onClick={(e) => { e.stopPropagation(); handleDelete(photo.id); }}
                           className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500 text-white shadow-md transition-colors hover:bg-red-600"
                           disabled={isDeleting === photo.id}
                         >
@@ -754,7 +754,7 @@ function PhotosSection({
                           )}
                         </button>
                         <button
-                          onClick={() => setShowDeleteConfirm(null)}
+                          onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(null); }}
                           className="flex h-7 w-7 items-center justify-center rounded-lg bg-background/90 text-foreground shadow-md transition-colors hover:bg-background"
                         >
                           <X className="h-3.5 w-3.5" />
@@ -762,7 +762,7 @@ function PhotosSection({
                       </div>
                     ) : (
                       <button
-                        onClick={() => setShowDeleteConfirm(photo.id)}
+                        onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(photo.id); }}
                         className="flex h-7 w-7 items-center justify-center rounded-lg bg-background/90 text-destructive shadow-md transition-colors hover:bg-background"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -947,27 +947,33 @@ export default function OsDetailPage() {
     }
     setIsUpdating(true);
     try {
-      await serviceOrdersApi.update(id, {
+      // Build payload and strip undefined/null values so @IsOptional() works correctly
+      const raw: Record<string, unknown> = {
         title: editForm.title.trim(),
-        description: editForm.description.trim() || null,
+        description: editForm.description.trim() || undefined,
         priority: editForm.priority as OsPriority,
         client_name: editForm.client_name.trim(),
-        client_phone: editForm.client_phone.trim() || null,
-        client_email: editForm.client_email.trim() || null,
-        client_document: editForm.client_document.trim() || null,
-        address_street: editForm.address_street.trim() || null,
-        address_number: editForm.address_number.trim() || null,
-        address_complement: editForm.address_complement.trim() || null,
-        address_neighborhood: editForm.address_neighborhood.trim() || null,
-        address_city: editForm.address_city.trim() || null,
-        address_state: editForm.address_state.trim() || null,
-        address_zip: editForm.address_zip.trim() || null,
-        technician_id: editForm.technician_id || null,
-        partner_id: editForm.partner_id || null,
-        scheduled_date: editForm.scheduled_date || null,
-        estimated_value: editForm.estimated_value ? parseFloat(editForm.estimated_value) : null,
-        notes: editForm.notes.trim() || null,
-      });
+        client_phone: editForm.client_phone.trim() || undefined,
+        client_email: editForm.client_email.trim() || undefined,
+        client_document: editForm.client_document.trim() || undefined,
+        address_street: editForm.address_street.trim() || undefined,
+        address_number: editForm.address_number.trim() || undefined,
+        address_complement: editForm.address_complement.trim() || undefined,
+        address_neighborhood: editForm.address_neighborhood.trim() || undefined,
+        address_city: editForm.address_city.trim() || undefined,
+        address_state: editForm.address_state.trim() || undefined,
+        address_zip: editForm.address_zip.trim() || undefined,
+        technician_id: editForm.technician_id || undefined,
+        partner_id: editForm.partner_id || undefined,
+        scheduled_date: editForm.scheduled_date || undefined,
+        estimated_value: editForm.estimated_value ? parseFloat(editForm.estimated_value) : undefined,
+        notes: editForm.notes.trim() || undefined,
+      };
+      // Remove undefined keys so they don't appear as null in JSON
+      const payload = Object.fromEntries(
+        Object.entries(raw).filter(([, v]) => v !== undefined)
+      );
+      await serviceOrdersApi.update(id, payload);
       toast.success("OS atualizada com sucesso");
       setShowEditModal(false);
       mutateOrder();
@@ -1086,13 +1092,13 @@ export default function OsDetailPage() {
             </div>
           )}
 
-          {!isPartner && (
+          {!isPartner && order.status !== OsStatus.COMPLETED && order.status !== OsStatus.CANCELLED && order.status !== OsStatus.REJECTED && (
             <>
               <Button variant="outline" size="icon" onClick={handleOpenEdit}>
                 <Edit className="h-4 w-4" />
               </Button>
               <Button variant="outline" size="icon" onClick={() => setShowDeleteConfirmModal(true)}>
-                <Trash2 className="h-4 w-4 text-destructive" />
+                <XCircle className="h-4 w-4 text-destructive" />
               </Button>
             </>
           )}
@@ -1569,7 +1575,7 @@ export default function OsDetailPage() {
                 Voltar
               </Button>
               <Button variant="destructive" onClick={handleCancelOS} isLoading={isCancelling}>
-                <Trash2 className="h-4 w-4" />
+                <XCircle className="h-4 w-4" />
                 Sim, Cancelar OS
               </Button>
             </div>

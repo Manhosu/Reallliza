@@ -377,13 +377,17 @@ export default function AgendaPage() {
       toast.error("Informe a data");
       return;
     }
+    if (!scheduleForm.start_time) {
+      toast.error("Informe o horário de início");
+      return;
+    }
     setIsCreatingSchedule(true);
     try {
       await schedulesApi.create({
         service_order_id: scheduleForm.service_order_id,
         technician_id: scheduleForm.technician_id,
         date: scheduleForm.date,
-        start_time: scheduleForm.start_time || null,
+        start_time: scheduleForm.start_time,
         end_time: scheduleForm.end_time || null,
         notes: scheduleForm.notes.trim() || null,
       });
@@ -924,20 +928,20 @@ export default function AgendaPage() {
                 label="Data *"
                 type="date"
                 value={scheduleForm.date}
-                onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_date: e.target.value })}
+                onChange={(e) => setScheduleForm({ ...scheduleForm, date: e.target.value })}
               />
               <div className="grid grid-cols-2 gap-4">
                 <Input
                   label="Hora Início"
                   type="time"
                   value={scheduleForm.start_time}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_start_time: e.target.value })}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, start_time: e.target.value })}
                 />
                 <Input
                   label="Hora Fim"
                   type="time"
                   value={scheduleForm.end_time}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_end_time: e.target.value })}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, end_time: e.target.value })}
                 />
               </div>
               <div className="space-y-2">

@@ -69,7 +69,7 @@ export const checklistTemplatesApi = {
 export const checklistsApi = {
   getByServiceOrder(serviceOrderId: string) {
     return apiClient.get<Checklist[]>(
-      `/service-orders/${serviceOrderId}/checklists`
+      `/checklists/service-order/${serviceOrderId}`
     );
   },
 

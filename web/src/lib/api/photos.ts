@@ -29,7 +29,7 @@ export interface PhotoCountResponse {
 export const photosApi = {
   getByServiceOrder(serviceOrderId: string, type?: PhotoType) {
     return apiClient.get<Photo[]>(
-      `/service-orders/${serviceOrderId}/photos`,
+      `/photos/service-order/${serviceOrderId}`,
       type ? ({ type } as Record<string, unknown>) : undefined
     );
   },
@@ -92,7 +92,7 @@ export const photosApi = {
 
   getCountByServiceOrder(serviceOrderId: string) {
     return apiClient.get<PhotoCountResponse>(
-      `/service-orders/${serviceOrderId}/photos/count`
+      `/photos/service-order/${serviceOrderId}/count`
     );
   },
 };

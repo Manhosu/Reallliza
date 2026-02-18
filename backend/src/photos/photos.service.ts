@@ -156,8 +156,8 @@ export class PhotosService {
       });
 
     if (uploadError) {
-      this.logger.error(`Failed to upload photo: ${uploadError.message}`);
-      throw new InternalServerErrorException('Failed to upload photo');
+      this.logger.error(`Failed to upload photo to storage: ${uploadError.message}`);
+      throw new InternalServerErrorException(`Failed to upload photo: ${uploadError.message}`);
     }
 
     // Upload thumbnail to Supabase Storage
@@ -191,21 +191,22 @@ export class PhotosService {
         url: publicUrl,
         thumbnail_url: thumbUploadError ? null : thumbnailUrl,
         description: data.description || null,
+        original_filename: file.originalname,
+        file_size: processedBuffer.length,
         geo_lat: data.geo_lat || null,
         geo_lng: data.geo_lng || null,
         uploaded_by: userId,
-        taken_at: new Date().toISOString(),
       })
       .select()
       .single();
 
     if (insertError) {
       this.logger.error(
-        `Failed to create photo record: ${insertError.message}`,
+        `Failed to create photo record: ${insertError.message} | details: ${JSON.stringify(insertError)}`,
       );
       // Attempt to clean up the uploaded files
       await supabase.storage.from('photos').remove([filePath, thumbPath]);
-      throw new InternalServerErrorException('Failed to create photo record');
+      throw new InternalServerErrorException(`Failed to create photo record: ${insertError.message}`);
     }
 
     return photo;
