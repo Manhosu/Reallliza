@@ -101,9 +101,9 @@ export async function POST(request: NextRequest) {
       notes,
     } = body;
 
-    if (!technician_id || !date) {
+    if (!service_order_id || !technician_id || !date) {
       return jsonResponse(
-        { message: "technician_id and date are required" },
+        { message: "service_order_id, technician_id and date are required" },
         400
       );
     }
@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
     const { data: schedule, error } = await supabase
       .from("schedules")
       .insert({
-        service_order_id: service_order_id || null,
+        service_order_id,
         technician_id,
         date,
         start_time: start_time || null,
@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
         technician_id,
         "Novo agendamento",
         `Novo agendamento para ${date}`,
-        "schedule_created",
+        "schedule_reminder",
         { schedule_id: schedule.id }
       );
     } catch {

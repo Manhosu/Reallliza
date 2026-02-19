@@ -115,7 +115,7 @@ export async function POST(
         user_id,
         "Ferramenta atribuida",
         `A ferramenta "${tool.name}" foi atribuida a voce`,
-        "tool_checkout",
+        "tool_overdue",
         { tool_id: toolId, custody_id: custody.id }
       );
     } catch {

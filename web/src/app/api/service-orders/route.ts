@@ -137,30 +137,19 @@ export async function POST(request: NextRequest) {
     if (!body.title) {
       throw new AuthError(400, "Title is required");
     }
+    if (!body.client_name) {
+      throw new AuthError(400, "Client name is required");
+    }
 
     const supabase = getAdminClient();
-
-    // Generate os_number: OS-YYYYMMDD-XXX
-    const today = new Date();
-    const datePrefix = today.toISOString().slice(0, 10).replace(/-/g, "");
-    const startOfDay = new Date(today);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const { count: todayCount } = await supabase
-      .from("service_orders")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", startOfDay.toISOString());
-
-    const sequence = ((todayCount || 0) + 1).toString().padStart(3, "0");
-    const osNumber = `OS-${datePrefix}-${sequence}`;
 
     // Determine initial status
     const initialStatus = body.technician_id ? "assigned" : "pending";
 
-    // Build insert data
+    // Build insert data - order_number is auto-generated (SERIAL)
     const insertData: Record<string, unknown> = {
-      os_number: osNumber,
       title: body.title,
+      client_name: body.client_name,
       status: initialStatus,
       created_by: user.id,
     };
@@ -168,7 +157,6 @@ export async function POST(request: NextRequest) {
     const optionalFields = [
       "description",
       "priority",
-      "client_name",
       "client_phone",
       "client_email",
       "client_document",
@@ -182,6 +170,8 @@ export async function POST(request: NextRequest) {
       "partner_id",
       "technician_id",
       "scheduled_date",
+      "scheduled_start_time",
+      "scheduled_end_time",
       "notes",
       "metadata",
     ];

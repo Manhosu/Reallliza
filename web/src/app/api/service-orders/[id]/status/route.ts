@@ -47,7 +47,7 @@ export async function PATCH(
     // Get current order
     const { data: order, error: findError } = await supabase
       .from("service_orders")
-      .select("id, status, os_number, order_number, title, started_at, technician_id, partner_id")
+      .select("id, status, order_number, title, started_at, technician_id, partner_id")
       .eq("id", id)
       .single();
 
@@ -138,8 +138,7 @@ export async function PATCH(
       newData: { status: newStatus },
     });
 
-    // Display number for notifications (prefer os_number, fallback to order_number)
-    const displayNumber = order.os_number || order.order_number || order.title;
+    const displayNumber = order.order_number || order.title;
 
     // Notify technician about status change
     if (order.technician_id && order.technician_id !== user.id) {

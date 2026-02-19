@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     const user = await authenticateRequest(request);
 
     const body = await request.json();
-    const { service_order_id, template_id } = body;
+    const { service_order_id, template_id, technician_id } = body;
 
     if (!service_order_id) {
       return jsonResponse({ message: "service_order_id is required" }, 400);
@@ -84,11 +84,23 @@ export async function POST(request: NextRequest) {
       checked_at: null,
     }));
 
+    // Get technician_id: from body, from the service order's assigned technician, or current user
+    let resolvedTechnicianId = technician_id;
+    if (!resolvedTechnicianId) {
+      const { data: soData } = await supabase
+        .from("service_orders")
+        .select("technician_id")
+        .eq("id", service_order_id)
+        .single();
+      resolvedTechnicianId = soData?.technician_id || user.id;
+    }
+
     const { data: checklist, error } = await supabase
       .from("checklists")
       .insert({
         service_order_id,
         template_id,
+        technician_id: resolvedTechnicianId,
         status: "pending",
         items: checklistItems,
         completed_at: null,

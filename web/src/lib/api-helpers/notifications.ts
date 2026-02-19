@@ -1,15 +1,11 @@
 import { getAdminClient } from "./supabase-admin";
 
 type NotificationType =
-  | "os_created"
   | "os_assigned"
   | "os_status_changed"
-  | "os_completed"
-  | "schedule_created"
   | "schedule_reminder"
-  | "tool_checkout"
   | "tool_overdue"
-  | "system";
+  | "general";
 
 export async function createNotification(
   userId: string,
