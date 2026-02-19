@@ -36,7 +36,7 @@ import { useApi, usePaginatedApi } from "@/hooks/use-api";
 
 const TOOL_STATUS_LABELS: Record<ToolStatus, string> = {
   [ToolStatus.AVAILABLE]: "Disponível",
-  [ToolStatus.IN_USE]: "Em Uso",
+  [ToolStatus.IN_CUSTODY]: "Em Custódia",
   [ToolStatus.MAINTENANCE]: "Manutenção",
   [ToolStatus.RETIRED]: "Aposentada",
 };
@@ -50,7 +50,7 @@ const TOOL_STATUS_COLORS: Record<
     text: "text-green-500",
     dot: "bg-green-500",
   },
-  [ToolStatus.IN_USE]: {
+  [ToolStatus.IN_CUSTODY]: {
     bg: "bg-blue-500/10",
     text: "text-blue-500",
     dot: "bg-blue-500",
@@ -246,7 +246,7 @@ export default function FerramentasPage() {
   const statusFilterOptions: { value: ToolStatus | "all"; label: string }[] = [
     { value: "all", label: "Todos" },
     { value: ToolStatus.AVAILABLE, label: "Disponível" },
-    { value: ToolStatus.IN_USE, label: "Em Uso" },
+    { value: ToolStatus.IN_CUSTODY, label: "Em Custódia" },
     { value: ToolStatus.MAINTENANCE, label: "Manutenção" },
     { value: ToolStatus.RETIRED, label: "Aposentada" },
   ];
@@ -467,7 +467,7 @@ export default function FerramentasPage() {
                           "h-[2px]",
                           tool.status === ToolStatus.AVAILABLE &&
                             "bg-green-500",
-                          tool.status === ToolStatus.IN_USE && "bg-blue-500",
+                          tool.status === ToolStatus.IN_CUSTODY && "bg-blue-500",
                           tool.status === ToolStatus.MAINTENANCE &&
                             "bg-yellow-500",
                           tool.status === ToolStatus.RETIRED && "bg-zinc-400"

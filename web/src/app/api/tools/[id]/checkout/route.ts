@@ -82,11 +82,11 @@ export async function POST(
       throw new Error("Failed to create custody record");
     }
 
-    // Update tool status to in_use
+    // Update tool status to in_custody
     const { error: updateError } = await supabase
       .from("tool_inventory")
       .update({
-        status: "in_use",
+        status: "in_custody",
         updated_at: new Date().toISOString(),
       })
       .eq("id", toolId);

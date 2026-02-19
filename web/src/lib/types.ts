@@ -43,7 +43,7 @@ export enum PhotoType {
 
 export enum ToolStatus {
   AVAILABLE = "available",
-  IN_USE = "in_use",
+  IN_CUSTODY = "in_custody",
   MAINTENANCE = "maintenance",
   RETIRED = "retired",
 }
