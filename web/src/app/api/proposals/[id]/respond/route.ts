@@ -35,8 +35,8 @@ export async function POST(
 
     // Get the proposal
     const { data: proposal, error: findError } = await supabase
-      .from("proposals")
-      .select("*, partner:partners!proposals_partner_id_fkey(id, user_id, company_name)")
+      .from("service_proposals")
+      .select("*, partner:partners!service_proposals_partner_id_fkey(id, user_id, company_name)")
       .eq("id", id)
       .single();
 
@@ -75,7 +75,7 @@ export async function POST(
     }
 
     const { data: updatedProposal, error: updateError } = await supabase
-      .from("proposals")
+      .from("service_proposals")
       .update(updateData)
       .eq("id", id)
       .select()

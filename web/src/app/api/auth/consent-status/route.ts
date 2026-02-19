@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (!consent || !consent.terms_accepted) {
+    if (!consent || !consent.terms_accepted_at) {
       return jsonResponse({
         has_accepted: false,
         consent: null,

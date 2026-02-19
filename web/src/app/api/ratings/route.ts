@@ -124,14 +124,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Calculate overall score
-    const overall_score =
-      (Number(body.quality_score) +
-        Number(body.punctuality_score) +
-        Number(body.organization_score) +
-        Number(body.communication_score)) /
-      4;
-
     const insertData: Record<string, unknown> = {
       professional_id: body.professional_id,
       rated_by: user.id,
@@ -139,7 +131,6 @@ export async function POST(request: NextRequest) {
       punctuality_score: Number(body.punctuality_score),
       organization_score: Number(body.organization_score),
       communication_score: Number(body.communication_score),
-      overall_score: Math.round(overall_score * 100) / 100,
     };
 
     if (body.service_order_id) {

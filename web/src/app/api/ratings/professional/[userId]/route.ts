@@ -59,17 +59,21 @@ export async function GET(
           punctuality: acc.punctuality + (r.punctuality_score || 0),
           organization: acc.organization + (r.organization_score || 0),
           communication: acc.communication + (r.communication_score || 0),
-          overall: acc.overall + (r.overall_score || 0),
         }),
-        { quality: 0, punctuality: 0, organization: 0, communication: 0, overall: 0 }
+        { quality: 0, punctuality: 0, organization: 0, communication: 0 }
       );
 
+      const avgQ = Math.round((sums.quality / total) * 100) / 100;
+      const avgP = Math.round((sums.punctuality / total) * 100) / 100;
+      const avgO = Math.round((sums.organization / total) * 100) / 100;
+      const avgC = Math.round((sums.communication / total) * 100) / 100;
+
       averages = {
-        quality: Math.round((sums.quality / total) * 100) / 100,
-        punctuality: Math.round((sums.punctuality / total) * 100) / 100,
-        organization: Math.round((sums.organization / total) * 100) / 100,
-        communication: Math.round((sums.communication / total) * 100) / 100,
-        overall: Math.round((sums.overall / total) * 100) / 100,
+        quality: avgQ,
+        punctuality: avgP,
+        organization: avgO,
+        communication: avgC,
+        overall: Math.round(((avgQ + avgP + avgO + avgC) / 4) * 100) / 100,
       };
     }
 

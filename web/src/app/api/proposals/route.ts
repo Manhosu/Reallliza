@@ -29,12 +29,12 @@ export async function GET(request: NextRequest) {
     const supabase = getAdminClient();
 
     let query = supabase
-      .from("proposals")
+      .from("service_proposals")
       .select(
         `
         *,
-        service_order:service_orders!proposals_service_order_id_fkey(id, title, client_name),
-        partner:partners!proposals_partner_id_fkey(id, company_name)
+        service_order:service_orders!service_proposals_service_order_id_fkey(id, title, client_name),
+        partner:partners!service_proposals_partner_id_fkey(id, company_name)
       `,
         { count: "exact" }
       );
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
       service_order_id,
       partner_id,
       status: "pending",
-      created_by: user.id,
+      proposed_by: user.id,
     };
 
     if (proposed_value !== undefined && proposed_value !== null) {
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data: proposal, error: insertError } = await supabase
-      .from("proposals")
+      .from("service_proposals")
       .insert(insertData)
       .select()
       .single();

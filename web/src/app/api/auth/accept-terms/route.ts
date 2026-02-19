@@ -41,13 +41,10 @@ export async function POST(request: NextRequest) {
     let result;
 
     const consentData: Record<string, unknown> = {
-      terms_accepted: true,
-      privacy_accepted: true,
       location_consent,
       image_consent,
       terms_accepted_at: now,
       privacy_accepted_at: now,
-      accepted_at: now,
       updated_at: now,
       ip_address: ipAddress,
       user_agent: userAgent,
