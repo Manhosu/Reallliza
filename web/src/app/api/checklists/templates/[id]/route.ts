@@ -34,7 +34,7 @@ export async function GET(
       throw new AuthError(404, `Checklist template with ID ${id} not found`);
     }
 
-    return jsonResponse(template);
+    return jsonResponse({ ...template, items: template.fields || [] });
   } catch (error) {
     return errorResponse(error);
   }
@@ -122,7 +122,7 @@ export async function PUT(
       newData: template as Record<string, unknown>,
     });
 
-    return jsonResponse(template);
+    return jsonResponse({ ...template, items: (template as any).fields || [] });
   } catch (error) {
     return errorResponse(error);
   }

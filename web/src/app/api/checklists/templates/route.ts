@@ -49,8 +49,14 @@ export async function GET(request: NextRequest) {
       throw new Error("Failed to fetch checklist templates");
     }
 
+    // Map DB `fields` to frontend `items`
+    const mapped = (data || []).map((t: any) => ({
+      ...t,
+      items: t.fields || [],
+    }));
+
     return jsonResponse({
-      data: data || [],
+      data: mapped,
       meta: {
         total: count || 0,
         page,
@@ -121,7 +127,7 @@ export async function POST(request: NextRequest) {
       newData: template as Record<string, unknown>,
     });
 
-    return jsonResponse(template, 201);
+    return jsonResponse({ ...template, items: (template as any).fields || [] }, 201);
   } catch (error) {
     return errorResponse(error);
   }
