@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         final_value,
         created_at,
         scheduled_date,
-        technician:profiles(full_name),
+        technician:profiles!service_orders_technician_id_fkey(full_name),
         partner:partners(company_name)
       `
       )

@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         technician_id,
         estimated_value,
         final_value,
-        technician:profiles(full_name)
+        technician:profiles!service_orders_technician_id_fkey(full_name)
       `
       )
       .not("technician_id", "is", null);

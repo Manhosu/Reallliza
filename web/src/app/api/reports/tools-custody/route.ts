@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
         checked_out_at,
         expected_return_at,
         condition_out,
-        notes,
+        notes_out,
         tool:tool_inventory(id, name, serial_number),
         user:profiles(id, full_name),
         service_order:service_orders(id, order_number, title)
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
         checked_out_at: row.checked_out_at,
         expected_return_at: row.expected_return_at,
         condition_out: row.condition_out,
-        notes: row.notes,
+        notes: row.notes_out,
         is_overdue: isOverdue,
       };
     });
