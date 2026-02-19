@@ -21,7 +21,7 @@ export async function POST(
     const { custodyId } = await params;
 
     const body = await request.json();
-    const { condition_in, notes } = body;
+    const { condition_in, notes_in } = body;
 
     if (!condition_in) {
       return jsonResponse(
@@ -62,7 +62,7 @@ export async function POST(
       .update({
         checked_in_at: new Date().toISOString(),
         condition_in,
-        notes: notes || null,
+        notes_in: notes_in || null,
       })
       .eq("id", custodyId)
       .select()

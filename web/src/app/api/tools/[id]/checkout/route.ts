@@ -26,7 +26,7 @@ export async function POST(
       service_order_id,
       expected_return_at,
       condition_out,
-      notes,
+      notes_out,
     } = body;
 
     if (!user_id) {
@@ -70,7 +70,7 @@ export async function POST(
         service_order_id: service_order_id || null,
         checked_out_at: new Date().toISOString(),
         condition_out: condition_out || "good",
-        notes: notes || null,
+        notes_out: notes_out || null,
       })
       .select()
       .single();
