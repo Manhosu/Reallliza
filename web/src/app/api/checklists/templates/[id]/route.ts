@@ -80,23 +80,19 @@ export async function PUT(
       updateData.description = body.description;
     }
 
-    if (body.category !== undefined) {
-      updateData.category = body.category;
-    }
-
     if (body.is_active !== undefined) {
       updateData.is_active = body.is_active;
     }
 
     if (body.items !== undefined) {
-      updateData.items = body.items.map(
+      updateData.fields = body.items.map(
         (
-          item: { description: string; order?: number; required?: boolean },
+          item: { label?: string; description?: string; order?: number; required?: boolean },
           index: number
         ) => ({
           id: randomUUID(),
-          description: item.description,
-          label: item.description,
+          description: item.label || item.description || "",
+          label: item.label || item.description || "",
           required: item.required ?? false,
           order: item.order ?? index,
         })

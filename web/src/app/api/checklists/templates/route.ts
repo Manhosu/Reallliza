@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     checkRole(user, ["admin"]);
 
     const body = await request.json();
-    const { name, description, category, items: rawItems } = body;
+    const { name, description, items: rawItems } = body;
 
     if (!name) {
       return jsonResponse({ message: "Template name is required" }, 400);
@@ -83,14 +83,14 @@ export async function POST(request: NextRequest) {
     const supabase = getAdminClient();
 
     // Generate IDs and normalize items
-    const items = (rawItems || []).map(
+    const fields = (rawItems || []).map(
       (
-        item: { description: string; order?: number; required?: boolean },
+        item: { label?: string; description?: string; order?: number; required?: boolean },
         index: number
       ) => ({
         id: randomUUID(),
-        description: item.description,
-        label: item.description,
+        description: item.label || item.description || "",
+        label: item.label || item.description || "",
         required: item.required ?? false,
         order: item.order ?? index,
       })
@@ -101,8 +101,7 @@ export async function POST(request: NextRequest) {
       .insert({
         name,
         description: description || null,
-        category: category || null,
-        items,
+        fields,
         is_active: true,
         created_by: user.id,
       })

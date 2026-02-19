@@ -33,7 +33,7 @@ export async function PUT(
     // Verify the checklist exists and is not completed
     const { data: existing, error: findError } = await supabase
       .from("checklists")
-      .select("id, completed_at, items")
+      .select("id, completed_at, data")
       .eq("id", id)
       .single();
 
@@ -51,7 +51,7 @@ export async function PUT(
     let query = supabase
       .from("checklists")
       .update({
-        items,
+        data: items,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id);
@@ -85,7 +85,7 @@ export async function PUT(
       action: "checklist.items_updated",
       entityType: "checklist",
       entityId: id,
-      oldData: { items: existing.items },
+      oldData: { data: existing.data },
       newData: { items },
     });
 

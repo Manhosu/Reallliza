@@ -63,8 +63,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert template items to checklist items (unchecked by default)
-    const templateItems = (template.items || []) as Array<{
+    // Convert template fields to checklist data items (unchecked by default)
+    const templateItems = (template.fields || []) as Array<{
       id: string;
       label: string;
       description?: string;
@@ -101,11 +101,7 @@ export async function POST(request: NextRequest) {
         service_order_id,
         template_id,
         technician_id: resolvedTechnicianId,
-        status: "pending",
-        items: checklistItems,
-        completed_at: null,
-        completed_by: null,
-        created_by: user.id,
+        data: checklistItems,
       })
       .select()
       .single();

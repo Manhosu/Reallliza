@@ -34,7 +34,7 @@ export async function PATCH(
     const { data: checklist, error: findError } = await supabase
       .from("checklists")
       .select(
-        "*, template:checklist_templates!checklists_template_id_fkey(*)"
+        "*, template:checklist_templates(*)"
       )
       .eq("id", id)
       .single();
@@ -51,7 +51,7 @@ export async function PATCH(
     }
 
     // Validate required items are checked
-    const checklistItems = (checklist.items || []) as Array<{
+    const checklistItems = (checklist.data || []) as Array<{
       id: string;
       label: string;
       description?: string;
@@ -59,7 +59,7 @@ export async function PATCH(
       required?: boolean;
     }>;
 
-    const templateItems = (checklist.template?.items || []) as Array<{
+    const templateItems = (checklist.template?.fields || []) as Array<{
       label: string;
       required: boolean;
     }>;
@@ -91,9 +91,8 @@ export async function PATCH(
     let completeQuery = supabase
       .from("checklists")
       .update({
-        status: "completed",
+        is_completed: true,
         completed_at: new Date().toISOString(),
-        completed_by: user.id,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id);
