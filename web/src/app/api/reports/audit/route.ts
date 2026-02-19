@@ -22,13 +22,6 @@ export async function GET(request: NextRequest) {
     const action = searchParams.get("action");
     const userId = searchParams.get("user_id");
 
-    if (!dateFrom || !dateTo) {
-      return jsonResponse(
-        { message: "date_from and date_to are required" },
-        400
-      );
-    }
-
     const supabase = getAdminClient();
 
     let query = supabase
@@ -45,12 +38,17 @@ export async function GET(request: NextRequest) {
         old_data,
         new_data,
         user_id,
-        user:profiles!audit_logs_user_id_fkey(full_name)
+        user:profiles(full_name)
       `
       )
-      .gte("created_at", `${dateFrom}T00:00:00`)
-      .lte("created_at", `${dateTo}T23:59:59`)
       .order("created_at", { ascending: false });
+
+    if (dateFrom) {
+      query = query.gte("created_at", `${dateFrom}T00:00:00`);
+    }
+    if (dateTo) {
+      query = query.lte("created_at", `${dateTo}T23:59:59`);
+    }
 
     if (entityType) {
       query = query.eq("entity_type", entityType);

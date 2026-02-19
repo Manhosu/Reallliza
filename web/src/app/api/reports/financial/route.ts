@@ -19,21 +19,21 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get("date_from");
     const dateTo = searchParams.get("date_to");
 
-    if (!dateFrom || !dateTo) {
-      return jsonResponse(
-        { message: "date_from and date_to are required" },
-        400
-      );
-    }
-
     const supabase = getAdminClient();
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("service_orders")
       .select("estimated_value, final_value, created_at, status")
-      .gte("created_at", `${dateFrom}T00:00:00`)
-      .lte("created_at", `${dateTo}T23:59:59`)
       .order("created_at", { ascending: true });
+
+    if (dateFrom) {
+      query = query.gte("created_at", `${dateFrom}T00:00:00`);
+    }
+    if (dateTo) {
+      query = query.lte("created_at", `${dateTo}T23:59:59`);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error(`Failed to fetch financial report: ${error.message}`);
