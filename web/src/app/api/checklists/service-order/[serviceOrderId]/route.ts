@@ -38,7 +38,7 @@ export async function GET(
         `
         *,
         template:checklist_templates(id, name),
-        technician:profiles(id, full_name)
+        technician:profiles!checklists_technician_id_fkey(id, full_name)
       `
       )
       .eq("service_order_id", serviceOrderId)
