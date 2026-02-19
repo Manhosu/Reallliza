@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
         console.error(
           `Failed to update consent for user ${user.id}: ${error.message}`
         );
-        throw new Error("Failed to update consent");
+        throw new Error(`Failed to update consent: ${error.message} | ${error.code} | ${error.details}`);
       }
 
       result = updated;
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
         console.error(
           `Failed to create consent for user ${user.id}: ${error.message}`
         );
-        throw new Error("Failed to create consent record");
+        throw new Error(`Failed to create consent record: ${error.message} | ${error.code} | ${error.details}`);
       }
 
       result = created;
