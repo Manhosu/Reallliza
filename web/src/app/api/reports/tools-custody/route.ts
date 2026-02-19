@@ -26,9 +26,9 @@ export async function GET(request: NextRequest) {
         expected_return_at,
         condition_out,
         notes,
-        tool:tool_inventory!tool_custody_tool_id_fkey(id, name, serial_number),
-        user:profiles!tool_custody_user_id_fkey(id, full_name),
-        service_order:service_orders!tool_custody_service_order_id_fkey(id, order_number, title)
+        tool:tool_inventory(id, name, serial_number),
+        user:profiles(id, full_name),
+        service_order:service_orders(id, order_number, title)
       `
       )
       .is("checked_in_at", null)

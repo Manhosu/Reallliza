@@ -37,8 +37,8 @@ export async function GET(
       .select(
         `
         *,
-        user:profiles!tool_custody_user_id_fkey(id, full_name, email, avatar_url),
-        service_order:service_orders!tool_custody_service_order_id_fkey(id, order_number, title)
+        user:profiles(id, full_name, email, avatar_url),
+        service_order:service_orders(id, order_number, title)
       `
       )
       .eq("tool_id", toolId)
