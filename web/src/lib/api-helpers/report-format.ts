@@ -219,30 +219,40 @@ export async function formatReportResponse(
   jsonData?: any
 ): Promise<Response> {
   if (format === "pdf") {
-    const buffer = await generatePdf(title, columns, rows, summary);
-    const filename = slugify(title) + ".pdf";
+    try {
+      const buffer = await generatePdf(title, columns, rows, summary);
+      const filename = slugify(title) + ".pdf";
 
-    return new Response(new Uint8Array(buffer), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${filename}"`,
-      },
-    });
+      return new Response(new Uint8Array(buffer), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+        },
+      });
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      throw err;
+    }
   }
 
   if (format === "excel") {
-    const buffer = await generateExcel(title, columns, rows, summary);
-    const filename = slugify(title) + ".xlsx";
+    try {
+      const buffer = await generateExcel(title, columns, rows, summary);
+      const filename = slugify(title) + ".xlsx";
 
-    return new Response(new Uint8Array(buffer), {
-      status: 200,
-      headers: {
-        "Content-Type":
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="${filename}"`,
-      },
-    });
+      return new Response(new Uint8Array(buffer), {
+        status: 200,
+        headers: {
+          "Content-Type":
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+        },
+      });
+    } catch (err) {
+      console.error("Excel generation failed:", err);
+      throw err;
+    }
   }
 
   // Default: JSON
