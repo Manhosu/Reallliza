@@ -76,6 +76,19 @@ export enum ScheduleStatus {
   RESCHEDULED = "rescheduled",
 }
 
+export enum FeedAudience {
+  ALL = "all",
+  EMPLOYEES = "employees",
+  PARTNERS = "partners",
+}
+
+export enum ProposalStatus {
+  PENDING = "pending",
+  ACCEPTED = "accepted",
+  REJECTED = "rejected",
+  EXPIRED = "expired",
+}
+
 // ============================================================
 // Database Entity Interfaces
 // ============================================================
@@ -92,6 +105,7 @@ export interface Profile {
   rg: string | null;
   address: string | null;
   specialties: string[] | null;
+  operating_region: string | null;
   documents_urls: string[] | null;
   created_at: string;
   updated_at: string;
@@ -143,6 +157,7 @@ export interface ServiceOrder {
   final_value: number | null;
   notes: string | null;
   metadata: Record<string, unknown> | null;
+  tracking_token: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -275,6 +290,73 @@ export interface Schedule {
   updated_at: string;
 }
 
+export interface FeedPost {
+  id: string;
+  author_id: string;
+  title: string;
+  content: string;
+  media_urls: string[];
+  audience: FeedAudience;
+  is_pinned: boolean;
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+  author?: { id: string; full_name: string; avatar_url: string | null };
+}
+
+export interface ProfessionalRating {
+  id: string;
+  professional_id: string;
+  rated_by: string;
+  service_order_id: string | null;
+  quality_score: number;
+  punctuality_score: number;
+  organization_score: number;
+  communication_score: number;
+  notes: string | null;
+  created_at: string;
+  professional?: { id: string; full_name: string };
+  rated_by_user?: { id: string; full_name: string };
+  service_order?: { id: string; title: string };
+}
+
+export interface ServiceProposal {
+  id: string;
+  service_order_id: string;
+  partner_id: string;
+  proposed_by: string;
+  status: ProposalStatus;
+  proposed_value: number | null;
+  message: string | null;
+  response_message: string | null;
+  responded_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+  service_order?: { id: string; title: string; client_name: string };
+  partner?: { id: string; company_name: string };
+}
+
+export interface TechnicianLocation {
+  user_id: string;
+  full_name: string;
+  avatar_url: string | null;
+  latitude: number;
+  longitude: number;
+  recorded_at: string;
+  service_order: { id: string; title: string; status: string; client_name: string };
+}
+
+export interface UserConsent {
+  id: string;
+  user_id: string;
+  terms_version: string;
+  terms_accepted_at: string | null;
+  privacy_accepted_at: string | null;
+  location_consent: boolean;
+  image_consent: boolean;
+}
+
 // ============================================================
 // API Response Types
 // ============================================================
@@ -322,4 +404,17 @@ export const USER_STATUS_LABELS: Record<UserStatus, string> = {
   [UserStatus.INACTIVE]: "Inativo",
   [UserStatus.SUSPENDED]: "Suspenso",
   [UserStatus.PENDING]: "Pendente",
+};
+
+export const FEED_AUDIENCE_LABELS: Record<FeedAudience, string> = {
+  [FeedAudience.ALL]: "Todos",
+  [FeedAudience.EMPLOYEES]: "Funcionários",
+  [FeedAudience.PARTNERS]: "Parceiros",
+};
+
+export const PROPOSAL_STATUS_LABELS: Record<ProposalStatus, string> = {
+  [ProposalStatus.PENDING]: "Pendente",
+  [ProposalStatus.ACCEPTED]: "Aceita",
+  [ProposalStatus.REJECTED]: "Recusada",
+  [ProposalStatus.EXPIRED]: "Expirada",
 };

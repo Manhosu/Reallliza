@@ -19,6 +19,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { apiClient, isDeviceOnline } from '../lib/api';
 import { offlineStorage } from '../lib/offline-storage';
+import { startTracking, stopTracking } from '../lib/location-tracker';
 import {
   ServiceOrder,
   OsStatus,
@@ -113,10 +114,25 @@ export function OsDetailScreen() {
   const updateStatus = async (newStatus: OsStatus, notes?: string) => {
     try {
       setIsUpdatingStatus(true);
+
+      // Start location tracking when beginning displacement
+      if (newStatus === OsStatus.IN_PROGRESS && order?.status === OsStatus.ASSIGNED) {
+        const trackingStarted = await startTracking(id);
+        if (!trackingStarted) {
+          console.warn('Location tracking could not be started (permission denied)');
+        }
+      }
+
       await apiClient.patch(`/service-orders/${id}/status`, {
         status: newStatus,
         notes,
       });
+
+      // Stop location tracking when service is completed or cancelled
+      if (newStatus === OsStatus.COMPLETED || newStatus === OsStatus.CANCELLED) {
+        await stopTracking();
+      }
+
       await fetchData();
     } catch (error) {
       console.error('Error updating status:', error);

@@ -58,6 +58,7 @@ import {
   photosApi,
   usersApi,
   partnersApi,
+  apiClient,
 } from "@/lib/api";
 import type { PhotoCountResponse } from "@/lib/api";
 import { useApi } from "@/hooks/use-api";
@@ -833,6 +834,7 @@ export default function OsDetailPage() {
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
   const [technicians, setTechnicians] = useState<Profile[]>([]);
   const [partnersList, setPartnersList] = useState<Partner[]>([]);
   const [loadingDropdowns, setLoadingDropdowns] = useState(false);
@@ -1000,6 +1002,21 @@ export default function OsDetailPage() {
     }
   };
 
+  const handleApprove = async () => {
+    setIsApproving(true);
+    try {
+      await apiClient.post(`/service-orders/${id}/approve`);
+      toast.success("OS aprovada com sucesso");
+      mutateOrder();
+      mutateTimeline();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro ao aprovar OS";
+      toast.error(message);
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
   if (orderLoading) {
     return <DetailSkeleton />;
   }
@@ -1090,6 +1107,19 @@ export default function OsDetailPage() {
                 </motion.div>
               )}
             </div>
+          )}
+
+          {/* Approve button - visible only when completed and user is admin */}
+          {order.status === OsStatus.COMPLETED && user?.role === UserRole.ADMIN && (
+            <Button
+              onClick={handleApprove}
+              disabled={isApproving}
+              isLoading={isApproving}
+              className="bg-green-600 text-white hover:bg-green-700"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Aprovar OS
+            </Button>
           )}
 
           {!isPartner && order.status !== OsStatus.COMPLETED && order.status !== OsStatus.CANCELLED && order.status !== OsStatus.REJECTED && (

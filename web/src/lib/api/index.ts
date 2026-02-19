@@ -10,6 +10,11 @@ export { checklistTemplatesApi, checklistsApi } from "./checklists";
 export { photosApi } from "./photos";
 export { reportsApi } from "./reports";
 export { auditApi } from "./audit";
+export { feedApi } from "./feed";
+export { ratingsApi } from "./ratings";
+export { proposalsApi } from "./proposals";
+export { trackingApi } from "./tracking";
+export { consentApi } from "./consent";
 
 // Re-export request/query payload types for convenience
 export type {

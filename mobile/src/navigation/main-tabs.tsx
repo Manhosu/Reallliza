@@ -3,12 +3,14 @@ import { StyleSheet, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { OsStack } from './os-stack';
+import { FeedScreen } from '../screens/FeedScreen';
 import { AgendaScreen } from '../screens/AgendaScreen';
 import { ToolsScreen } from '../screens/ToolsScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { colors } from '../theme/colors';
 
 export type MainTabsParamList = {
+  FeedTab: undefined;
   OSTab: undefined;
   AgendaTab: undefined;
   ToolsTab: undefined;
@@ -35,6 +37,17 @@ export function MainTabs() {
         headerShadowVisible: false,
       }}
     >
+      <Tab.Screen
+        name="FeedTab"
+        component={FeedScreen}
+        options={{
+          headerShown: false,
+          title: 'Feed',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="newspaper-outline" size={size} color={color} />
+          ),
+        }}
+      />
       <Tab.Screen
         name="OSTab"
         component={OsStack}

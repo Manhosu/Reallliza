@@ -26,12 +26,17 @@ import {
   ChevronRight,
   Shield,
   Check,
+  Megaphone,
+  MapPin,
+  Star,
+  Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserRole, type Notification } from "@/lib/types";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { notificationsApi } from "@/lib/api";
+import { TermsModal } from "@/components/terms-modal";
 
 // ============================================================
 // Navigation Configuration
@@ -45,16 +50,34 @@ const allNavItems = [
     roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.PARTNER],
   },
   {
+    label: "Feed",
+    href: "/feed",
+    icon: Megaphone,
+    roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.PARTNER],
+  },
+  {
     label: "Ordens de Serviço",
     href: "/os",
     icon: ClipboardList,
     roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.PARTNER],
   },
   {
+    label: "Propostas",
+    href: "/propostas",
+    icon: Send,
+    roles: [UserRole.ADMIN, UserRole.PARTNER],
+  },
+  {
     label: "Agenda",
     href: "/agenda",
     icon: Calendar,
     roles: [UserRole.ADMIN, UserRole.TECHNICIAN],
+  },
+  {
+    label: "Mapa",
+    href: "/mapa",
+    icon: MapPin,
+    roles: [UserRole.ADMIN],
   },
   {
     label: "Usuários",
@@ -79,6 +102,12 @@ const allNavItems = [
     href: "/checklists",
     icon: ClipboardCheck,
     roles: [UserRole.ADMIN, UserRole.TECHNICIAN],
+  },
+  {
+    label: "Avaliações",
+    href: "/avaliacoes",
+    icon: Star,
+    roles: [UserRole.ADMIN],
   },
   {
     label: "Relatórios",
@@ -112,12 +141,16 @@ const allNavItems = [
 
 const breadcrumbLabels: Record<string, string> = {
   dashboard: "Dashboard",
+  feed: "Feed",
   os: "Ordens de Serviço",
+  propostas: "Propostas",
   agenda: "Agenda",
+  mapa: "Mapa",
   usuarios: "Usuários",
   parceiros: "Parceiros",
   ferramentas: "Ferramentas",
   checklists: "Checklists",
+  avaliacoes: "Avaliações",
   relatorios: "Relatórios",
   auditoria: "Auditoria",
   notificacoes: "Notificações",
@@ -689,6 +722,9 @@ export default function DashboardLayout({
           </AnimatePresence>
         </main>
       </div>
+
+      {/* Terms Acceptance Modal - shown on first login if terms not accepted */}
+      <TermsModal />
     </div>
   );
 }
