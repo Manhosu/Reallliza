@@ -4,18 +4,12 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   User,
-  Mail,
-  Phone,
   Camera,
-  Moon,
   Globe,
   Bell,
-  BellRing,
-  Smartphone,
   Lock,
   Eye,
   EyeOff,
-  Shield,
   Save,
   Settings,
 } from "lucide-react";
@@ -105,7 +99,6 @@ export default function ConfiguracoesPage() {
   // Preferences state
   const [darkMode, setDarkMode] = useState(false);
   const [language, setLanguage] = useState("pt-BR");
-  const [notifyEmail, setNotifyEmail] = useState(true);
   const [notifyPush, setNotifyPush] = useState(true);
   const [notifyInApp, setNotifyInApp] = useState(true);
 
@@ -311,13 +304,6 @@ export default function ConfiguracoesPage() {
                 </div>
 
                 <ToggleSwitch
-                  checked={notifyEmail}
-                  onChange={setNotifyEmail}
-                  label="Notificações por E-mail"
-                  description="Receba atualizações importantes por e-mail"
-                />
-
-                <ToggleSwitch
                   checked={notifyPush}
                   onChange={setNotifyPush}
                   label="Notificações Push"
@@ -426,39 +412,6 @@ export default function ConfiguracoesPage() {
                       </button>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* ============================== SISTEMA (Admin) ============================== */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.4 }}
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Shield className="h-5 w-5 text-primary" />
-                  Sistema
-                  <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                    Admin
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-col items-center justify-center py-8">
-                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
-                    <Settings className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Configurações do sistema em breve
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground/60">
-                    Esta seção está sendo desenvolvida e estará disponível em
-                    uma futura atualização.
-                  </p>
                 </div>
               </CardContent>
             </Card>
