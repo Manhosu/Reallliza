@@ -3,7 +3,8 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
-import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { errorResponse } from "@/lib/api-helpers/response";
+import { formatReportResponse } from "@/lib/api-helpers/report-format";
 
 /**
  * GET /api/reports/tools-custody
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest) {
     const user = await authenticateRequest(request);
     checkRole(user, ["admin"]);
 
+    const format = request.nextUrl.searchParams.get("format");
     const supabase = getAdminClient();
 
     // Fetch all active custodies (not checked in yet)
@@ -68,14 +70,31 @@ export async function GET(request: NextRequest) {
 
     const overdueCount = mapped.filter((item) => item.is_overdue).length;
 
-    return jsonResponse({
-      summary: {
-        total_active_custodies: mapped.length,
-        overdue_count: overdueCount,
-        generated_at: now,
-      },
-      data: mapped,
-    });
+    const columns = [
+      { key: "tool_name", label: "Ferramenta", width: 120 },
+      { key: "serial_number", label: "Numero Serie" },
+      { key: "technician_name", label: "Tecnico" },
+      { key: "order_number", label: "OS" },
+      { key: "checked_out_at", label: "Saida" },
+      { key: "expected_return_at", label: "Retorno Previsto" },
+      { key: "condition_out", label: "Condicao" },
+      { key: "is_overdue", label: "Atrasado" },
+    ];
+
+    const summaryObj = {
+      total_active_custodies: mapped.length,
+      overdue_count: overdueCount,
+      generated_at: now,
+    };
+
+    return formatReportResponse(
+      format,
+      "Relatorio Ferramentas em Custodia",
+      columns,
+      mapped,
+      { "Custodias Ativas": mapped.length, "Atrasados": overdueCount },
+      { summary: summaryObj, data: mapped }
+    );
   } catch (error) {
     return errorResponse(error);
   }

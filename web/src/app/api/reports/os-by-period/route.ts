@@ -3,7 +3,8 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
-import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { errorResponse } from "@/lib/api-helpers/response";
+import { formatReportResponse } from "@/lib/api-helpers/report-format";
 
 /**
  * GET /api/reports/os-by-period
@@ -20,13 +21,7 @@ export async function GET(request: NextRequest) {
     const dateTo = searchParams.get("date_to");
     const status = searchParams.get("status");
     const priority = searchParams.get("priority");
-
-    if (!dateFrom || !dateTo) {
-      return jsonResponse(
-        { message: "date_from and date_to are required" },
-        400
-      );
-    }
+    const format = searchParams.get("format");
 
     const supabase = getAdminClient();
 
@@ -43,13 +38,18 @@ export async function GET(request: NextRequest) {
         final_value,
         created_at,
         scheduled_date,
-        technician:profiles!service_orders_technician_id_fkey(full_name),
-        partner:partners!service_orders_partner_id_fkey(company_name)
+        technician:profiles(full_name),
+        partner:partners(company_name)
       `
       )
-      .gte("created_at", `${dateFrom}T00:00:00`)
-      .lte("created_at", `${dateTo}T23:59:59`)
       .order("created_at", { ascending: false });
+
+    if (dateFrom) {
+      query = query.gte("created_at", `${dateFrom}T00:00:00`);
+    }
+    if (dateTo) {
+      query = query.lte("created_at", `${dateTo}T23:59:59`);
+    }
 
     if (status) {
       query = query.eq("status", status);
@@ -84,28 +84,47 @@ export async function GET(request: NextRequest) {
       statusBreakdown[s] = (statusBreakdown[s] || 0) + 1;
     }
 
-    return jsonResponse({
-      filters: { date_from: dateFrom, date_to: dateTo, status, priority },
-      summary: {
-        total_orders: totalOs,
-        total_estimated_value: totalEstimatedValue,
-        total_final_value: totalFinalValue,
-        status_breakdown: statusBreakdown,
-      },
-      data: orders.map((row: any) => ({
-        id: row.id,
-        order_number: row.order_number,
-        title: row.title,
-        status: row.status,
-        priority: row.priority,
-        estimated_value: row.estimated_value,
-        final_value: row.final_value,
-        created_at: row.created_at,
-        scheduled_date: row.scheduled_date,
-        technician_name: row.technician?.full_name || null,
-        partner_name: row.partner?.company_name || null,
-      })),
-    });
+    const mappedRows = orders.map((row: any) => ({
+      id: row.id,
+      order_number: row.order_number,
+      title: row.title,
+      status: row.status,
+      priority: row.priority,
+      estimated_value: row.estimated_value,
+      final_value: row.final_value,
+      created_at: row.created_at,
+      scheduled_date: row.scheduled_date,
+      technician_name: row.technician?.full_name || null,
+      partner_name: row.partner?.company_name || null,
+    }));
+
+    const summaryData = {
+      total_orders: totalOs,
+      total_estimated_value: totalEstimatedValue,
+      total_final_value: totalFinalValue,
+      status_breakdown: statusBreakdown,
+    };
+
+    const columns = [
+      { key: "order_number", label: "Numero OS" },
+      { key: "title", label: "Titulo", width: 150 },
+      { key: "status", label: "Status" },
+      { key: "priority", label: "Prioridade" },
+      { key: "technician_name", label: "Tecnico" },
+      { key: "partner_name", label: "Parceiro" },
+      { key: "estimated_value", label: "Valor Est." },
+      { key: "final_value", label: "Valor Final" },
+      { key: "created_at", label: "Criado em" },
+    ];
+
+    return formatReportResponse(
+      format,
+      "Relatorio OS por Periodo",
+      columns,
+      mappedRows,
+      { "Total de OS": totalOs, "Valor Estimado Total": totalEstimatedValue, "Valor Final Total": totalFinalValue },
+      { filters: { date_from: dateFrom, date_to: dateTo, status, priority }, summary: summaryData, data: mappedRows }
+    );
   } catch (error) {
     return errorResponse(error);
   }

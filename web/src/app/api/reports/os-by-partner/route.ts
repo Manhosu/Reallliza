@@ -3,7 +3,8 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
-import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { errorResponse } from "@/lib/api-helpers/response";
+import { formatReportResponse } from "@/lib/api-helpers/report-format";
 
 /**
  * GET /api/reports/os-by-partner
@@ -19,13 +20,7 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get("date_from");
     const dateTo = searchParams.get("date_to");
     const partnerId = searchParams.get("partner_id");
-
-    if (!dateFrom || !dateTo) {
-      return jsonResponse(
-        { message: "date_from and date_to are required" },
-        400
-      );
-    }
+    const format = searchParams.get("format");
 
     const supabase = getAdminClient();
 
@@ -37,12 +32,17 @@ export async function GET(request: NextRequest) {
         estimated_value,
         final_value,
         partner_id,
-        partner:partners!service_orders_partner_id_fkey(company_name, cnpj)
+        partner:partners(company_name, cnpj)
       `
       )
-      .gte("created_at", `${dateFrom}T00:00:00`)
-      .lte("created_at", `${dateTo}T23:59:59`)
       .not("partner_id", "is", null);
+
+    if (dateFrom) {
+      query = query.gte("created_at", `${dateFrom}T00:00:00`);
+    }
+    if (dateTo) {
+      query = query.lte("created_at", `${dateTo}T23:59:59`);
+    }
 
     if (partnerId) {
       query = query.eq("partner_id", partnerId);
@@ -117,14 +117,32 @@ export async function GET(request: NextRequest) {
           : 0,
     }));
 
-    return jsonResponse({
-      filters: { date_from: dateFrom, date_to: dateTo, partner_id: partnerId },
-      summary: {
-        total_partners: partners.length,
-        total_orders: (data || []).length,
-      },
-      data: partners,
-    });
+    const columns = [
+      { key: "name", label: "Parceiro", width: 150 },
+      { key: "cnpj", label: "CNPJ" },
+      { key: "total", label: "Total OS" },
+      { key: "completed", label: "Concluidas" },
+      { key: "in_progress", label: "Em Andamento" },
+      { key: "pending", label: "Pendentes" },
+      { key: "cancelled", label: "Canceladas" },
+      { key: "completion_rate", label: "Taxa Conclusao (%)" },
+      { key: "total_estimated_value", label: "Valor Est." },
+      { key: "total_final_value", label: "Valor Final" },
+    ];
+
+    const summaryObj = {
+      total_partners: partners.length,
+      total_orders: (data || []).length,
+    };
+
+    return formatReportResponse(
+      format,
+      "Relatorio OS por Parceiro",
+      columns,
+      partners,
+      { "Total de Parceiros": partners.length, "Total de OS": (data || []).length },
+      { filters: { date_from: dateFrom, date_to: dateTo, partner_id: partnerId }, summary: summaryObj, data: partners }
+    );
   } catch (error) {
     return errorResponse(error);
   }

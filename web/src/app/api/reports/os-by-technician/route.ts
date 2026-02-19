@@ -3,7 +3,8 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
-import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { errorResponse } from "@/lib/api-helpers/response";
+import { formatReportResponse } from "@/lib/api-helpers/report-format";
 
 /**
  * GET /api/reports/os-by-technician
@@ -19,13 +20,7 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get("date_from");
     const dateTo = searchParams.get("date_to");
     const technicianId = searchParams.get("technician_id");
-
-    if (!dateFrom || !dateTo) {
-      return jsonResponse(
-        { message: "date_from and date_to are required" },
-        400
-      );
-    }
+    const format = searchParams.get("format");
 
     const supabase = getAdminClient();
 
@@ -37,12 +32,17 @@ export async function GET(request: NextRequest) {
         technician_id,
         estimated_value,
         final_value,
-        technician:profiles!service_orders_technician_id_fkey(full_name)
+        technician:profiles(full_name)
       `
       )
-      .gte("created_at", `${dateFrom}T00:00:00`)
-      .lte("created_at", `${dateTo}T23:59:59`)
       .not("technician_id", "is", null);
+
+    if (dateFrom) {
+      query = query.gte("created_at", `${dateFrom}T00:00:00`);
+    }
+    if (dateTo) {
+      query = query.lte("created_at", `${dateTo}T23:59:59`);
+    }
 
     if (technicianId) {
       query = query.eq("technician_id", technicianId);
@@ -116,18 +116,31 @@ export async function GET(request: NextRequest) {
           : 0,
     }));
 
-    return jsonResponse({
-      filters: {
-        date_from: dateFrom,
-        date_to: dateTo,
-        technician_id: technicianId,
-      },
-      summary: {
-        total_technicians: technicians.length,
-        total_orders: (data || []).length,
-      },
-      data: technicians,
-    });
+    const columns = [
+      { key: "name", label: "Tecnico", width: 150 },
+      { key: "total", label: "Total OS" },
+      { key: "completed", label: "Concluidas" },
+      { key: "in_progress", label: "Em Andamento" },
+      { key: "pending", label: "Pendentes" },
+      { key: "cancelled", label: "Canceladas" },
+      { key: "completion_rate", label: "Taxa Conclusao (%)" },
+      { key: "total_estimated_value", label: "Valor Est." },
+      { key: "total_final_value", label: "Valor Final" },
+    ];
+
+    const summaryObj = {
+      total_technicians: technicians.length,
+      total_orders: (data || []).length,
+    };
+
+    return formatReportResponse(
+      format,
+      "Relatorio OS por Tecnico",
+      columns,
+      technicians,
+      { "Total de Tecnicos": technicians.length, "Total de OS": (data || []).length },
+      { filters: { date_from: dateFrom, date_to: dateTo, technician_id: technicianId }, summary: summaryObj, data: technicians }
+    );
   } catch (error) {
     return errorResponse(error);
   }

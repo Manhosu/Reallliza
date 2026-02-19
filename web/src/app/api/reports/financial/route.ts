@@ -3,7 +3,8 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
-import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { errorResponse } from "@/lib/api-helpers/response";
+import { formatReportResponse } from "@/lib/api-helpers/report-format";
 
 /**
  * GET /api/reports/financial
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const dateFrom = searchParams.get("date_from");
     const dateTo = searchParams.get("date_to");
+    const format = searchParams.get("format");
 
     const supabase = getAdminClient();
 
@@ -125,17 +127,30 @@ export async function GET(request: NextRequest) {
       average_ticket: m.count > 0 ? m.final_value / m.count : 0,
     }));
 
-    return jsonResponse({
-      filters: { date_from: dateFrom, date_to: dateTo },
-      summary: {
-        total_orders: totalOs,
-        total_estimated_value: totalEstimated,
-        total_final_value: totalFinal,
-        average_ticket: averageTicket,
-        status_breakdown: statusBreakdown,
-      },
-      monthly: monthlyData,
-    });
+    const columns = [
+      { key: "label", label: "Mes" },
+      { key: "count", label: "Qtd OS" },
+      { key: "estimated_value", label: "Valor Estimado" },
+      { key: "final_value", label: "Valor Final" },
+      { key: "average_ticket", label: "Ticket Medio" },
+    ];
+
+    const summaryObj = {
+      total_orders: totalOs,
+      total_estimated_value: totalEstimated,
+      total_final_value: totalFinal,
+      average_ticket: averageTicket,
+      status_breakdown: statusBreakdown,
+    };
+
+    return formatReportResponse(
+      format,
+      "Relatorio Financeiro",
+      columns,
+      monthlyData,
+      { "Total de OS": totalOs, "Valor Estimado Total": totalEstimated, "Valor Final Total": totalFinal, "Ticket Medio": averageTicket.toFixed(2) },
+      { filters: { date_from: dateFrom, date_to: dateTo }, summary: summaryObj, monthly: monthlyData }
+    );
   } catch (error) {
     return errorResponse(error);
   }

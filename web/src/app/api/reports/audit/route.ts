@@ -3,7 +3,8 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
-import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { errorResponse } from "@/lib/api-helpers/response";
+import { formatReportResponse } from "@/lib/api-helpers/report-format";
 
 /**
  * GET /api/reports/audit
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
     const entityType = searchParams.get("entity_type");
     const action = searchParams.get("action");
     const userId = searchParams.get("user_id");
+    const format = searchParams.get("format");
 
     const supabase = getAdminClient();
 
@@ -80,33 +82,42 @@ export async function GET(request: NextRequest) {
       entityBreakdown[e] = (entityBreakdown[e] || 0) + 1;
     }
 
-    return jsonResponse({
-      filters: {
-        date_from: dateFrom,
-        date_to: dateTo,
-        entity_type: entityType,
-        action,
-        user_id: userId,
-      },
-      summary: {
-        total_entries: logs.length,
-        action_breakdown: actionBreakdown,
-        entity_breakdown: entityBreakdown,
-      },
-      data: logs.map((row: any) => ({
-        id: row.id,
-        created_at: row.created_at,
-        user_id: row.user_id,
-        user_name: row.user?.full_name || null,
-        action: row.action,
-        entity_type: row.entity_type,
-        entity_id: row.entity_id,
-        ip_address: row.ip_address,
-        user_agent: row.user_agent,
-        old_data: row.old_data,
-        new_data: row.new_data,
-      })),
-    });
+    const mappedRows = logs.map((row: any) => ({
+      id: row.id,
+      created_at: row.created_at,
+      user_id: row.user_id,
+      user_name: row.user?.full_name || null,
+      action: row.action,
+      entity_type: row.entity_type,
+      entity_id: row.entity_id,
+      ip_address: row.ip_address,
+      user_agent: row.user_agent,
+      old_data: row.old_data,
+      new_data: row.new_data,
+    }));
+
+    const columns = [
+      { key: "created_at", label: "Data" },
+      { key: "user_name", label: "Usuario" },
+      { key: "action", label: "Acao", width: 150 },
+      { key: "entity_type", label: "Entidade" },
+      { key: "entity_id", label: "ID Entidade" },
+    ];
+
+    const summaryObj = {
+      total_entries: logs.length,
+      action_breakdown: actionBreakdown,
+      entity_breakdown: entityBreakdown,
+    };
+
+    return formatReportResponse(
+      format,
+      "Relatorio de Auditoria",
+      columns,
+      mappedRows,
+      { "Total de Registros": logs.length },
+      { filters: { date_from: dateFrom, date_to: dateTo, entity_type: entityType, action, user_id: userId }, summary: summaryObj, data: mappedRows }
+    );
   } catch (error) {
     return errorResponse(error);
   }
