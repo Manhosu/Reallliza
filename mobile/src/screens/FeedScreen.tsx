@@ -6,6 +6,9 @@ import {
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
+  Image,
+  Linking,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,6 +49,13 @@ const AUDIENCE_LABELS: Record<string, string> = {
   employees: 'Funcionarios',
   partners: 'Parceiros',
 };
+
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv'];
+
+function isVideoUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return VIDEO_EXTENSIONS.some((ext) => lower.includes(ext));
+}
 
 const AUDIENCE_COLORS: Record<string, string> = {
   all: colors.info,
@@ -165,6 +175,32 @@ export function FeedScreen() {
       <Text style={styles.postContent} numberOfLines={6}>
         {item.content}
       </Text>
+
+      {/* Media */}
+      {item.media_urls && item.media_urls.length > 0 && (
+        <View style={styles.mediaContainer}>
+          {item.media_urls.map((url, i) =>
+            isVideoUrl(url) ? (
+              <TouchableOpacity
+                key={i}
+                style={styles.videoThumbnail}
+                onPress={() => Linking.openURL(url)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="play-circle" size={32} color={colors.white} />
+                <Text style={styles.videoLabel}>Video</Text>
+              </TouchableOpacity>
+            ) : (
+              <Image
+                key={i}
+                source={{ uri: url }}
+                style={styles.mediaThumbnail}
+                resizeMode="cover"
+              />
+            ),
+          )}
+        </View>
+      )}
     </View>
   );
 
@@ -323,6 +359,31 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+  mediaContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  mediaThumbnail: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: colors.border,
+  },
+  videoThumbnail: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: colors.borderLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoLabel: {
+    ...typography.tiny,
+    color: colors.white,
+    marginTop: 2,
   },
   loadingMore: {
     paddingVertical: 16,

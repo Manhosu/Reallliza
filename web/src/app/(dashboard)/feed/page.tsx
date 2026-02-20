@@ -11,6 +11,10 @@ import {
   Edit,
   Trash2,
   Calendar,
+  Paperclip,
+  X,
+  Film,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
 import { feedApi } from "@/lib/api";
+import { getAccessToken, BASE_URL } from "@/lib/api/client";
 import { useAuthStore } from "@/stores/auth-store";
 import {
   type FeedPost,
@@ -49,6 +54,17 @@ function getAuthorInitials(name: string): string {
     .map((w) => w.charAt(0))
     .join("")
     .toUpperCase();
+}
+
+const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".avi", ".mkv"];
+
+function isVideoUrl(url: string): boolean {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    return VIDEO_EXTENSIONS.some((ext) => pathname.endsWith(ext));
+  } catch {
+    return VIDEO_EXTENSIONS.some((ext) => url.toLowerCase().includes(ext));
+  }
 }
 
 const AUDIENCE_BADGE_VARIANT: Record<
@@ -112,6 +128,8 @@ export default function FeedPage() {
     audience: FeedAudience.ALL as string,
     is_pinned: false,
   });
+  const [createMediaUrls, setCreateMediaUrls] = useState<string[]>([]);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
 
   // Edit form
   const [editForm, setEditForm] = useState({
@@ -120,6 +138,7 @@ export default function FeedPage() {
     audience: FeedAudience.ALL as string,
     is_pinned: false,
   });
+  const [editMediaUrls, setEditMediaUrls] = useState<string[]>([]);
 
   // Debounce search input
   useEffect(() => {
@@ -159,6 +178,57 @@ export default function FeedPage() {
   // Handlers
   // ============================================================
 
+  const uploadMediaFile = async (file: File): Promise<string | null> => {
+    try {
+      const token = await getAccessToken();
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch(`${BASE_URL}/feed/upload`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as Record<string, string>).message || "Erro no upload");
+      }
+
+      const data = (await res.json()) as { url: string };
+      return data.url;
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao fazer upload do arquivo");
+      return null;
+    }
+  };
+
+  const handleMediaUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    target: "create" | "edit"
+  ) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploadingMedia(true);
+    const newUrls: string[] = [];
+
+    for (const file of Array.from(files)) {
+      const url = await uploadMediaFile(file);
+      if (url) newUrls.push(url);
+    }
+
+    if (target === "create") {
+      setCreateMediaUrls((prev) => [...prev, ...newUrls]);
+    } else {
+      setEditMediaUrls((prev) => [...prev, ...newUrls]);
+    }
+    setIsUploadingMedia(false);
+
+    // Reset file input
+    e.target.value = "";
+  };
+
   const handleCreate = async () => {
     if (!createForm.title.trim() || !createForm.content.trim()) {
       toast.error("Titulo e conteudo sao obrigatorios");
@@ -172,6 +242,7 @@ export default function FeedPage() {
         content: createForm.content,
         audience: createForm.audience,
         is_pinned: createForm.is_pinned,
+        media_urls: createMediaUrls.length > 0 ? createMediaUrls : undefined,
       });
       toast.success("Publicacao criada com sucesso!");
       setShowCreateModal(false);
@@ -181,6 +252,7 @@ export default function FeedPage() {
         audience: FeedAudience.ALL,
         is_pinned: false,
       });
+      setCreateMediaUrls([]);
       mutate();
     } catch (err: any) {
       toast.error(err?.message || "Erro ao criar publicacao");
@@ -197,6 +269,7 @@ export default function FeedPage() {
       audience: post.audience,
       is_pinned: post.is_pinned,
     });
+    setEditMediaUrls(post.media_urls || []);
   };
 
   const handleUpdate = async () => {
@@ -213,6 +286,7 @@ export default function FeedPage() {
         content: editForm.content,
         audience: editForm.audience as FeedAudience,
         is_pinned: editForm.is_pinned,
+        media_urls: editMediaUrls.length > 0 ? editMediaUrls : [],
       });
       toast.success("Publicacao atualizada com sucesso!");
       setEditingPost(null);
@@ -389,21 +463,35 @@ export default function FeedPage() {
                   {/* Media thumbnails */}
                   {post.media_urls && post.media_urls.length > 0 && (
                     <div className="flex flex-wrap gap-2">
-                      {post.media_urls.map((url, i) => (
-                        <a
-                          key={i}
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block overflow-hidden rounded-lg border border-border hover:border-primary transition-colors"
-                        >
-                          <img
-                            src={url}
-                            alt={`Midia ${i + 1}`}
-                            className="h-20 w-20 object-cover"
-                          />
-                        </a>
-                      ))}
+                      {post.media_urls.map((url, i) =>
+                        isVideoUrl(url) ? (
+                          <div
+                            key={i}
+                            className="relative overflow-hidden rounded-lg border border-border"
+                          >
+                            <video
+                              src={url}
+                              controls
+                              preload="metadata"
+                              className="max-h-60 max-w-full rounded-lg"
+                            />
+                          </div>
+                        ) : (
+                          <a
+                            key={i}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block overflow-hidden rounded-lg border border-border hover:border-primary transition-colors"
+                          >
+                            <img
+                              src={url}
+                              alt={`Midia ${i + 1}`}
+                              className="h-20 w-20 object-cover"
+                            />
+                          </a>
+                        )
+                      )}
                     </div>
                   )}
 
@@ -544,6 +632,64 @@ export default function FeedPage() {
                 </select>
               </div>
 
+              {/* Media upload */}
+              <div className="w-full space-y-2">
+                <label className="text-sm font-medium leading-none text-foreground/80">
+                  Midia (imagens ou videos)
+                </label>
+                <div className="flex items-center gap-2">
+                  <label className={cn(
+                    "flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-input cursor-pointer text-sm text-muted-foreground",
+                    "hover:border-primary hover:text-foreground transition-colors",
+                    isUploadingMedia && "opacity-50 pointer-events-none"
+                  )}>
+                    {isUploadingMedia ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Paperclip className="h-4 w-4" />
+                    )}
+                    {isUploadingMedia ? "Enviando..." : "Anexar arquivo"}
+                    <input
+                      type="file"
+                      accept="image/*,video/mp4,video/webm,video/quicktime"
+                      multiple
+                      onChange={(e) => handleMediaUpload(e, "create")}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+                {createMediaUrls.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {createMediaUrls.map((url, i) => (
+                      <div key={i} className="relative group">
+                        {isVideoUrl(url) ? (
+                          <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center border">
+                            <Film className="h-6 w-6 text-muted-foreground" />
+                          </div>
+                        ) : (
+                          <img
+                            src={url}
+                            alt={`Midia ${i + 1}`}
+                            className="h-16 w-16 object-cover rounded-lg border"
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCreateMediaUrls((prev) =>
+                              prev.filter((_, idx) => idx !== i)
+                            )
+                          }
+                          className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Pinned toggle */}
               <div className="flex items-center gap-3">
                 <button
@@ -583,7 +729,7 @@ export default function FeedPage() {
               >
                 Cancelar
               </Button>
-              <Button onClick={handleCreate} isLoading={isCreating}>
+              <Button onClick={handleCreate} isLoading={isCreating} disabled={isUploadingMedia}>
                 Publicar
               </Button>
             </div>
@@ -671,6 +817,64 @@ export default function FeedPage() {
                 </select>
               </div>
 
+              {/* Media upload */}
+              <div className="w-full space-y-2">
+                <label className="text-sm font-medium leading-none text-foreground/80">
+                  Midia (imagens ou videos)
+                </label>
+                <div className="flex items-center gap-2">
+                  <label className={cn(
+                    "flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-input cursor-pointer text-sm text-muted-foreground",
+                    "hover:border-primary hover:text-foreground transition-colors",
+                    isUploadingMedia && "opacity-50 pointer-events-none"
+                  )}>
+                    {isUploadingMedia ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Paperclip className="h-4 w-4" />
+                    )}
+                    {isUploadingMedia ? "Enviando..." : "Anexar arquivo"}
+                    <input
+                      type="file"
+                      accept="image/*,video/mp4,video/webm,video/quicktime"
+                      multiple
+                      onChange={(e) => handleMediaUpload(e, "edit")}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+                {editMediaUrls.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {editMediaUrls.map((url, i) => (
+                      <div key={i} className="relative group">
+                        {isVideoUrl(url) ? (
+                          <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center border">
+                            <Film className="h-6 w-6 text-muted-foreground" />
+                          </div>
+                        ) : (
+                          <img
+                            src={url}
+                            alt={`Midia ${i + 1}`}
+                            className="h-16 w-16 object-cover rounded-lg border"
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditMediaUrls((prev) =>
+                              prev.filter((_, idx) => idx !== i)
+                            )
+                          }
+                          className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Pinned toggle */}
               <div className="flex items-center gap-3">
                 <button
@@ -707,7 +911,7 @@ export default function FeedPage() {
               <Button variant="outline" onClick={() => setEditingPost(null)}>
                 Cancelar
               </Button>
-              <Button onClick={handleUpdate} isLoading={isUpdating}>
+              <Button onClick={handleUpdate} isLoading={isUpdating} disabled={isUploadingMedia}>
                 Salvar Alteracoes
               </Button>
             </div>
