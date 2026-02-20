@@ -17,7 +17,9 @@
       "infoPlist": {
         "NSCameraUsageDescription": "O app precisa acessar a camera para tirar fotos das ordens de servico.",
         "NSPhotoLibraryUsageDescription": "O app precisa acessar a galeria para selecionar fotos.",
-        "NSLocationWhenInUseUsageDescription": "O app precisa acessar a localizacao para registrar onde as fotos foram tiradas."
+        "NSLocationWhenInUseUsageDescription": "O app precisa acessar a localizacao para registrar onde as fotos foram tiradas.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "O app precisa acessar a localizacao em segundo plano para rastrear deslocamentos durante ordens de servico.",
+        "UIBackgroundModes": ["location"]
       }
     },
     "android": {
@@ -30,7 +32,10 @@
       "permissions": [
         "CAMERA",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "web": {
@@ -47,7 +52,10 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "O app precisa acessar a localizacao para registrar onde as fotos foram tiradas."
+          "locationWhenInUsePermission": "O app precisa acessar a localizacao para registrar onde as fotos foram tiradas.",
+          "locationAlwaysAndWhenInUsePermission": "O app precisa acessar a localizacao em segundo plano para rastrear deslocamentos durante ordens de servico.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       [

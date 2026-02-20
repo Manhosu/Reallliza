@@ -68,9 +68,9 @@ export async function GET(request: NextRequest) {
     for (const techId of technicianIds) {
       const { data: latestLocation } = await supabase
         .from("technician_locations")
-        .select("latitude, longitude, recorded_at, created_at")
+        .select("latitude, longitude, recorded_at")
         .eq("user_id", techId)
-        .order("created_at", { ascending: false })
+        .order("recorded_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
@@ -88,8 +88,7 @@ export async function GET(request: NextRequest) {
         avatar_url: profile?.avatar_url || null,
         latitude: latestLocation?.latitude || null,
         longitude: latestLocation?.longitude || null,
-        recorded_at:
-          latestLocation?.recorded_at || latestLocation?.created_at || null,
+        recorded_at: latestLocation?.recorded_at || null,
         service_order: {
           id: activeOrder.id,
           title: activeOrder.title,

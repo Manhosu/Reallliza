@@ -288,6 +288,8 @@ export interface Schedule {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  technician?: { id: string; full_name: string; email?: string; phone?: string | null; avatar_url?: string | null };
+  service_order?: { id: string; order_number?: string; title?: string; status?: string; client_name?: string; address_city?: string | null };
 }
 
 export interface FeedPost {

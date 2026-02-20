@@ -182,11 +182,11 @@ function ScheduleBlock({
       }}
     >
       <p className={cn("truncate text-[11px] font-semibold", colors.text)}>
-        {schedule.service_order_id}
+        {schedule.service_order?.title || schedule.service_order?.order_number || schedule.service_order_id.slice(0, 8)}
       </p>
       {height > 48 && (
         <p className="truncate text-[10px] text-muted-foreground">
-          {schedule.technician_id}
+          {schedule.technician?.full_name || schedule.technician_id.slice(0, 8)}
         </p>
       )}
       {height > 64 && (
@@ -735,7 +735,7 @@ export default function AgendaPage() {
                                       colors.text
                                     )}
                                   >
-                                    {s.service_order_id}
+                                    {s.service_order?.title || s.service_order?.order_number || s.service_order_id.slice(0, 8)}
                                   </p>
                                 );
                               })}
@@ -851,12 +851,12 @@ export default function AgendaPage() {
                           {/* Info */}
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-semibold">
-                              {schedule.service_order_id}
+                              {schedule.service_order?.title || schedule.service_order?.order_number || schedule.service_order_id.slice(0, 8)}
                             </p>
                             <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <User className="h-3 w-3" />
-                                {schedule.technician_id}
+                                {schedule.technician?.full_name || schedule.technician_id.slice(0, 8)}
                               </span>
                               <span className="flex items-center gap-1">
                                 <Clock className="h-3 w-3" />

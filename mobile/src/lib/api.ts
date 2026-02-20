@@ -11,9 +11,9 @@ import { useSyncStore } from './sync-manager';
 // iOS simulator uses localhost directly
 const getDefaultApiUrl = () => {
   if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:3333/api';
+    return 'http://10.0.2.2:3000/api';
   }
-  return 'http://localhost:3333/api';
+  return 'http://localhost:3000/api';
 };
 
 export const BASE_URL =

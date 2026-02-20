@@ -296,7 +296,7 @@ export default function AvaliacoesPage() {
           <p className="text-muted-foreground">
             {isLoading
               ? "Carregando..."
-              : `${totalRatings} avaliação${totalRatings !== 1 ? "ões" : ""} registrada${totalRatings !== 1 ? "s" : ""}`}
+              : `${totalRatings} ${totalRatings !== 1 ? "avaliações registradas" : "avaliação registrada"}`}
           </p>
         </div>
         <Button onClick={() => setShowCreateModal(true)}>

@@ -1,13 +1,16 @@
 -- ============================================================
--- Migration 005: Missing features from spec
+-- Migration 005: Missing features from spec (IDEMPOTENT)
 -- Feed Corporativo, Avaliação Interna, Termos de Uso,
 -- Rastreamento, Propostas para Parceiros, Região de Atuação
 -- ============================================================
 
 -- 1. Feed Corporativo
-CREATE TYPE public.feed_audience AS ENUM ('all', 'employees', 'partners');
+DO $$ BEGIN
+  CREATE TYPE public.feed_audience AS ENUM ('all', 'employees', 'partners');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TABLE public.feed_posts (
+CREATE TABLE IF NOT EXISTS public.feed_posts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   author_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
@@ -20,10 +23,11 @@ CREATE TABLE public.feed_posts (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_feed_posts_audience ON public.feed_posts(audience);
-CREATE INDEX idx_feed_posts_pinned ON public.feed_posts(is_pinned) WHERE is_pinned = true;
-CREATE INDEX idx_feed_posts_created_at ON public.feed_posts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_feed_posts_audience ON public.feed_posts(audience);
+CREATE INDEX IF NOT EXISTS idx_feed_posts_pinned ON public.feed_posts(is_pinned) WHERE is_pinned = true;
+CREATE INDEX IF NOT EXISTS idx_feed_posts_created_at ON public.feed_posts(created_at DESC);
 
+DROP TRIGGER IF EXISTS set_feed_posts_updated_at ON public.feed_posts;
 CREATE TRIGGER set_feed_posts_updated_at
   BEFORE UPDATE ON public.feed_posts
   FOR EACH ROW
@@ -31,21 +35,27 @@ CREATE TRIGGER set_feed_posts_updated_at
 
 ALTER TABLE public.feed_posts ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Admins can manage feed posts" ON public.feed_posts
-  FOR ALL USING (get_user_role(auth.uid()) = 'admin');
+DO $$ BEGIN
+  CREATE POLICY "Admins can manage feed posts" ON public.feed_posts
+    FOR ALL USING (get_user_role(auth.uid()) = 'admin');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY "Users can view published feed posts" ON public.feed_posts
-  FOR SELECT USING (
-    is_published = true
-    AND (
-      audience = 'all'
-      OR (audience = 'employees' AND get_user_role(auth.uid()) IN ('admin', 'technician'))
-      OR (audience = 'partners' AND get_user_role(auth.uid()) IN ('admin', 'partner'))
-    )
-  );
+DO $$ BEGIN
+  CREATE POLICY "Users can view published feed posts" ON public.feed_posts
+    FOR SELECT USING (
+      is_published = true
+      AND (
+        audience = 'all'
+        OR (audience = 'employees' AND get_user_role(auth.uid()) IN ('admin', 'technician'))
+        OR (audience = 'partners' AND get_user_role(auth.uid()) IN ('admin', 'partner'))
+      )
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- 2. Sistema de Avaliação Interna de Profissionais
-CREATE TABLE public.professional_ratings (
+CREATE TABLE IF NOT EXISTS public.professional_ratings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   professional_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   rated_by UUID NOT NULL REFERENCES public.profiles(id),
@@ -58,19 +68,25 @@ CREATE TABLE public.professional_ratings (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_ratings_professional ON public.professional_ratings(professional_id);
-CREATE INDEX idx_ratings_service_order ON public.professional_ratings(service_order_id);
+CREATE INDEX IF NOT EXISTS idx_ratings_professional ON public.professional_ratings(professional_id);
+CREATE INDEX IF NOT EXISTS idx_ratings_service_order ON public.professional_ratings(service_order_id);
 
 ALTER TABLE public.professional_ratings ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Admins can manage ratings" ON public.professional_ratings
-  FOR ALL USING (get_user_role(auth.uid()) = 'admin');
+DO $$ BEGIN
+  CREATE POLICY "Admins can manage ratings" ON public.professional_ratings
+    FOR ALL USING (get_user_role(auth.uid()) = 'admin');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY "Managers can view and create ratings" ON public.professional_ratings
-  FOR SELECT USING (get_user_role(auth.uid()) IN ('admin', 'technician'));
+DO $$ BEGIN
+  CREATE POLICY "Managers can view and create ratings" ON public.professional_ratings
+    FOR SELECT USING (get_user_role(auth.uid()) IN ('admin', 'technician'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- 3. Aceite de Termos de Uso
-CREATE TABLE public.user_consents (
+CREATE TABLE IF NOT EXISTS public.user_consents (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   terms_version TEXT NOT NULL DEFAULT '1.0',
@@ -84,8 +100,9 @@ CREATE TABLE public.user_consents (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX idx_consents_user ON public.user_consents(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_consents_user ON public.user_consents(user_id);
 
+DROP TRIGGER IF EXISTS set_user_consents_updated_at ON public.user_consents;
 CREATE TRIGGER set_user_consents_updated_at
   BEFORE UPDATE ON public.user_consents
   FOR EACH ROW
@@ -93,17 +110,26 @@ CREATE TRIGGER set_user_consents_updated_at
 
 ALTER TABLE public.user_consents ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own consents" ON public.user_consents
-  FOR SELECT USING (auth.uid() = user_id);
+DO $$ BEGIN
+  CREATE POLICY "Users can view own consents" ON public.user_consents
+    FOR SELECT USING (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY "Users can manage own consents" ON public.user_consents
-  FOR ALL USING (auth.uid() = user_id);
+DO $$ BEGIN
+  CREATE POLICY "Users can manage own consents" ON public.user_consents
+    FOR ALL USING (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY "Admins can view all consents" ON public.user_consents
-  FOR SELECT USING (get_user_role(auth.uid()) = 'admin');
+DO $$ BEGIN
+  CREATE POLICY "Admins can view all consents" ON public.user_consents
+    FOR SELECT USING (get_user_role(auth.uid()) = 'admin');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- 4. Rastreamento de Localização
-CREATE TABLE public.technician_locations (
+CREATE TABLE IF NOT EXISTS public.technician_locations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   service_order_id UUID REFERENCES public.service_orders(id) ON DELETE SET NULL,
@@ -115,25 +141,37 @@ CREATE TABLE public.technician_locations (
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_tech_locations_user ON public.technician_locations(user_id);
-CREATE INDEX idx_tech_locations_recorded ON public.technician_locations(recorded_at DESC);
-CREATE INDEX idx_tech_locations_so ON public.technician_locations(service_order_id);
+CREATE INDEX IF NOT EXISTS idx_tech_locations_user ON public.technician_locations(user_id);
+CREATE INDEX IF NOT EXISTS idx_tech_locations_recorded ON public.technician_locations(recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tech_locations_so ON public.technician_locations(service_order_id);
 
 ALTER TABLE public.technician_locations ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Technicians can insert own location" ON public.technician_locations
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+DO $$ BEGIN
+  CREATE POLICY "Technicians can insert own location" ON public.technician_locations
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY "Admins can view all locations" ON public.technician_locations
-  FOR SELECT USING (get_user_role(auth.uid()) = 'admin');
+DO $$ BEGIN
+  CREATE POLICY "Admins can view all locations" ON public.technician_locations
+    FOR SELECT USING (get_user_role(auth.uid()) = 'admin');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY "Users can view own locations" ON public.technician_locations
-  FOR SELECT USING (auth.uid() = user_id);
+DO $$ BEGIN
+  CREATE POLICY "Users can view own locations" ON public.technician_locations
+    FOR SELECT USING (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- 5. Propostas/Chamados para Parceiros
-CREATE TYPE public.proposal_status AS ENUM ('pending', 'accepted', 'rejected', 'expired');
+DO $$ BEGIN
+  CREATE TYPE public.proposal_status AS ENUM ('pending', 'accepted', 'rejected', 'expired');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TABLE public.service_proposals (
+CREATE TABLE IF NOT EXISTS public.service_proposals (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   service_order_id UUID NOT NULL REFERENCES public.service_orders(id) ON DELETE CASCADE,
   partner_id UUID NOT NULL REFERENCES public.partners(id) ON DELETE CASCADE,
@@ -148,10 +186,11 @@ CREATE TABLE public.service_proposals (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_proposals_so ON public.service_proposals(service_order_id);
-CREATE INDEX idx_proposals_partner ON public.service_proposals(partner_id);
-CREATE INDEX idx_proposals_status ON public.service_proposals(status);
+CREATE INDEX IF NOT EXISTS idx_proposals_so ON public.service_proposals(service_order_id);
+CREATE INDEX IF NOT EXISTS idx_proposals_partner ON public.service_proposals(partner_id);
+CREATE INDEX IF NOT EXISTS idx_proposals_status ON public.service_proposals(status);
 
+DROP TRIGGER IF EXISTS set_proposals_updated_at ON public.service_proposals;
 CREATE TRIGGER set_proposals_updated_at
   BEFORE UPDATE ON public.service_proposals
   FOR EACH ROW
@@ -159,18 +198,27 @@ CREATE TRIGGER set_proposals_updated_at
 
 ALTER TABLE public.service_proposals ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Admins can manage proposals" ON public.service_proposals
-  FOR ALL USING (get_user_role(auth.uid()) = 'admin');
+DO $$ BEGIN
+  CREATE POLICY "Admins can manage proposals" ON public.service_proposals
+    FOR ALL USING (get_user_role(auth.uid()) = 'admin');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY "Partners can view own proposals" ON public.service_proposals
-  FOR SELECT USING (
-    partner_id IN (SELECT id FROM public.partners WHERE user_id = auth.uid())
-  );
+DO $$ BEGIN
+  CREATE POLICY "Partners can view own proposals" ON public.service_proposals
+    FOR SELECT USING (
+      partner_id IN (SELECT id FROM public.partners WHERE user_id = auth.uid())
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE POLICY "Partners can update own proposals" ON public.service_proposals
-  FOR UPDATE USING (
-    partner_id IN (SELECT id FROM public.partners WHERE user_id = auth.uid())
-  );
+DO $$ BEGIN
+  CREATE POLICY "Partners can update own proposals" ON public.service_proposals
+    FOR UPDATE USING (
+      partner_id IN (SELECT id FROM public.partners WHERE user_id = auth.uid())
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- 6. Adicionar campo de região de atuação ao profiles
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS operating_region TEXT;
@@ -178,6 +226,3 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS operating_region TEXT;
 -- 7. Adicionar tracking_token às service_orders para link público
 ALTER TABLE public.service_orders ADD COLUMN IF NOT EXISTS tracking_token UUID DEFAULT uuid_generate_v4();
 CREATE UNIQUE INDEX IF NOT EXISTS idx_so_tracking_token ON public.service_orders(tracking_token);
-
--- 8. Criar bucket para media do feed (se não existir, executar no dashboard)
--- INSERT INTO storage.buckets (id, name, public) VALUES ('feed-media', 'feed-media', true);

@@ -64,18 +64,18 @@ export async function GET(request: NextRequest) {
     }
 
     let query = supabase
-      .from("audit_logs")
+      .from("os_status_history")
       .select(
         `
         *,
-        user:profiles!audit_logs_user_id_fkey(id, full_name, avatar_url, role)
+        changed_by_user:profiles!os_status_history_changed_by_fkey(id, full_name, avatar_url, role)
       `
       )
       .order("created_at", { ascending: false })
       .limit(10);
 
     if (serviceOrderIds) {
-      query = query.in("entity_id", serviceOrderIds);
+      query = query.in("service_order_id", serviceOrderIds);
     }
 
     const { data, error } = await query;

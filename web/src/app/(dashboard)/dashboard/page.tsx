@@ -75,6 +75,8 @@ const STATUS_LABELS: Record<string, string> = {
   in_progress: "Em Andamento",
   paused: "Pausada",
   completed: "Concluída",
+  approved: "Aprovada",
+  invoiced: "Faturada",
   cancelled: "Cancelada",
   rejected: "Rejeitada",
 };
