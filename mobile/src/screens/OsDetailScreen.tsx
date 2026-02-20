@@ -450,8 +450,23 @@ export function OsDetailScreen() {
               </TouchableOpacity>
             )}
 
+            {/* Signature capture button - available during and after service */}
+            {(order.status === OsStatus.IN_PROGRESS ||
+              order.status === OsStatus.COMPLETED) && (
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: colors.info }]}
+                onPress={() =>
+                  navigation.navigate('Signature', { serviceOrderId: id })
+                }
+              >
+                <Ionicons name="pencil-outline" size={20} color={colors.white} />
+                <Text style={[styles.actionButtonPrimaryText, { color: colors.white }]}>
+                  Capturar Assinatura
+                </Text>
+              </TouchableOpacity>
+            )}
+
             {(order.status === OsStatus.PENDING ||
-              order.status === OsStatus.COMPLETED ||
               order.status === OsStatus.CANCELLED) && (
               <Text style={styles.noActionsText}>
                 Nenhuma acao disponivel para este status.

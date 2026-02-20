@@ -29,6 +29,7 @@ import {
   Loader2,
   Check,
   Save,
+  Download,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1108,6 +1109,34 @@ export default function OsDetailPage() {
               )}
             </div>
           )}
+
+          {/* Download PDF Report */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              try {
+                const token = (await import("@/lib/api/client")).getAccessToken;
+                const accessToken = await token();
+                const res = await fetch(`/api/service-orders/${id}/report`, {
+                  headers: { Authorization: `Bearer ${accessToken}` },
+                });
+                if (!res.ok) throw new Error("Erro ao gerar relatorio");
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `OS_${order.order_number || id}_relatorio.pdf`;
+                a.click();
+                URL.revokeObjectURL(url);
+              } catch {
+                toast.error("Erro ao gerar relatorio PDF");
+              }
+            }}
+          >
+            <Download className="h-4 w-4" />
+            Relatorio PDF
+          </Button>
 
           {/* Approve button - visible only when completed and user is admin */}
           {order.status === OsStatus.COMPLETED && user?.role === UserRole.ADMIN && (

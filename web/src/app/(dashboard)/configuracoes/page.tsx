@@ -19,6 +19,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/stores/auth-store";
+import { apiClient } from "@/lib/api";
+import { toast } from "sonner";
 
 // ============================================================
 // Settings Section Skeleton
@@ -151,9 +153,35 @@ export default function ConfiguracoesPage() {
     setPasswordError("");
 
     setIsSaving(true);
-    // Simulate save
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setIsSaving(false);
+
+    try {
+      // Save profile changes
+      const profileUpdates: Record<string, string> = {};
+      if (fullName !== (user?.full_name || "")) profileUpdates.full_name = fullName;
+      if (phone !== (user?.phone || "")) profileUpdates.phone = phone;
+
+      if (Object.keys(profileUpdates).length > 0) {
+        await apiClient.patch("/profile/me", profileUpdates);
+      }
+
+      // Change password if filled
+      if (currentPassword && newPassword) {
+        await apiClient.post("/auth/change-password", {
+          current_password: currentPassword,
+          new_password: newPassword,
+        });
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      }
+
+      toast.success("Alteracoes salvas com sucesso!");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao salvar";
+      toast.error(message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const initials = fullName

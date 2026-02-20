@@ -565,11 +565,30 @@ export default function NovaOsPage() {
                         ? "Carregando técnicos..."
                         : "Selecione um técnico"}
                     </option>
-                    {technicians.map((tech) => (
-                      <option key={tech.id} value={tech.id}>
-                        {tech.full_name}
-                      </option>
-                    ))}
+                    {technicians
+                      .sort((a, b) => {
+                        // Sort technicians with matching specialties first
+                        const titleLower = form.title.toLowerCase();
+                        const aMatch = a.specialties?.some((s) =>
+                          titleLower.includes(s.toLowerCase())
+                        )
+                          ? -1
+                          : 0;
+                        const bMatch = b.specialties?.some((s) =>
+                          titleLower.includes(s.toLowerCase())
+                        )
+                          ? -1
+                          : 0;
+                        return aMatch - bMatch;
+                      })
+                      .map((tech) => (
+                        <option key={tech.id} value={tech.id}>
+                          {tech.full_name}
+                          {tech.specialties && tech.specialties.length > 0
+                            ? ` (${tech.specialties.join(", ")})`
+                            : ""}
+                        </option>
+                      ))}
                   </SelectNative>
                 )}
               </div>

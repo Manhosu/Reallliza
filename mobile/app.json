@@ -14,6 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.reallliza.app",
       "infoPlist": {
         "NSCameraUsageDescription": "O app precisa acessar a camera para tirar fotos das ordens de servico.",
         "NSPhotoLibraryUsageDescription": "O app precisa acessar a galeria para selecionar fotos.",
@@ -23,6 +24,7 @@
       }
     },
     "android": {
+      "package": "com.reallliza.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#09090B"

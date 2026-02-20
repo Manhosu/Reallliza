@@ -7,12 +7,17 @@ import { FeedScreen } from '../screens/FeedScreen';
 import { AgendaScreen } from '../screens/AgendaScreen';
 import { ToolsScreen } from '../screens/ToolsScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
+import { NotificationsScreen } from '../screens/NotificationsScreen';
+import { ProposalsScreen } from '../screens/ProposalsScreen';
+import { useAuthStore } from '../stores/auth-store';
 import { colors } from '../theme/colors';
 
 export type MainTabsParamList = {
   FeedTab: undefined;
   OSTab: undefined;
   AgendaTab: undefined;
+  NotificationsTab: undefined;
+  ProposalsTab: undefined;
   ToolsTab: undefined;
   ProfileTab: undefined;
 };
@@ -20,6 +25,9 @@ export type MainTabsParamList = {
 const Tab = createBottomTabNavigator<MainTabsParamList>();
 
 export function MainTabs() {
+  const profile = useAuthStore(state => state.profile);
+  const isPartner = profile?.role === 'partner';
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -59,33 +67,43 @@ export function MainTabs() {
           ),
         }}
       />
+      {isPartner ? (
+        <Tab.Screen
+          name="ProposalsTab"
+          component={ProposalsScreen}
+          options={{
+            headerShown: false,
+            title: 'Propostas',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="document-text-outline" size={size} color={color} />
+            ),
+          }}
+        />
+      ) : (
+        <Tab.Screen
+          name="AgendaTab"
+          component={AgendaScreen}
+          options={{
+            title: 'Agenda',
+            headerTitleStyle: {
+              fontWeight: '700',
+              fontSize: 20,
+              color: colors.primary,
+            },
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="calendar-outline" size={size} color={color} />
+            ),
+          }}
+        />
+      )}
       <Tab.Screen
-        name="AgendaTab"
-        component={AgendaScreen}
+        name="NotificationsTab"
+        component={NotificationsScreen}
         options={{
-          title: 'Agenda',
-          headerTitleStyle: {
-            fontWeight: '700',
-            fontSize: 20,
-            color: colors.primary,
-          },
+          headerShown: false,
+          title: 'Avisos',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="ToolsTab"
-        component={ToolsScreen}
-        options={{
-          title: 'Ferramentas',
-          headerTitleStyle: {
-            fontWeight: '700',
-            fontSize: 20,
-            color: colors.primary,
-          },
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="hammer-outline" size={size} color={color} />
+            <Ionicons name="notifications-outline" size={size} color={color} />
           ),
         }}
       />

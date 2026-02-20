@@ -68,7 +68,7 @@ export async function GET(
         .from("technician_locations")
         .select("latitude, longitude")
         .eq("user_id", order.technician_id)
-        .order("created_at", { ascending: false })
+        .order("recorded_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 

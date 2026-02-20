@@ -84,6 +84,19 @@ export async function PATCH(
 
     if (newStatus === "completed") {
       updateData.completed_at = new Date().toISOString();
+
+      // Validate minimum photo evidence before completing
+      const { count: photoCount } = await supabase
+        .from("photos")
+        .select("id", { count: "exact", head: true })
+        .eq("service_order_id", id);
+
+      if (!photoCount || photoCount < 1) {
+        throw new AuthError(
+          400,
+          "Nao e possivel finalizar a OS sem evidencias fotograficas. Envie pelo menos 1 foto antes de finalizar."
+        );
+      }
     }
 
     // Update the order

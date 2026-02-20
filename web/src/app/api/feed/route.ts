@@ -3,6 +3,7 @@ import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { createNotification } from "@/lib/api-helpers/notifications";
 
 /**
  * GET /api/feed
@@ -132,6 +133,43 @@ export async function POST(request: NextRequest) {
       ipAddress: request.headers.get("x-forwarded-for"),
       userAgent: request.headers.get("user-agent"),
     });
+
+    // Send push notifications to target audience (fire-and-forget)
+    const targetAudience = post.audience || "all";
+    const roleFilter: string[] = [];
+    if (targetAudience === "all") {
+      roleFilter.push("admin", "technician", "partner");
+    } else if (targetAudience === "employees") {
+      roleFilter.push("admin", "technician");
+    } else if (targetAudience === "partners") {
+      roleFilter.push("admin", "partner");
+    }
+
+    // Fire-and-forget: send notifications to target audience
+    (async () => {
+      try {
+        const { data: recipients } = await supabase
+          .from("profiles")
+          .select("id")
+          .in("role", roleFilter)
+          .eq("status", "active")
+          .neq("id", user.id);
+
+        if (recipients) {
+          for (const r of recipients) {
+            createNotification(
+              r.id,
+              `Novo comunicado: ${post.title}`,
+              post.content.substring(0, 100),
+              "general",
+              { feed_post_id: post.id }
+            ).catch(() => {});
+          }
+        }
+      } catch {
+        // Notification failure should not break the main operation
+      }
+    })();
 
     return jsonResponse(post, 201);
   } catch (error) {

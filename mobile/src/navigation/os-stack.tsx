@@ -4,6 +4,7 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { OsDetailScreen } from '../screens/OsDetailScreen';
 import { ChecklistScreen } from '../screens/ChecklistScreen';
 import { CameraScreen } from '../screens/CameraScreen';
+import { SignatureScreen } from '../screens/SignatureScreen';
 import { colors } from '../theme/colors';
 
 export type OsStackParamList = {
@@ -11,6 +12,7 @@ export type OsStackParamList = {
   OsDetail: { id: string };
   Checklist: { serviceOrderId: string };
   Camera: { serviceOrderId: string };
+  Signature: { serviceOrderId: string };
 };
 
 const Stack = createNativeStackNavigator<OsStackParamList>();
@@ -63,6 +65,13 @@ export function OsStack() {
         component={CameraScreen}
         options={{
           title: 'Fotos',
+        }}
+      />
+      <Stack.Screen
+        name="Signature"
+        component={SignatureScreen}
+        options={{
+          title: 'Assinatura do Cliente',
         }}
       />
     </Stack.Navigator>
