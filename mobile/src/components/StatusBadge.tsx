@@ -16,6 +16,7 @@ const STATUS_COLORS: Record<OsStatus, string> = {
   [OsStatus.IN_PROGRESS]: colors.statusInProgress,
   [OsStatus.PAUSED]: colors.statusPaused,
   [OsStatus.COMPLETED]: colors.statusCompleted,
+  [OsStatus.INVOICED]: colors.statusInvoiced,
   [OsStatus.CANCELLED]: colors.statusCancelled,
   [OsStatus.REJECTED]: colors.statusRejected,
 };

@@ -39,6 +39,7 @@ export const colors = {
   statusInProgress: '#8B5CF6',
   statusPaused: '#F97316',
   statusCompleted: '#22C55E',
+  statusInvoiced: '#A855F7',
   statusCancelled: '#EF4444',
   statusRejected: '#DC2626',
 

@@ -329,7 +329,7 @@ export default function FeedPage() {
           <p className="text-muted-foreground">
             {isLoading
               ? "Carregando..."
-              : `${totalPosts} publicacao${totalPosts !== 1 ? "oes" : ""}`}
+              : `${totalPosts} ${totalPosts === 1 ? "publicacao" : "publicacoes"}`}
           </p>
         </div>
         {isAdmin && (

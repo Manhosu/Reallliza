@@ -15,7 +15,8 @@ const STATUS_TRANSITIONS: Record<string, string[]> = {
   assigned: ["in_progress", "cancelled"],
   in_progress: ["paused", "completed", "cancelled"],
   paused: ["in_progress", "cancelled"],
-  completed: ["rejected"],
+  completed: ["invoiced", "rejected"],
+  invoiced: [],
   cancelled: [],
   rejected: ["pending"],
 };

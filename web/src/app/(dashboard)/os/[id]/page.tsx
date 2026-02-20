@@ -79,6 +79,7 @@ const STATUS_BADGE_VARIANT: Record<OsStatus, string> = {
   [OsStatus.IN_PROGRESS]: "info",
   [OsStatus.PAUSED]: "gray",
   [OsStatus.COMPLETED]: "success",
+  [OsStatus.INVOICED]: "purple",
   [OsStatus.CANCELLED]: "destructive",
   [OsStatus.REJECTED]: "destructive",
 };
@@ -96,6 +97,7 @@ const STATUS_FLOW: OsStatus[] = [
   OsStatus.ASSIGNED,
   OsStatus.IN_PROGRESS,
   OsStatus.COMPLETED,
+  OsStatus.INVOICED,
 ];
 
 const NEXT_STATUS_MAP: Partial<Record<OsStatus, OsStatus[]>> = {
@@ -104,6 +106,7 @@ const NEXT_STATUS_MAP: Partial<Record<OsStatus, OsStatus[]>> = {
   [OsStatus.ASSIGNED]: [OsStatus.IN_PROGRESS, OsStatus.CANCELLED],
   [OsStatus.IN_PROGRESS]: [OsStatus.PAUSED, OsStatus.COMPLETED, OsStatus.CANCELLED],
   [OsStatus.PAUSED]: [OsStatus.IN_PROGRESS, OsStatus.CANCELLED],
+  [OsStatus.COMPLETED]: [OsStatus.INVOICED],
 };
 
 // ============================================================

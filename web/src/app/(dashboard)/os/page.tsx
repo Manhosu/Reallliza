@@ -50,6 +50,7 @@ const STATUS_BADGE_VARIANT: Record<OsStatus, string> = {
   [OsStatus.IN_PROGRESS]: "info",
   [OsStatus.PAUSED]: "gray",
   [OsStatus.COMPLETED]: "success",
+  [OsStatus.INVOICED]: "purple",
   [OsStatus.CANCELLED]: "destructive",
   [OsStatus.REJECTED]: "destructive",
 };

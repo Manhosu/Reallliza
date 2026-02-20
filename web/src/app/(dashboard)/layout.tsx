@@ -155,7 +155,18 @@ const breadcrumbLabels: Record<string, string> = {
   auditoria: "Auditoria",
   notificacoes: "Notificações",
   configuracoes: "Configurações",
+  nova: "Nova",
+  novo: "Novo",
+  editar: "Editar",
 };
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function getBreadcrumbLabel(segment: string): string {
+  if (breadcrumbLabels[segment]) return breadcrumbLabels[segment];
+  if (UUID_REGEX.test(segment)) return "Detalhes";
+  return segment;
+}
 
 // ============================================================
 // Dashboard Layout
@@ -305,7 +316,7 @@ export default function DashboardLayout({
   // Build breadcrumbs
   const segments = pathname.split("/").filter(Boolean);
   const breadcrumbs = segments.map((segment, index) => ({
-    label: breadcrumbLabels[segment] || segment,
+    label: getBreadcrumbLabel(segment),
     href: "/" + segments.slice(0, index + 1).join("/"),
     isLast: index === segments.length - 1,
   }));

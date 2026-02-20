@@ -22,6 +22,7 @@ export enum OsStatus {
   IN_PROGRESS = 'in_progress',
   PAUSED = 'paused',
   COMPLETED = 'completed',
+  INVOICED = 'invoiced',
   CANCELLED = 'cancelled',
   REJECTED = 'rejected',
 }
@@ -314,6 +315,7 @@ export const OS_STATUS_LABELS: Record<OsStatus, string> = {
   [OsStatus.IN_PROGRESS]: 'Em Andamento',
   [OsStatus.PAUSED]: 'Pausada',
   [OsStatus.COMPLETED]: 'Concluida',
+  [OsStatus.INVOICED]: 'Faturada',
   [OsStatus.CANCELLED]: 'Cancelada',
   [OsStatus.REJECTED]: 'Rejeitada',
 };
