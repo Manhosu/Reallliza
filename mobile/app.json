@@ -20,7 +20,9 @@
         "NSPhotoLibraryUsageDescription": "O app precisa acessar a galeria para selecionar fotos.",
         "NSLocationWhenInUseUsageDescription": "O app precisa acessar a localizacao para registrar onde as fotos foram tiradas.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "O app precisa acessar a localizacao em segundo plano para rastrear deslocamentos durante ordens de servico.",
-        "UIBackgroundModes": ["location"]
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
     },
     "android": {
@@ -32,12 +34,13 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "CAMERA",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION"
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -66,6 +69,12 @@
           "photosPermission": "O app precisa acessar a galeria para selecionar fotos."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "87104318-54fe-485b-8e64-e30dc0cd4ac1"
+      }
+    },
+    "owner": "eduardoevanglista"
   }
 }

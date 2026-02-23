@@ -44,7 +44,7 @@ export enum PhotoType {
 
 export enum ToolStatus {
   AVAILABLE = 'available',
-  IN_USE = 'in_use',
+  IN_CUSTODY = 'in_custody',
   MAINTENANCE = 'maintenance',
   RETIRED = 'retired',
 }
@@ -66,6 +66,19 @@ export enum NotificationType {
   SCHEDULE_REMINDER = 'schedule_reminder',
   TOOL_CUSTODY = 'tool_custody',
   SYSTEM = 'system',
+}
+
+export enum FeedAudience {
+  ALL = 'all',
+  EMPLOYEES = 'employees',
+  PARTNERS = 'partners',
+}
+
+export enum ProposalStatus {
+  PENDING = 'pending',
+  ACCEPTED = 'accepted',
+  REJECTED = 'rejected',
+  EXPIRED = 'expired',
 }
 
 export enum ScheduleStatus {
@@ -268,18 +281,48 @@ export interface Schedule {
   id: string;
   service_order_id: string;
   technician_id: string;
-  scheduled_date: string;
-  scheduled_start_time: string | null;
-  scheduled_end_time: string | null;
-  actual_start_time: string | null;
-  actual_end_time: string | null;
+  date: string;
+  start_time: string | null;
+  end_time: string | null;
   status: ScheduleStatus;
   notes: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
   // Joined fields
+  technician?: { id: string; full_name: string; email?: string; phone?: string | null; avatar_url?: string | null };
   service_order?: ServiceOrder;
+}
+
+export interface FeedPost {
+  id: string;
+  title: string;
+  content: string;
+  audience: FeedAudience;
+  is_pinned: boolean;
+  is_published: boolean;
+  media_urls: string[] | null;
+  author_id: string;
+  author?: Profile;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ServiceProposal {
+  id: string;
+  service_order_id: string;
+  partner_id: string;
+  status: ProposalStatus;
+  proposed_value: number | null;
+  message: string | null;
+  response_message: string | null;
+  proposed_by: string;
+  responded_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+  service_order?: { id: string; title: string; client_name: string };
+  partner?: { id: string; company_name: string };
 }
 
 // ============================================================
@@ -311,10 +354,10 @@ export interface ToolWithCustody extends ToolInventory {
 export const OS_STATUS_LABELS: Record<OsStatus, string> = {
   [OsStatus.DRAFT]: 'Rascunho',
   [OsStatus.PENDING]: 'Pendente',
-  [OsStatus.ASSIGNED]: 'Atribuida',
+  [OsStatus.ASSIGNED]: 'Atribuída',
   [OsStatus.IN_PROGRESS]: 'Em Andamento',
   [OsStatus.PAUSED]: 'Pausada',
-  [OsStatus.COMPLETED]: 'Concluida',
+  [OsStatus.COMPLETED]: 'Concluída',
   [OsStatus.INVOICED]: 'Faturada',
   [OsStatus.CANCELLED]: 'Cancelada',
   [OsStatus.REJECTED]: 'Rejeitada',
@@ -322,14 +365,14 @@ export const OS_STATUS_LABELS: Record<OsStatus, string> = {
 
 export const OS_PRIORITY_LABELS: Record<OsPriority, string> = {
   [OsPriority.LOW]: 'Baixa',
-  [OsPriority.MEDIUM]: 'Media',
+  [OsPriority.MEDIUM]: 'Média',
   [OsPriority.HIGH]: 'Alta',
   [OsPriority.URGENT]: 'Urgente',
 };
 
 export const USER_ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.ADMIN]: 'Administrador',
-  [UserRole.TECHNICIAN]: 'Tecnico',
+  [UserRole.TECHNICIAN]: 'Técnico',
   [UserRole.PARTNER]: 'Parceiro',
 };
 
@@ -360,7 +403,7 @@ export const SCHEDULE_STATUS_LABELS: Record<ScheduleStatus, string> = {
   [ScheduleStatus.SCHEDULED]: 'Agendado',
   [ScheduleStatus.CONFIRMED]: 'Confirmado',
   [ScheduleStatus.IN_PROGRESS]: 'Em Andamento',
-  [ScheduleStatus.COMPLETED]: 'Concluido',
+  [ScheduleStatus.COMPLETED]: 'Concluído',
   [ScheduleStatus.CANCELLED]: 'Cancelado',
   [ScheduleStatus.RESCHEDULED]: 'Reagendado',
 };

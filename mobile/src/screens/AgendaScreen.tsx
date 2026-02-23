@@ -53,8 +53,8 @@ export function AgendaScreen() {
       const endDate = format(addDays(weekStart, 6), 'yyyy-MM-dd');
 
       const data = await apiClient.get<Schedule[]>('/schedules/my', {
-        start_date: startDate,
-        end_date: endDate,
+        date_from: startDate,
+        date_to: endDate,
       });
       setSchedules(data);
     } catch (error) {
@@ -79,7 +79,7 @@ export function AgendaScreen() {
 
   const filteredSchedules = schedules.filter(s => {
     try {
-      return isSameDay(new Date(s.scheduled_date), selectedDate);
+      return isSameDay(new Date(s.date), selectedDate);
     } catch {
       return false;
     }
@@ -122,12 +122,12 @@ export function AgendaScreen() {
           <View style={styles.timeRow}>
             <Ionicons name="time-outline" size={16} color={colors.primary} />
             <Text style={styles.timeText}>
-              {item.scheduled_start_time
-                ? item.scheduled_start_time.substring(0, 5)
+              {item.start_time
+                ? item.start_time.substring(0, 5)
                 : '--:--'}
               {' - '}
-              {item.scheduled_end_time
-                ? item.scheduled_end_time.substring(0, 5)
+              {item.end_time
+                ? item.end_time.substring(0, 5)
                 : '--:--'}
             </Text>
           </View>

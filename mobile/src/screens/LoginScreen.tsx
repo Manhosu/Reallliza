@@ -60,7 +60,7 @@ export function LoginScreen() {
         {/* Logo / Brand */}
         <View style={styles.brandSection}>
           <View style={styles.logoContainer}>
-            <Ionicons name="construct" size={48} color={colors.primary} />
+            <Text style={styles.logoLetter}>R</Text>
           </View>
           <Text style={styles.brandName}>Reallliza</Text>
           <Text style={styles.brandSubtitle}>Revestimentos</Text>
@@ -188,12 +188,16 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 20,
-    backgroundColor: colors.primary + '15',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
-    borderWidth: 2,
-    borderColor: colors.primary + '30',
+  },
+  logoLetter: {
+    fontSize: 48,
+    fontWeight: '900',
+    color: colors.black,
+    letterSpacing: -1,
   },
   brandName: {
     ...typography.h1,

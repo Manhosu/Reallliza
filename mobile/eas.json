@@ -13,6 +13,10 @@
     },
     "preview": {
       "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "credentialsSource": "local"
+      },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://reallliza.vercel.app/api"
       }
