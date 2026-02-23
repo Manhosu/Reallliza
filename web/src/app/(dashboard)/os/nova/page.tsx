@@ -133,11 +133,17 @@ export default function NovaOsPage() {
     notes: "",
   });
 
-  // Load partners and technicians on mount
+  // Load partners and technicians on mount (only for admin/manager)
   useEffect(() => {
     let cancelled = false;
 
     async function loadDropdowns() {
+      // Partners don't need to load these admin-only lists
+      if (isPartner) {
+        setLoadingDropdowns(false);
+        return;
+      }
+
       setLoadingDropdowns(true);
       try {
         const [partnersRes, techniciansRes] = await Promise.all([
@@ -162,7 +168,7 @@ export default function NovaOsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isPartner]);
 
   const updateField = (field: keyof FormData, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));

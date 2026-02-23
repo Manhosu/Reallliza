@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin", "manager"]);
+    checkRole(user, ["admin", "manager", "partner"]);
 
     const body = await request.json();
 
@@ -143,8 +143,22 @@ export async function POST(request: NextRequest) {
 
     const supabase = getAdminClient();
 
+    // If partner is creating, resolve their partner_id automatically
+    if (user.role === "partner" && !body.partner_id) {
+      const { data: partnerData } = await supabase
+        .from("partners")
+        .select("id")
+        .eq("user_id", user.id)
+        .single();
+
+      if (partnerData) {
+        body.partner_id = partnerData.id;
+      }
+    }
+
+    // Partners cannot assign technicians - OS always starts as pending
     // Determine initial status
-    const initialStatus = body.technician_id ? "assigned" : "pending";
+    const initialStatus = (user.role !== "partner" && body.technician_id) ? "assigned" : "pending";
 
     // Build insert data - order_number is auto-generated (SERIAL)
     const insertData: Record<string, unknown> = {
