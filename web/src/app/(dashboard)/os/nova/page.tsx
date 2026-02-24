@@ -97,6 +97,7 @@ interface FormErrors {
 export default function NovaOsPage() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const isInitialized = useAuthStore((s) => s.isInitialized);
   const isPartner = user?.role === UserRole.PARTNER;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -138,6 +139,9 @@ export default function NovaOsPage() {
     let cancelled = false;
 
     async function loadDropdowns() {
+      // Wait for auth store to initialize before deciding
+      if (!isInitialized) return;
+
       // Partners don't need to load these admin-only lists
       if (isPartner) {
         setLoadingDropdowns(false);
@@ -168,7 +172,7 @@ export default function NovaOsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isPartner]);
+  }, [isPartner, isInitialized]);
 
   const updateField = (field: keyof FormData, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
