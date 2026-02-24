@@ -44,3 +44,5 @@ prisma/migrations/**/migration_lock.toml
 *.aab
 *.ipa
 .expo/
+
+.vercel

@@ -134,9 +134,13 @@ export function OsDetailScreen() {
       }
 
       await fetchData();
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error updating status:', error);
-      Alert.alert('Erro', 'Nao foi possivel atualizar o status.');
+      let message = 'Nao foi possivel atualizar o status.';
+      if (error && typeof error === 'object' && 'message' in error) {
+        message = (error as { message: string }).message;
+      }
+      Alert.alert('Erro', message);
     } finally {
       setIsUpdatingStatus(false);
     }

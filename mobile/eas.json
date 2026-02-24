@@ -18,12 +18,12 @@
         "credentialsSource": "local"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://reallliza.vercel.app/api"
+        "EXPO_PUBLIC_API_URL": "https://reallliza-web.vercel.app/api"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://reallliza.vercel.app/api"
+        "EXPO_PUBLIC_API_URL": "https://reallliza-web.vercel.app/api"
       }
     }
   },

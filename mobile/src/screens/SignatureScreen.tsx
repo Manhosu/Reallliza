@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   PanResponder,
   Dimensions,
+  GestureResponderEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,31 +40,43 @@ export function SignatureScreen() {
   const [currentPath, setCurrentPath] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
 
+  // Mutable ref to track current path - avoids stale closure in PanResponder
+  const currentPathRef = useRef<string>('');
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderGrant: (evt: GestureResponderEvent) => {
         const { locationX, locationY } = evt.nativeEvent;
-        setCurrentPath(`M${locationX},${locationY}`);
+        const newPath = `M${locationX.toFixed(1)},${locationY.toFixed(1)}`;
+        currentPathRef.current = newPath;
+        setCurrentPath(newPath);
       },
-      onPanResponderMove: (evt) => {
+      onPanResponderMove: (evt: GestureResponderEvent) => {
         const { locationX, locationY } = evt.nativeEvent;
-        setCurrentPath(prev => `${prev} L${locationX},${locationY}`);
+        const segment = ` L${locationX.toFixed(1)},${locationY.toFixed(1)}`;
+        currentPathRef.current += segment;
+        setCurrentPath(currentPathRef.current);
       },
       onPanResponderRelease: () => {
-        if (currentPath) {
-          setPaths(prev => [...prev, currentPath]);
-          setCurrentPath('');
+        const pathToSave = currentPathRef.current;
+        if (pathToSave) {
+          setPaths(prev => [...prev, pathToSave]);
         }
+        currentPathRef.current = '';
+        setCurrentPath('');
       },
     }),
   ).current;
 
-  const handleClear = () => {
+  const handleClear = useCallback(() => {
     setPaths([]);
     setCurrentPath('');
-  };
+    currentPathRef.current = '';
+  }, []);
 
   const handleSave = async () => {
     if (paths.length === 0) {
@@ -127,36 +140,39 @@ export function SignatureScreen() {
               style={styles.canvasInner}
               {...panResponder.panHandlers}
             >
-              <Svg width={CANVAS_WIDTH} height={CANVAS_HEIGHT}>
-                {paths.map((d, i) => (
-                  <Path
-                    key={i}
-                    d={d}
-                    stroke={colors.text}
-                    strokeWidth={2.5}
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                ))}
-                {currentPath ? (
-                  <Path
-                    d={currentPath}
-                    stroke={colors.text}
-                    strokeWidth={2.5}
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                ) : null}
-              </Svg>
+              {/* pointerEvents="none" prevents SVG from stealing touch events on Android */}
+              <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Svg width={CANVAS_WIDTH} height={CANVAS_HEIGHT}>
+                  {paths.map((d, i) => (
+                    <Path
+                      key={i}
+                      d={d}
+                      stroke="#111"
+                      strokeWidth={2.5}
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  ))}
+                  {currentPath ? (
+                    <Path
+                      d={currentPath}
+                      stroke="#111"
+                      strokeWidth={2.5}
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  ) : null}
+                </Svg>
+              </View>
 
               {/* Signature line */}
-              <View style={styles.signatureLine} />
+              <View style={styles.signatureLine} pointerEvents="none" />
 
               {/* Placeholder text */}
               {!hasSignature && (
-                <View style={styles.placeholderContainer}>
+                <View style={styles.placeholderContainer} pointerEvents="none">
                   <Text style={styles.placeholderText}>
                     Assine aqui
                   </Text>
