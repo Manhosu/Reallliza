@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FileBarChart,
@@ -24,6 +25,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { UserRole } from "@/lib/types";
+import { useAuthStore } from "@/stores/auth-store";
 
 // ============================================================
 // Types
@@ -225,6 +228,16 @@ function ReportCardSkeleton() {
 // ============================================================
 
 export default function RelatoriosPage() {
+  const router = useRouter();
+  const { user } = useAuthStore();
+
+  // Admin-only check
+  useEffect(() => {
+    if (user && user.role !== UserRole.ADMIN) {
+      router.push("/dashboard");
+    }
+  }, [user, router]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [selectedReport, setSelectedReport] = useState<ReportType | null>(null);
   const [dateFrom, setDateFrom] = useState("");
@@ -304,6 +317,10 @@ export default function RelatoriosPage() {
       setDownloadingFormat(null);
     }
   };
+
+  if (user && user.role !== UserRole.ADMIN) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">

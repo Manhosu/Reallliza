@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Plus,
@@ -34,6 +35,7 @@ import {
 } from "@/lib/types";
 import { usersApi, apiClient } from "@/lib/api";
 import { usePaginatedApi } from "@/hooks/use-api";
+import { useAuthStore } from "@/stores/auth-store";
 
 // ============================================================
 // Badge Variant Maps
@@ -108,6 +110,16 @@ function UserTableSkeleton() {
 // ============================================================
 
 export default function UsuariosPage() {
+  const router = useRouter();
+  const { user } = useAuthStore();
+
+  // Admin-only check
+  useEffect(() => {
+    if (user && user.role !== UserRole.ADMIN) {
+      router.push("/dashboard");
+    }
+  }, [user, router]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -260,6 +272,10 @@ export default function UsuariosPage() {
       setIsTogglingStatus(null);
     }
   };
+
+  if (user && user.role !== UserRole.ADMIN) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Plus,
@@ -23,8 +24,9 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
-import { type Partner } from "@/lib/types";
+import { UserRole, type Partner } from "@/lib/types";
 import { partnersApi } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth-store";
 import { usePaginatedApi } from "@/hooks/use-api";
 
 // ============================================================
@@ -90,6 +92,16 @@ function PartnerCardSkeleton() {
 // ============================================================
 
 export default function ParceirosPage() {
+  const router = useRouter();
+  const { user } = useAuthStore();
+
+  // Admin-only check
+  useEffect(() => {
+    if (user && user.role !== UserRole.ADMIN) {
+      router.push("/dashboard");
+    }
+  }, [user, router]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -250,6 +262,10 @@ export default function ParceirosPage() {
       setIsTogglingActive(null);
     }
   };
+
+  if (user && user.role !== UserRole.ADMIN) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">
