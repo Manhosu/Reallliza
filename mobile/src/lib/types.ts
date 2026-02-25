@@ -105,6 +105,7 @@ export interface Profile {
   cpf: string | null;
   rg: string | null;
   address: string | null;
+  operating_region: string | null;
   specialties: string[] | null;
   documents_urls: string[] | null;
   created_at: string;
@@ -156,6 +157,7 @@ export interface ServiceOrder {
   estimated_value: number | null;
   final_value: number | null;
   notes: string | null;
+  tracking_token: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;

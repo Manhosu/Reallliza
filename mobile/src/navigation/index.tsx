@@ -62,7 +62,8 @@ export function RootNavigation({ navigationRef }: RootNavigationProps) {
       setTermsAccepted(status.has_accepted);
     } catch (error) {
       console.error('Error checking consent status:', error);
-      // On error, allow through to avoid blocking the user
+      // On error, allow through but log - consent check is non-blocking
+      // If the API endpoint doesn't exist yet, treat as accepted
       setTermsAccepted(true);
     } finally {
       setIsCheckingTerms(false);

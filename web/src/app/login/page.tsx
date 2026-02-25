@@ -32,12 +32,12 @@ function LoginForm() {
   const validate = () => {
     const newErrors: { email?: string; password?: string } = {};
     if (!email) {
-      newErrors.email = "E-mail e obrigatorio";
+      newErrors.email = "E-mail é obrigatório";
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      newErrors.email = "E-mail invalido";
+      newErrors.email = "E-mail inválido";
     }
     if (!password) {
-      newErrors.password = "Senha e obrigatoria";
+      newErrors.password = "Senha é obrigatória";
     } else if (password.length < 6) {
       newErrors.password = "Senha deve ter pelo menos 6 caracteres";
     }

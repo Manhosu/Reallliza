@@ -42,6 +42,7 @@ export function ToolsScreen() {
       setCustodies(data);
     } catch (error) {
       console.error('Error fetching tool custody:', error);
+      Alert.alert('Erro', 'Não foi possível carregar as ferramentas.');
     }
   }, []);
 

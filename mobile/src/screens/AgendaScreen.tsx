@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
+  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -59,6 +60,7 @@ export function AgendaScreen() {
       setSchedules(data);
     } catch (error) {
       console.error('Error fetching schedules:', error);
+      Alert.alert('Erro', 'Não foi possível carregar a agenda.');
     }
   }, [weekStart]);
 

@@ -73,18 +73,18 @@ export const toolsApi = {
 
   checkin(custodyId: string, data: CheckinToolPayload) {
     return apiClient.post<ToolCustody>(
-      `/tools/custodies/${custodyId}/checkin`,
+      `/tools/custody/${custodyId}/checkin`,
       data
     );
   },
 
   getActiveCustodies() {
-    return apiClient.get<ToolCustody[]>("/tools/custodies/active");
+    return apiClient.get<ToolCustody[]>("/tools/custody/active");
   },
 
   getCustodyHistory(toolId: string) {
     return apiClient.get<ToolCustody[]>(
-      `/tools/${toolId}/custodies`
+      `/tools/${toolId}/history`
     );
   },
 };

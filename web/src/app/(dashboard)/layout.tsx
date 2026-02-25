@@ -526,7 +526,10 @@ export default function DashboardLayout({
                   isCollapsed ? "left-full ml-2" : "left-3 right-3"
                 )}
               >
-                <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-popover-foreground transition-colors hover:bg-accent">
+                <button
+                  onClick={() => router.push("/configuracoes")}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-popover-foreground transition-colors hover:bg-accent"
+                >
                   <User className="h-4 w-4" />
                   Meu Perfil
                 </button>
