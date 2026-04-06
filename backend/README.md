@@ -96,3 +96,130 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+---
+
+## External Integration API
+
+System-to-system endpoints for creating Service Orders from external systems
+(e.g. the Garantias ticketing system). Auth is API-Key, **not** JWT.
+
+### Setup
+
+1. Apply migration `database/migrations/007_external_integration.sql`.
+2. Insert a `profiles` row to act as the `created_by` for integration-created OSs
+   (see the commented seed block in that migration), then set
+   `EXTERNAL_INTEGRATION_USER_ID` in `.env`.
+3. Set `WEB_BASE_URL` and `WEBHOOK_SIGNING_SECRET` (generate with
+   `openssl rand -hex 32`) in `.env`.
+4. Add the external system's origin to `CORS_ORIGIN` if it will call from a browser.
+
+### Generate an API Key
+
+```bash
+npx ts-node src/scripts/create-api-key.ts --name "Garantias" --system "GARANTIAS"
+```
+
+The plaintext key is printed **once** — store it securely. Only the SHA-256 hash
+is persisted in `api_keys.key_hash`.
+
+### Create a Service Order
+
+```bash
+curl -X POST https://<host>/api/external/service-orders \
+  -H "X-API-Key: <key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "external_system": "GARANTIAS",
+    "external_id": "TK-007060",
+    "external_callback_url": "https://garantias.reallliza.com.br/api/webhook/enterprise-callback",
+    "title": "Reinstalação de piso — TK-007060",
+    "client_name": "Maria Silva",
+    "client_phone": "+5511999999999",
+    "address_city": "São Paulo",
+    "address_state": "SP",
+    "geo_lat": -23.5505,
+    "geo_lng": -46.6333,
+    "external_metadata": {
+      "laudo_url": "https://.../laudo.pdf",
+      "produto": "Piso vinílico X",
+      "quantidade": 15,
+      "unidade": "m²"
+    }
+  }'
+```
+
+Responses:
+- `201` → `{ id, order_number, status, tracking_url, created_at }`
+- `401` → missing or invalid `X-API-Key`
+- `403` → `external_system` in payload doesn't match the API key's scope
+- `409` → an OS already exists for `(external_system, external_id)`
+
+### Look up by external ID
+
+```
+GET /api/external/service-orders/by-external/GARANTIAS/TK-007060
+```
+
+### Outbound Webhooks
+
+When an OS originating from an external system changes status, Enterprise POSTs
+to `external_callback_url`:
+
+**Headers**
+```
+Content-Type: application/json
+X-Webhook-Event: service_order.status_changed
+X-Webhook-Signature: sha256=<hmac-sha256(body, WEBHOOK_SIGNING_SECRET)>
+```
+
+**Payload**
+```json
+{
+  "event": "service_order.status_changed",
+  "external_system": "GARANTIAS",
+  "external_id": "TK-007060",
+  "enterprise_order_id": "uuid",
+  "from_status": "in_progress",
+  "to_status": "completed",
+  "timestamp": "2026-04-10T15:30:00Z",
+  "data": {
+    "technician_id": "uuid",
+    "technician_name": "Carlos Instalador",
+    "started_at": "...",
+    "completed_at": "...",
+    "final_value": 1850.00,
+    "photos": [{ "type": "before", "url": "...", "captured_at": "..." }],
+    "checklist_summary": { "completed": true, "items_ok": 12, "items_total": 12 },
+    "tracking_url": "https://.../service-orders/uuid"
+  }
+}
+```
+
+**Events emitted**
+- `service_order.created` — fired right after external creation
+- `service_order.assigned` — when status transitions to `assigned`
+- `service_order.status_changed` — any other transition
+- `service_order.completed` — enriched with photos + checklist + final_value
+- `service_order.cancelled` — enriched with `cancellation_reason`
+
+**Signature verification (Node.js example)**
+```js
+import { createHmac, timingSafeEqual } from 'crypto';
+
+function verify(rawBody, signatureHeader, secret) {
+  const expected = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
+  const a = Buffer.from(expected);
+  const b = Buffer.from(signatureHeader || '');
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+```
+
+**Retries.** Failed deliveries are retried every 5 minutes by a cron worker,
+with exponential backoff (1min → 5min → 15min → 1h → 6h). Max 5 attempts.
+Receivers should respond `2xx` within 10 seconds and be idempotent.
+
+### Swagger
+
+See all external endpoints at `/api/docs` under the **External Integration** tag.
+

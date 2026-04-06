@@ -144,8 +144,39 @@ export interface ServiceOrder {
   notes: string | null;
   metadata: Record<string, unknown> | null;
   version: number;
+  external_system: string | null;
+  external_id: string | null;
+  external_callback_url: string | null;
+  external_metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  key_hash: string;
+  system_identifier: string;
+  is_active: boolean;
+  created_by: string | null;
+  last_used_at: string | null;
+  created_at: string;
+  revoked_at: string | null;
+}
+
+export interface WebhookEvent {
+  id: string;
+  service_order_id: string | null;
+  event_type: string;
+  callback_url: string;
+  payload: Record<string, unknown>;
+  http_status: number | null;
+  response_body: string | null;
+  error_message: string | null;
+  attempt_count: number;
+  next_attempt_at: string | null;
+  delivered_at: string | null;
+  created_at: string;
 }
 
 export interface Checklist {

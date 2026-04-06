@@ -4,6 +4,7 @@ import { authenticateRequest, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { createNotification } from "@/lib/api-helpers/notifications";
+import { dispatchWebhook } from "@/lib/api-helpers/webhook-dispatcher";
 
 /**
  * Valid status transitions state machine.
@@ -48,7 +49,7 @@ export async function PATCH(
     // Get current order
     const { data: order, error: findError } = await supabase
       .from("service_orders")
-      .select("id, status, order_number, title, started_at, technician_id, partner_id")
+      .select("id, status, order_number, title, started_at, technician_id, partner_id, external_callback_url, external_system, external_id")
       .eq("id", id)
       .single();
 
@@ -198,6 +199,23 @@ export async function PATCH(
       } catch {
         // Notification failure should not break the main operation
       }
+    }
+
+    // Disparar webhook para integrações externas (fire-and-forget)
+    if (order.external_callback_url) {
+      dispatchWebhook(id, "service_order.status_changed", {
+        from_status: currentStatus,
+        to_status: newStatus,
+        data: {
+          technician_id: order.technician_id,
+          started_at: order.started_at,
+          completed_at: updatedOrder.completed_at || null,
+          final_value: updatedOrder.final_value || null,
+          tracking_url: `${
+            process.env.NEXT_PUBLIC_APP_URL || "https://reallliza-web.vercel.app"
+          }/service-orders/${id}`,
+        },
+      }).catch((err) => console.error("Webhook dispatch failed:", err));
     }
 
     return jsonResponse(updatedOrder);

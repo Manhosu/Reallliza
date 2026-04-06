@@ -15,6 +15,7 @@ import {
 } from './dto';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { WebhookDispatcherService } from '../external/webhook-dispatcher.service';
 
 /**
  * Defines the allowed status transitions for service orders.
@@ -47,6 +48,7 @@ export class ServiceOrdersService {
     private readonly supabaseService: SupabaseService,
     private readonly auditService: AuditService,
     private readonly notificationsService: NotificationsService,
+    private readonly webhookDispatcher: WebhookDispatcherService,
   ) {}
 
   /**
@@ -390,7 +392,9 @@ export class ServiceOrdersService {
     // Get current order
     const { data: order, error: findError } = await supabase
       .from('service_orders')
-      .select('id, status, order_number, started_at, technician_id, partner_id')
+      .select(
+        'id, status, order_number, started_at, technician_id, partner_id, external_system, external_id, external_callback_url',
+      )
       .eq('id', id)
       .single();
 
@@ -514,6 +518,17 @@ export class ServiceOrdersService {
       } catch {
         // Notification failure should not break the main operation
       }
+    }
+
+    // Fire external webhook if this OS came from an external system
+    if (updatedOrder?.external_callback_url) {
+      this.webhookDispatcher
+        .dispatchStatusChange(updatedOrder, currentStatus, newStatus)
+        .catch((err) => {
+          this.logger.error(
+            `Webhook dispatch failed for order ${id}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
     }
 
     return updatedOrder;

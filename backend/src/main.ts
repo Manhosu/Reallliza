@@ -42,9 +42,17 @@ async function bootstrap() {
     )
     .setVersion('1.0')
     .addBearerAuth()
+    .addApiKey(
+      { type: 'apiKey', name: 'X-API-Key', in: 'header' },
+      'api-key',
+    )
     .addTag('Authentication', 'Auth endpoints for login, register, and profile')
     .addTag('Users', 'User management endpoints (admin only)')
     .addTag('Service Orders', 'Service order CRUD and status management')
+    .addTag(
+      'External Integration',
+      'System-to-system integration endpoints (API Key required)',
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

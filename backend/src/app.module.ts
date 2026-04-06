@@ -18,6 +18,7 @@ import { PhotosModule } from './photos/photos.module';
 import { ReportsModule } from './reports/reports.module';
 import { AuditModule } from './audit/audit.module';
 import { LgpdModule } from './lgpd/lgpd.module';
+import { ExternalModule } from './external/external.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
 @Module({
@@ -55,6 +56,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     PhotosModule,
     ReportsModule,
     LgpdModule,
+    ExternalModule,
   ],
   controllers: [AppController],
   providers: [
