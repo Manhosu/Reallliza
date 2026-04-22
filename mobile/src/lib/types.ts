@@ -159,8 +159,22 @@ export interface ServiceOrder {
   notes: string | null;
   tracking_token: string | null;
   metadata: Record<string, unknown> | null;
+  external_metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Tipo da OS derivado de external_metadata.tipo */
+export type OsTipo = 'PERICIA' | 'INSTALACAO' | 'NORMAL';
+
+/** Helper: detectar tipo da OS a partir de metadata/external_metadata */
+export function getOsTipo(order: ServiceOrder): OsTipo {
+  const meta = order.external_metadata || order.metadata;
+  if (meta?.tipo === 'PERICIA') return 'PERICIA';
+  if (meta?.tipo === 'INSTALACAO') return 'INSTALACAO';
+  // Se título contém "Perícia" também detecta
+  if (order.title?.toLowerCase().includes('perícia') || order.title?.toLowerCase().includes('pericia')) return 'PERICIA';
+  return 'NORMAL';
 }
 
 export interface Checklist {

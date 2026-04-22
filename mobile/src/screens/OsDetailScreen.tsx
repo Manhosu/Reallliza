@@ -26,6 +26,7 @@ import {
   Checklist,
   Photo,
   OS_STATUS_LABELS,
+  getOsTipo,
 } from '../lib/types';
 import { StatusBadge } from '../components/StatusBadge';
 import { PriorityBadge } from '../components/PriorityBadge';
@@ -330,6 +331,36 @@ export function OsDetailScreen() {
           </View>
         </View>
       </View>
+
+      {/* Banner Perícia Técnica */}
+      {order && getOsTipo(order) === 'PERICIA' && (
+        <View style={{
+          backgroundColor: '#EAB30815',
+          borderWidth: 1,
+          borderColor: '#EAB30840',
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 16,
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Ionicons name="clipboard-outline" size={20} color="#EAB308" />
+            <Text style={{ color: '#EAB308', fontWeight: '700', fontSize: 14 }}>
+              Vistoria Técnica de Garantia
+            </Text>
+          </View>
+          <Text style={{ color: '#a1a1aa', fontSize: 12, lineHeight: 18 }}>
+            Preencha o checklist de verificação técnica (temperatura, condições ambientais, patologias) e registre as evidências fotográficas de cada item.
+          </Text>
+          {(order.external_metadata as any)?.descricao_reclamacao && (
+            <View style={{ marginTop: 8, backgroundColor: '#27272a', borderRadius: 8, padding: 10 }}>
+              <Text style={{ color: '#71717a', fontSize: 10, fontWeight: '600', marginBottom: 2 }}>RECLAMAÇÃO DO CLIENTE</Text>
+              <Text style={{ color: '#d4d4d8', fontSize: 12 }}>
+                {(order.external_metadata as any).descricao_reclamacao}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Status Timeline */}
       <View style={styles.timelineCard}>
