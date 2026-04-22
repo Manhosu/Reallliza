@@ -70,10 +70,46 @@ export function ChecklistScreen() {
     }
   }, [serviceOrderId]);
 
+  // Template de perícia para OS tipo PERICIA (7 itens técnicos)
+  const PERICIA_TEMPLATE_ITEMS: ChecklistItem[] = [
+    { id: 'pericia_1', label: 'Temperatura (Mínima/Média/Máxima) — Aferir temperatura do ambiente', checked: false, notes: null, checked_at: null },
+    { id: 'pericia_2', label: 'Condições Ambientais — Exposição solar direta (verificar período)', checked: false, notes: null, checked_at: null },
+    { id: 'pericia_3', label: 'Canoamento (empenamento longitudinal) — Verificar desníveis e espaçamento irregular', checked: false, notes: null, checked_at: null },
+    { id: 'pericia_4', label: 'Clique quebrado — Verificar desalinhamento, folgas, movimento e fissuras', checked: false, notes: null, checked_at: null },
+    { id: 'pericia_5', label: 'Rebarba na extremidade de peça — Toque, visualização, raspe e alinhamento', checked: false, notes: null, checked_at: null },
+    { id: 'pericia_6', label: 'Peças levantando-se (transversal/longitudinal) — Verificar curvatura e espaços abertos', checked: false, notes: null, checked_at: null },
+    { id: 'pericia_7', label: 'Deslocamento de capa protetora de fio decorativo — Verificar alinhamento e folgas', checked: false, notes: null, checked_at: null },
+  ];
+
   useEffect(() => {
     setIsLoading(true);
     fetchChecklists().finally(() => setIsLoading(false));
   }, [fetchChecklists]);
+
+  // Quando não há checklists carregados, verificar se é OS PERICIA e criar template local
+  useEffect(() => {
+    if (!isLoading && checklists.length === 0) {
+      // Buscar metadata da OS para detectar tipo PERICIA
+      apiClient.get<any>(`/service-orders/${serviceOrderId}`)
+        .then((os) => {
+          const meta = os.external_metadata || os.metadata;
+          if (meta?.tipo === 'PERICIA' || os.title?.toLowerCase().includes('perícia')) {
+            setChecklists([{
+              id: `pericia-local-${serviceOrderId}`,
+              service_order_id: serviceOrderId,
+              template_id: null,
+              title: 'Checklist de Vistoria Técnica',
+              items: PERICIA_TEMPLATE_ITEMS,
+              completed_at: null,
+              completed_by: null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }]);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isLoading, checklists.length, serviceOrderId]);
 
   const toggleItem = (checklistId: string, itemId: string) => {
     setChecklists(prev =>
