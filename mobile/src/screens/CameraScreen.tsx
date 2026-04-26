@@ -106,18 +106,22 @@ export function CameraScreen() {
 
       if (!result.canceled && result.assets[0]) {
         setCapturedUri(result.assets[0].uri);
-        setShowModal(true);
 
-        // Update location on capture
+        // Capturar localização ANTES de abrir o modal, para garantir
+        // que o usuário não envie a foto sem coordenadas.
         try {
-          const loc = await Location.getCurrentPositionAsync({});
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
           setLocation({
             latitude: loc.coords.latitude,
             longitude: loc.coords.longitude,
           });
-        } catch {
-          // Location might not be available
+        } catch (err) {
+          console.warn('Location capture failed:', err);
         }
+
+        setShowModal(true);
       }
     } catch (error) {
       console.error('Error taking photo:', error);
