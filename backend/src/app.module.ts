@@ -19,6 +19,9 @@ import { ReportsModule } from './reports/reports.module';
 import { AuditModule } from './audit/audit.module';
 import { LgpdModule } from './lgpd/lgpd.module';
 import { ExternalModule } from './external/external.module';
+import { MessagesModule } from './messages/messages.module';
+import { LearningModule } from './learning/learning.module';
+import { ProfileModule } from './profile/profile.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
 @Module({
@@ -57,6 +60,9 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     ReportsModule,
     LgpdModule,
     ExternalModule,
+    MessagesModule,
+    LearningModule,
+    ProfileModule,
   ],
   controllers: [AppController],
   providers: [

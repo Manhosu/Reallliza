@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../stores/auth-store';
 import { apiClient } from '../lib/api';
 import { USER_ROLE_LABELS } from '../lib/types';
+import { PerformanceCard } from '../components/PerformanceCard';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -123,6 +124,9 @@ export function ProfileScreen() {
           </View>
         )}
       </View>
+
+      {/* Desempenho */}
+      <PerformanceCard />
 
       {/* Info Section */}
       <View style={styles.section}>

@@ -19,6 +19,10 @@ import {
 import { ApiKeyGuard } from '../common/guards/api-key.guard';
 import { ExternalService } from './external.service';
 import { CreateExternalOsDto } from './dto';
+import { MessagesService } from '../messages/messages.service';
+import { IngestExternalMessageDto } from '../messages/dto';
+import { SyncService } from './sync.service';
+import { SyncFeedPostDto, SyncLearningContentDto, SyncRatingDto } from './sync-feed.dto';
 
 interface ApiKeyRequest extends Request {
   apiKeySystem?: string;
@@ -34,7 +38,11 @@ interface ApiKeyRequest extends Request {
   description: 'API Key for the external system (e.g. GARANTIAS)',
 })
 export class ExternalController {
-  constructor(private readonly externalService: ExternalService) {}
+  constructor(
+    private readonly externalService: ExternalService,
+    private readonly messagesService: MessagesService,
+    private readonly syncService: SyncService,
+  ) {}
 
   @Post('service-orders')
   @HttpCode(201)
@@ -70,5 +78,47 @@ export class ExternalController {
     @Param('externalId') externalId: string,
   ) {
     return this.externalService.findByExternalId(externalSystem, externalId);
+  }
+
+  @Post('messages')
+  @HttpCode(201)
+  @ApiOperation({
+    summary:
+      'Recebe mensagem de chat enviada pelo Garantias (operador → técnico)',
+  })
+  @ApiResponse({ status: 201, description: 'Mensagem replicada' })
+  @ApiResponse({ status: 404, description: 'Service order not found' })
+  async ingestMessage(@Body() dto: IngestExternalMessageDto) {
+    return this.messagesService.ingestExternalMessage(dto);
+  }
+
+  @Post('feed-posts')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Sincroniza posts do Feed gerenciados pelo Garantias',
+  })
+  @ApiResponse({ status: 200, description: 'Post sincronizado' })
+  async syncFeedPost(@Body() dto: SyncFeedPostDto) {
+    return this.syncService.upsertFeedPost(dto, null);
+  }
+
+  @Post('learning-content')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Sincroniza conteúdo de Aprendizado gerenciado pelo Garantias',
+  })
+  @ApiResponse({ status: 200, description: 'Conteúdo sincronizado' })
+  async syncLearning(@Body() dto: SyncLearningContentDto) {
+    return this.syncService.upsertLearningContent(dto);
+  }
+
+  @Post('ratings')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Recebe avaliação do cliente vinda do Garantias',
+  })
+  @ApiResponse({ status: 200, description: 'Avaliação registrada' })
+  async syncRating(@Body() dto: SyncRatingDto) {
+    return this.syncService.upsertRating(dto);
   }
 }

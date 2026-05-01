@@ -17,6 +17,7 @@ import { ptBR } from 'date-fns/locale';
 import { apiClient } from '../lib/api';
 import { PaginatedResponse } from '../lib/types';
 import { EmptyState } from '../components/EmptyState';
+import { HeaderBellButton } from '../components/HeaderBellButton';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -218,7 +219,8 @@ export function FeedScreen() {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Feed</Text>
+          <Text style={styles.headerTitle}>Início</Text>
+          <HeaderBellButton />
         </View>
 
         {/* Posts List */}
@@ -272,6 +274,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,

@@ -153,9 +153,14 @@ export interface ServiceOrder {
   created_by: string;
   scheduled_date: string | null;
   started_at: string | null;
+  arrived_at: string | null;
+  arrival_geo_lat: number | null;
+  arrival_geo_lng: number | null;
   completed_at: string | null;
   estimated_value: number | null;
   final_value: number | null;
+  metragem_executada: number | null;
+  intercorrencias: string | null;
   notes: string | null;
   tracking_token: string | null;
   metadata: Record<string, unknown> | null;

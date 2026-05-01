@@ -1,20 +1,24 @@
 import React from 'react';
-import { StyleSheet, Platform } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OsStack } from './os-stack';
+import { ToolsStack } from './tools-stack';
 import { FeedScreen } from '../screens/FeedScreen';
+import { LearningScreen } from '../screens/LearningScreen';
 import { AgendaScreen } from '../screens/AgendaScreen';
-import { ToolsScreen } from '../screens/ToolsScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { ProposalsScreen } from '../screens/ProposalsScreen';
 import { useAuthStore } from '../stores/auth-store';
+import { HeaderBellButton } from '../components/HeaderBellButton';
 import { colors } from '../theme/colors';
 
 export type MainTabsParamList = {
   FeedTab: undefined;
   OSTab: undefined;
+  LearningTab: undefined;
   AgendaTab: undefined;
   NotificationsTab: undefined;
   ProposalsTab: undefined;
@@ -27,11 +31,21 @@ const Tab = createBottomTabNavigator<MainTabsParamList>();
 export function MainTabs() {
   const profile = useAuthStore(state => state.profile);
   const isPartner = profile?.role === 'partner';
+  const insets = useSafeAreaInsets();
+
+  // Bottom safe-area: garante espaço para botões de navegação do Android (3-button nav)
+  // e home indicator do iOS. Mínimo de 12px para casos onde o inset é 0.
+  const bottomPadding = Math.max(insets.bottom, 12);
+  const tabBarStyle = {
+    ...styles.tabBar,
+    paddingBottom: bottomPadding,
+    height: 56 + bottomPadding,
+  };
 
   return (
     <Tab.Navigator
       screenOptions={{
-        tabBarStyle: styles.tabBar,
+        tabBarStyle,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textDark,
         tabBarLabelStyle: styles.tabLabel,
@@ -43,6 +57,7 @@ export function MainTabs() {
           fontWeight: '600',
         },
         headerShadowVisible: false,
+        headerRight: () => <HeaderBellButton />,
       }}
     >
       <Tab.Screen
@@ -50,9 +65,9 @@ export function MainTabs() {
         component={FeedScreen}
         options={{
           headerShown: false,
-          title: 'Feed',
+          title: 'Início',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="newspaper-outline" size={size} color={color} />
+            <Ionicons name="home-outline" size={size} color={color} />
           ),
         }}
       />
@@ -61,12 +76,30 @@ export function MainTabs() {
         component={OsStack}
         options={{
           headerShown: false,
-          title: 'OS',
+          title: 'Serviços',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="clipboard-outline" size={size} color={color} />
           ),
         }}
       />
+      {!isPartner && (
+        <Tab.Screen
+          name="LearningTab"
+          component={LearningScreen}
+          options={{
+            title: 'Aprendizado',
+            tabBarLabel: 'Cursos',
+            headerTitleStyle: {
+              fontWeight: '700',
+              fontSize: 20,
+              color: colors.primary,
+            },
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="school-outline" size={size} color={color} />
+            ),
+          }}
+        />
+      )}
       {isPartner ? (
         <Tab.Screen
           name="ProposalsTab"
@@ -96,15 +129,27 @@ export function MainTabs() {
           }}
         />
       )}
+      {!isPartner && (
+        <Tab.Screen
+          name="ToolsTab"
+          component={ToolsStack}
+          options={{
+            headerShown: false,
+            title: 'Ferramentas',
+            tabBarLabel: 'Custódia',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="hammer-outline" size={size} color={color} />
+            ),
+          }}
+        />
+      )}
       <Tab.Screen
         name="NotificationsTab"
         component={NotificationsScreen}
         options={{
           headerShown: false,
-          title: 'Avisos',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="notifications-outline" size={size} color={color} />
-          ),
+          title: 'Notificações',
+          tabBarButton: () => null,
         }}
       />
       <Tab.Screen
@@ -131,12 +176,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderTopColor: colors.border,
     borderTopWidth: 1,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 8,
-    paddingTop: 8,
-    height: Platform.OS === 'ios' ? 88 : 64,
+    paddingTop: 6,
   },
   tabLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
   },
 });

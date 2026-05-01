@@ -28,6 +28,7 @@ import {
   CreateServiceOrderDto,
   UpdateServiceOrderDto,
   ChangeStatusDto,
+  MarkArrivedDto,
 } from './dto';
 
 @ApiTags('Service Orders')
@@ -126,6 +127,32 @@ export class ServiceOrdersController {
       userId,
       changeStatusDto.notes,
       changeStatusDto.version,
+    );
+  }
+
+  @Patch(':id/arrived')
+  @Roles(UserRole.ADMIN, UserRole.TECHNICIAN)
+  @ApiOperation({
+    summary: 'Marca chegada do técnico no local (Cheguei no Local)',
+  })
+  @ApiParam({ name: 'id', description: 'Service order UUID' })
+  @ApiResponse({ status: 200, description: 'Chegada registrada' })
+  @ApiResponse({
+    status: 400,
+    description: 'OS não está em deslocamento',
+  })
+  @ApiResponse({ status: 404, description: 'Service order not found' })
+  async markArrived(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: MarkArrivedDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.serviceOrdersService.markArrived(
+      id,
+      userId,
+      dto.lat,
+      dto.lng,
+      dto.notes,
     );
   }
 

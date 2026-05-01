@@ -16,6 +16,7 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WebhookDispatcherService } from '../external/webhook-dispatcher.service';
+import { StepsService } from './steps/steps.service';
 
 /**
  * Defines the allowed status transitions for service orders.
@@ -49,6 +50,7 @@ export class ServiceOrdersService {
     private readonly auditService: AuditService,
     private readonly notificationsService: NotificationsService,
     private readonly webhookDispatcher: WebhookDispatcherService,
+    private readonly stepsService: StepsService,
   ) {}
 
   /**
@@ -412,6 +414,16 @@ export class ServiceOrdersService {
       );
     }
 
+    // Bloqueia conclusão se etapas obrigatórias não foram todas completadas
+    if (newStatus === OsStatus.COMPLETED) {
+      const allDone = await this.stepsService.areAllStepsCompleted(id);
+      if (!allDone) {
+        throw new BadRequestException(
+          'Conclua todas as etapas obrigatórias da execução antes de finalizar a OS.',
+        );
+      }
+    }
+
     // Build the update object
     const updateData: Record<string, unknown> = {
       status: newStatus,
@@ -532,6 +544,81 @@ export class ServiceOrdersService {
     }
 
     return updatedOrder;
+  }
+
+  /**
+   * Registra a chegada do técnico no local da OS (manual seção 5).
+   * Não altera o enum de status — apenas grava `arrived_at` e geolocalização.
+   * Idempotente: se já estiver marcado, retorna o registro existente sem erro.
+   */
+  async markArrived(
+    id: string,
+    userId: string,
+    lat?: number,
+    lng?: number,
+    notes?: string,
+  ) {
+    const supabase = this.supabaseService.getClient();
+
+    const { data: order, error: findError } = await supabase
+      .from('service_orders')
+      .select('id, status, order_number, technician_id, arrived_at')
+      .eq('id', id)
+      .single();
+
+    if (findError || !order) {
+      throw new NotFoundException(`Service order with ID ${id} not found`);
+    }
+
+    if (order.status !== OsStatus.IN_PROGRESS) {
+      throw new BadRequestException(
+        `Só é possível marcar chegada quando a OS está em deslocamento (status atual: ${order.status})`,
+      );
+    }
+
+    // Idempotência: se já marcou, devolve o estado atual sem regravar
+    if (order.arrived_at) {
+      return order;
+    }
+
+    const arrivedAt = new Date().toISOString();
+    const { data: updated, error } = await supabase
+      .from('service_orders')
+      .update({
+        arrived_at: arrivedAt,
+        arrival_geo_lat: lat ?? null,
+        arrival_geo_lng: lng ?? null,
+        updated_at: arrivedAt,
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      this.logger.error(
+        `Failed to mark arrival for order ${id}: ${error.message}`,
+      );
+      throw new InternalServerErrorException('Falha ao registrar chegada no local');
+    }
+
+    // Histórico para timeline
+    await supabase.from('os_status_history').insert({
+      service_order_id: id,
+      from_status: order.status,
+      to_status: order.status,
+      changed_by: userId,
+      notes: notes ? `Chegou no local — ${notes}` : 'Chegou no local',
+    });
+
+    this.auditService.log({
+      userId,
+      action: 'service_order.arrived',
+      entityType: 'service_order',
+      entityId: id,
+      newData: { arrived_at: arrivedAt, lat, lng },
+    });
+
+    return updated;
   }
 
   /**

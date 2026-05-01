@@ -78,6 +78,45 @@ export class WebhookDispatcherService {
   }
 
   /**
+   * Dispatches a service_order.message_received event when the technician sends
+   * a chat message in the mobile app — the external system (Garantias) gets it
+   * and can mirror to its operator UI.
+   */
+  async dispatchTechnicianMessage(
+    order: WebhookServiceOrder,
+    message: {
+      id: string;
+      sender_user_id: string | null;
+      sender_role: string;
+      sender_name: string;
+      content: string;
+      attachment_url?: string | null;
+      attachment_type?: string | null;
+      created_at: string;
+    },
+  ): Promise<void> {
+    if (!order.external_callback_url) return;
+
+    const payload: WebhookPayload = {
+      event: 'service_order.message_received',
+      external_system: order.external_system,
+      external_id: order.external_id,
+      enterprise_order_id: order.id,
+      from_status: null,
+      to_status: order.status,
+      timestamp: new Date().toISOString(),
+      data: { message },
+    };
+
+    await this.saveAndDeliver(
+      order.id,
+      'service_order.message_received',
+      order.external_callback_url,
+      payload,
+    );
+  }
+
+  /**
    * Dispatches a service_order.created event (used right after external creation).
    */
   async dispatchCreated(order: WebhookServiceOrder): Promise<void> {

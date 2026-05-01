@@ -65,7 +65,7 @@ export function LoginScreen() {
           <Text style={styles.brandName}>Reallliza</Text>
           <Text style={styles.brandSubtitle}>Revestimentos</Text>
           <Text style={styles.brandDescription}>
-            Area do Tecnico
+            Área do Profissional
           </Text>
         </View>
 

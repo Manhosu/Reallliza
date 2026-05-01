@@ -88,7 +88,7 @@ export function TermsScreen({ onAccepted }: TermsScreenProps) {
           <Text style={styles.termsSectionTitle}>1. Uso do Aplicativo</Text>
           <Text style={styles.termsText}>
             Este aplicativo e destinado exclusivamente para uso profissional por
-            tecnicos e parceiros da Reallliza Revestimentos. O usuario se compromete
+            tecnicos, peritos e parceiros da Reallliza Revestimentos. O usuario se compromete
             a utilizar o aplicativo de forma responsavel e de acordo com as
             diretrizes da empresa.
           </Text>

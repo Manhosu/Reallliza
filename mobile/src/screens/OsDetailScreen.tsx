@@ -25,7 +25,6 @@ import {
   OsStatus,
   Checklist,
   Photo,
-  OS_STATUS_LABELS,
   getOsTipo,
 } from '../lib/types';
 import { StatusBadge } from '../components/StatusBadge';
@@ -37,10 +36,41 @@ import type { OsStackParamList } from '../navigation/os-stack';
 type DetailRoute = RouteProp<OsStackParamList, 'OsDetail'>;
 type NavigationProp = NativeStackNavigationProp<OsStackParamList>;
 
-const STATUS_STEPS: OsStatus[] = [
-  OsStatus.ASSIGNED,
-  OsStatus.IN_PROGRESS,
-  OsStatus.COMPLETED,
+type TimelineStep = {
+  key: string;
+  label: string;
+  isReached: (order: ServiceOrder) => boolean;
+};
+
+const TIMELINE_STEPS: TimelineStep[] = [
+  {
+    key: 'assigned',
+    label: 'Atribuída',
+    isReached: (o) =>
+      o.status === OsStatus.ASSIGNED ||
+      o.status === OsStatus.IN_PROGRESS ||
+      o.status === OsStatus.PAUSED ||
+      o.status === OsStatus.COMPLETED,
+  },
+  {
+    key: 'in_transit',
+    label: 'Deslocamento',
+    isReached: (o) =>
+      (o.status === OsStatus.IN_PROGRESS && !o.arrived_at) ||
+      o.status === OsStatus.PAUSED ||
+      !!o.arrived_at ||
+      o.status === OsStatus.COMPLETED,
+  },
+  {
+    key: 'arrived',
+    label: 'No Local',
+    isReached: (o) => !!o.arrived_at || o.status === OsStatus.COMPLETED,
+  },
+  {
+    key: 'completed',
+    label: 'Concluída',
+    isReached: (o) => o.status === OsStatus.COMPLETED,
+  },
 ];
 
 export function OsDetailScreen() {
@@ -145,6 +175,50 @@ export function OsDetailScreen() {
     } finally {
       setIsUpdatingStatus(false);
     }
+  };
+
+  const handleArrived = async () => {
+    Alert.alert(
+      'Cheguei no Local',
+      'Deseja registrar sua chegada no local da OS?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Confirmar',
+          onPress: async () => {
+            try {
+              setIsUpdatingStatus(true);
+              let lat: number | undefined;
+              let lng: number | undefined;
+              try {
+                const Location = await import('expo-location');
+                const { status } = await Location.getForegroundPermissionsAsync();
+                if (status === 'granted') {
+                  const pos = await Location.getCurrentPositionAsync({
+                    accuracy: Location.Accuracy.Balanced,
+                  });
+                  lat = pos.coords.latitude;
+                  lng = pos.coords.longitude;
+                }
+              } catch {
+                // GPS opcional — segue sem coordenadas
+              }
+              await apiClient.patch(`/service-orders/${id}/arrived`, { lat, lng });
+              await fetchData();
+            } catch (error: unknown) {
+              console.error('Error marking arrival:', error);
+              const message =
+                error && typeof error === 'object' && 'message' in error
+                  ? (error as { message: string }).message
+                  : 'Não foi possível registrar a chegada.';
+              Alert.alert('Erro', message);
+            } finally {
+              setIsUpdatingStatus(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleStatusAction = (newStatus: OsStatus, label: string) => {
@@ -368,14 +442,14 @@ export function OsDetailScreen() {
         <StatusBadge status={order.status} size="md" />
 
         <View style={styles.timeline}>
-          {STATUS_STEPS.map((step, index) => {
-            const stepIndex = STATUS_STEPS.indexOf(order.status);
-            const currentIndex = STATUS_STEPS.indexOf(step);
-            const isActive = currentIndex <= stepIndex;
-            const isCurrent = step === order.status;
+          {TIMELINE_STEPS.map((step, index) => {
+            const isActive = step.isReached(order);
+            const previousActive =
+              index === 0 || TIMELINE_STEPS[index - 1].isReached(order);
+            const isCurrent = isActive && !TIMELINE_STEPS[index + 1]?.isReached(order);
 
             return (
-              <View key={step} style={styles.timelineStep}>
+              <View key={step.key} style={styles.timelineStep}>
                 <View
                   style={[
                     styles.timelineDot,
@@ -391,11 +465,11 @@ export function OsDetailScreen() {
                     />
                   )}
                 </View>
-                {index < STATUS_STEPS.length - 1 && (
+                {index < TIMELINE_STEPS.length - 1 && (
                   <View
                     style={[
                       styles.timelineLine,
-                      isActive && styles.timelineLineActive,
+                      previousActive && isActive && styles.timelineLineActive,
                     ]}
                   />
                 )}
@@ -405,12 +479,21 @@ export function OsDetailScreen() {
                     isActive && styles.timelineLabelActive,
                   ]}
                 >
-                  {OS_STATUS_LABELS[step]}
+                  {step.label}
                 </Text>
               </View>
             );
           })}
         </View>
+
+        {order.arrived_at && (
+          <View style={styles.arrivedInfo}>
+            <Ionicons name="location" size={14} color={colors.success} />
+            <Text style={styles.arrivedText}>
+              Chegou em {format(new Date(order.arrived_at), "dd/MM HH:mm", { locale: ptBR })}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Action Buttons */}
@@ -435,6 +518,18 @@ export function OsDetailScreen() {
                 <Ionicons name="car-outline" size={20} color={colors.black} />
                 <Text style={styles.actionButtonPrimaryText}>
                   Iniciar Deslocamento
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {order.status === OsStatus.IN_PROGRESS && !order.arrived_at && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.actionButtonInfo]}
+                onPress={handleArrived}
+              >
+                <Ionicons name="location-outline" size={20} color={colors.white} />
+                <Text style={[styles.actionButtonPrimaryText, { color: colors.white }]}>
+                  Cheguei no Local
                 </Text>
               </TouchableOpacity>
             )}
@@ -511,7 +606,48 @@ export function OsDetailScreen() {
         )}
       </View>
 
-      {/* Checklist Section */}
+      {/* Etapas Obrigatórias da Execução */}
+      {(order.status === OsStatus.IN_PROGRESS ||
+        order.status === OsStatus.PAUSED ||
+        order.status === OsStatus.COMPLETED) && (
+        <TouchableOpacity
+          style={[styles.sectionCard, !order.arrived_at && order.status === OsStatus.IN_PROGRESS && styles.sectionCardDisabled]}
+          onPress={() => {
+            if (!order.arrived_at && order.status === OsStatus.IN_PROGRESS) {
+              Alert.alert(
+                'Registre sua chegada',
+                'Antes de iniciar a execução, registre que chegou no local.',
+              );
+              return;
+            }
+            navigation.navigate('Steps', { serviceOrderId: id });
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderLeft}>
+              <Ionicons
+                name="list-outline"
+                size={22}
+                color={colors.primary}
+              />
+              <Text style={styles.sectionTitle}>Etapas da Execução</Text>
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={colors.textDark}
+            />
+          </View>
+          <Text style={styles.noDataText}>
+            {order.arrived_at
+              ? 'Toque para ver as etapas obrigatórias'
+              : 'Registre sua chegada primeiro'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Checklist Section (legado — útil para perícia técnica) */}
       <TouchableOpacity
         style={styles.sectionCard}
         onPress={() =>
@@ -802,6 +938,22 @@ const styles = StyleSheet.create({
   actionButtonSuccess: {
     backgroundColor: colors.success,
   },
+  actionButtonInfo: {
+    backgroundColor: colors.info,
+  },
+  arrivedInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  arrivedText: {
+    ...typography.caption,
+    color: colors.success,
+  },
   actionButtonPrimaryText: {
     ...typography.button,
     color: colors.black,
@@ -820,6 +972,9 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  sectionCardDisabled: {
+    opacity: 0.55,
   },
   sectionHeader: {
     flexDirection: 'row',
