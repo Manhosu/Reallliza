@@ -21,6 +21,7 @@ import {
   ServiceOrder,
   OsStatus,
   PaginatedResponse,
+  getOsTipo,
 } from '../lib/types';
 import { StatusBadge } from '../components/StatusBadge';
 import { PriorityBadge } from '../components/PriorityBadge';
@@ -33,14 +34,21 @@ import type { OsStackParamList } from '../navigation/os-stack';
 
 type NavigationProp = NativeStackNavigationProp<OsStackParamList>;
 
-type FilterStatus = 'all' | OsStatus.PENDING | OsStatus.ASSIGNED | OsStatus.IN_PROGRESS | OsStatus.COMPLETED;
+type FilterStatus =
+  | 'all'
+  | 'pericia'
+  | OsStatus.PENDING
+  | OsStatus.ASSIGNED
+  | OsStatus.IN_PROGRESS
+  | OsStatus.COMPLETED;
 
 const FILTER_OPTIONS: { key: FilterStatus; label: string }[] = [
   { key: 'all', label: 'Todas' },
+  { key: 'pericia', label: 'Perícias' },
   { key: OsStatus.PENDING, label: 'Pendentes' },
-  { key: OsStatus.ASSIGNED, label: 'Atribuidas' },
+  { key: OsStatus.ASSIGNED, label: 'Atribuídas' },
   { key: OsStatus.IN_PROGRESS, label: 'Em Andamento' },
-  { key: OsStatus.COMPLETED, label: 'Concluidas' },
+  { key: OsStatus.COMPLETED, label: 'Concluídas' },
 ];
 
 export function HomeScreen() {
@@ -62,7 +70,9 @@ export function HomeScreen() {
           const filtered =
             filter === 'all'
               ? cachedOrders
-              : cachedOrders.filter(o => o.status === filter);
+              : filter === 'pericia'
+                ? cachedOrders.filter((o) => getOsTipo(o) === 'PERICIA')
+                : cachedOrders.filter((o) => o.status === filter);
           setOrders(filtered);
           setHasMore(false);
           setPage(1);
@@ -76,7 +86,7 @@ export function HomeScreen() {
           order: 'desc',
         };
 
-        if (filter !== 'all') {
+        if (filter !== 'all' && filter !== 'pericia') {
           params.status = filter;
         }
 
@@ -85,14 +95,19 @@ export function HomeScreen() {
           params,
         );
 
+        const list =
+          filter === 'pericia'
+            ? response.data.filter((o) => getOsTipo(o) === 'PERICIA')
+            : response.data;
+
         if (isRefresh || pageNum === 1) {
-          setOrders(response.data);
+          setOrders(list);
           // Cache for offline use (save unfiltered first page)
           if (filter === 'all') {
             await offlineStorage.saveServiceOrders(response.data);
           }
         } else {
-          setOrders(prev => [...prev, ...response.data]);
+          setOrders(prev => [...prev, ...list]);
         }
 
         setHasMore(pageNum < response.meta.total_pages);
@@ -157,12 +172,21 @@ export function HomeScreen() {
     }
   };
 
-  const renderOrder = ({ item }: { item: ServiceOrder }) => (
+  const renderOrder = ({ item }: { item: ServiceOrder }) => {
+    const tipo = getOsTipo(item);
+    const isPericia = tipo === 'PERICIA';
+    return (
     <TouchableOpacity
-      style={styles.orderCard}
+      style={[styles.orderCard, isPericia && styles.orderCardPericia]}
       onPress={() => navigation.navigate('OsDetail', { id: item.id })}
       activeOpacity={0.7}
     >
+      {isPericia && (
+        <View style={styles.periciaBadge}>
+          <Ionicons name="search" size={11} color={colors.black} />
+          <Text style={styles.periciaBadgeText}>CHAMADO DE PERÍCIA</Text>
+        </View>
+      )}
       <View style={styles.orderHeader}>
         <Text style={styles.orderNumber}>#{item.order_number}</Text>
         <PriorityBadge priority={item.priority} />
@@ -209,7 +233,8 @@ export function HomeScreen() {
         />
       </View>
     </TouchableOpacity>
-  );
+    );
+  };
 
   const renderFooter = () => {
     if (!isLoadingMore) return null;
@@ -350,6 +375,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: 12,
+  },
+  orderCardPericia: {
+    borderColor: colors.primary,
+    borderWidth: 1.5,
+    backgroundColor: colors.primary + '08',
+  },
+  periciaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginBottom: 8,
+  },
+  periciaBadgeText: {
+    ...typography.tiny,
+    color: colors.black,
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
   orderHeader: {
     flexDirection: 'row',

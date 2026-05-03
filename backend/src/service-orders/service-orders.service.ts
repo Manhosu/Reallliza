@@ -497,12 +497,42 @@ export class ServiceOrdersService {
     // Notify technician about status change
     if (order.technician_id) {
       try {
+        // Detecta tipo (PERICIA vs INSTALACAO/GENERIC) via external_metadata
+        const { data: orderFull } = await supabase
+          .from('service_orders')
+          .select('external_metadata, title')
+          .eq('id', id)
+          .single();
+        const tipo =
+          (orderFull?.external_metadata as { tipo?: string } | null)?.tipo ||
+          (orderFull?.title?.toLowerCase().includes('perícia') ||
+          orderFull?.title?.toLowerCase().includes('pericia')
+            ? 'PERICIA'
+            : 'NORMAL');
+        const isPericia = tipo === 'PERICIA';
+
+        let title = `OS #${order.order_number} - Status alterado`;
+        let message = `Status alterado de ${currentStatus} para ${newStatus}`;
+
+        if (newStatus === OsStatus.ASSIGNED && isPericia) {
+          title = `Novo chamado de perícia 🔍`;
+          message = `Você foi designado para a perícia #${order.order_number}. Toque para abrir.`;
+        } else if (newStatus === OsStatus.ASSIGNED) {
+          title = `Nova OS atribuída`;
+          message = `OS #${order.order_number} está pronta para você. Toque para abrir.`;
+        }
+
         await this.notificationsService.create(
           order.technician_id,
-          `OS #${order.order_number} - Status alterado`,
-          `Status alterado de ${currentStatus} para ${newStatus}`,
+          title,
+          message,
           NotificationType.OS_STATUS_CHANGED,
-          { service_order_id: id, from_status: currentStatus, to_status: newStatus },
+          {
+            service_order_id: id,
+            from_status: currentStatus,
+            to_status: newStatus,
+            tipo,
+          },
         );
       } catch {
         // Notification failure should not break the main operation

@@ -14,10 +14,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useNavigation } from '@react-navigation/native';
 import { apiClient } from '../lib/api';
-import { PaginatedResponse } from '../lib/types';
+import { PaginatedResponse, ServiceOrder, getOsTipo } from '../lib/types';
 import { EmptyState } from '../components/EmptyState';
 import { HeaderBellButton } from '../components/HeaderBellButton';
+import { useAuthStore } from '../stores/auth-store';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -69,7 +71,11 @@ const AUDIENCE_COLORS: Record<string, string> = {
 // ============================================================
 
 export function FeedScreen() {
+  const navigation = useNavigation<any>();
+  const profile = useAuthStore((s) => s.profile);
+  const firstName = profile?.full_name?.split(' ')[0] || '';
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [periciasPendentes, setPericiasPendentes] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [page, setPage] = useState(1);
@@ -99,14 +105,34 @@ export function FeedScreen() {
     [],
   );
 
+  const fetchPericiasPendentes = useCallback(async () => {
+    try {
+      const data = await apiClient.get<PaginatedResponse<ServiceOrder>>(
+        '/service-orders/my',
+        { page: 1, limit: 50 },
+      );
+      const pendentes = (data?.data || []).filter(
+        (o) =>
+          getOsTipo(o) === 'PERICIA' &&
+          o.status !== 'completed' &&
+          o.status !== 'cancelled' &&
+          o.status !== 'rejected',
+      );
+      setPericiasPendentes(pendentes.length);
+    } catch {
+      // silencioso
+    }
+  }, []);
+
   useEffect(() => {
     setIsLoading(true);
     fetchPosts(1).finally(() => setIsLoading(false));
-  }, [fetchPosts]);
+    fetchPericiasPendentes();
+  }, [fetchPosts, fetchPericiasPendentes]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await fetchPosts(1, true);
+    await Promise.all([fetchPosts(1, true), fetchPericiasPendentes()]);
     setIsRefreshing(false);
   };
 
@@ -127,83 +153,108 @@ export function FeedScreen() {
     }
   };
 
-  const renderPost = ({ item }: { item: FeedPost }) => (
-    <View style={styles.postCard}>
-      {/* Pinned indicator */}
-      {item.is_pinned && (
-        <View style={styles.pinnedBanner}>
-          <Ionicons name="pin" size={14} color={colors.primary} />
-          <Text style={styles.pinnedText}>Fixado</Text>
-        </View>
-      )}
+  const renderPost = ({ item }: { item: FeedPost }) => {
+    const firstMedia = item.media_urls?.[0];
+    const hasImage = firstMedia && !isVideoUrl(firstMedia);
+    const hasVideo = firstMedia && isVideoUrl(firstMedia);
 
-      {/* Header: author + date */}
-      <View style={styles.postHeader}>
-        <View style={styles.authorInfo}>
-          <View style={styles.authorAvatar}>
-            <Ionicons name="person" size={16} color={colors.textMuted} />
+    return (
+      <View style={styles.postCard}>
+        {/* Pinned indicator */}
+        {item.is_pinned && (
+          <View style={styles.pinnedBanner}>
+            <Ionicons name="pin" size={14} color={colors.primary} />
+            <Text style={styles.pinnedText}>Fixado</Text>
           </View>
-          <View>
-            <Text style={styles.authorName}>
-              {item.author?.full_name ?? 'Autor desconhecido'}
-            </Text>
-            <Text style={styles.postDate}>{formatDate(item.created_at)}</Text>
-          </View>
-        </View>
+        )}
 
-        {/* Audience badge */}
-        <View
-          style={[
-            styles.audienceBadge,
-            { backgroundColor: (AUDIENCE_COLORS[item.audience] || colors.info) + '20' },
-          ]}
-        >
-          <Text
-            style={[
-              styles.audienceBadgeText,
-              { color: AUDIENCE_COLORS[item.audience] || colors.info },
-            ]}
+        {/* Imagem grande dominante (estilo social) */}
+        {hasImage && (
+          <Image
+            source={{ uri: firstMedia }}
+            style={styles.heroImage}
+            resizeMode="cover"
+          />
+        )}
+        {hasVideo && (
+          <TouchableOpacity
+            style={styles.heroVideo}
+            onPress={() => Linking.openURL(firstMedia)}
+            activeOpacity={0.85}
           >
-            {AUDIENCE_LABELS[item.audience] || item.audience}
-          </Text>
-        </View>
-      </View>
+            <Ionicons name="play-circle" size={64} color={colors.white} />
+            <Text style={styles.heroVideoLabel}>Tocar vídeo</Text>
+          </TouchableOpacity>
+        )}
 
-      {/* Title */}
-      <Text style={styles.postTitle}>{item.title}</Text>
+        {/* Header: author + date */}
+        <View style={styles.postBody}>
+          <View style={styles.postHeader}>
+            <View style={styles.authorInfo}>
+              <View style={styles.authorAvatar}>
+                <Ionicons name="person" size={16} color={colors.textMuted} />
+              </View>
+              <View>
+                <Text style={styles.authorName}>
+                  {item.author?.full_name ?? 'Autor desconhecido'}
+                </Text>
+                <Text style={styles.postDate}>{formatDate(item.created_at)}</Text>
+              </View>
+            </View>
 
-      {/* Content */}
-      <Text style={styles.postContent} numberOfLines={6}>
-        {item.content}
-      </Text>
-
-      {/* Media */}
-      {item.media_urls && item.media_urls.length > 0 && (
-        <View style={styles.mediaContainer}>
-          {item.media_urls.map((url, i) =>
-            isVideoUrl(url) ? (
-              <TouchableOpacity
-                key={i}
-                style={styles.videoThumbnail}
-                onPress={() => Linking.openURL(url)}
-                activeOpacity={0.7}
+            <View
+              style={[
+                styles.audienceBadge,
+                {
+                  backgroundColor:
+                    (AUDIENCE_COLORS[item.audience] || colors.info) + '20',
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.audienceBadgeText,
+                  { color: AUDIENCE_COLORS[item.audience] || colors.info },
+                ]}
               >
-                <Ionicons name="play-circle" size={32} color={colors.white} />
-                <Text style={styles.videoLabel}>Video</Text>
-              </TouchableOpacity>
-            ) : (
-              <Image
-                key={i}
-                source={{ uri: url }}
-                style={styles.mediaThumbnail}
-                resizeMode="cover"
-              />
-            ),
+                {AUDIENCE_LABELS[item.audience] || item.audience}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.postTitle}>{item.title}</Text>
+          <Text style={styles.postContent} numberOfLines={6}>
+            {item.content}
+          </Text>
+
+          {/* Mídias adicionais (após a primeira) — thumbnails */}
+          {item.media_urls && item.media_urls.length > 1 && (
+            <View style={styles.mediaContainer}>
+              {item.media_urls.slice(1).map((url, i) =>
+                isVideoUrl(url) ? (
+                  <TouchableOpacity
+                    key={i}
+                    style={styles.videoThumbnail}
+                    onPress={() => Linking.openURL(url)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="play-circle" size={28} color={colors.white} />
+                  </TouchableOpacity>
+                ) : (
+                  <Image
+                    key={i}
+                    source={{ uri: url }}
+                    style={styles.mediaThumbnail}
+                    resizeMode="cover"
+                  />
+                ),
+              )}
+            </View>
           )}
         </View>
-      )}
-    </View>
-  );
+      </View>
+    );
+  };
 
   const renderFooter = () => {
     if (!isLoadingMore) return null;
@@ -217,11 +268,48 @@ export function FeedScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <View style={styles.container}>
-        {/* Header */}
+        {/* Header com saudação personalizada */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Início</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.greeting}>Olá,</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {firstName ? firstName : 'Profissional'}
+            </Text>
+          </View>
           <HeaderBellButton />
         </View>
+
+        {/* Card destaque de chamados de perícia pendentes */}
+        {periciasPendentes > 0 && (
+          <TouchableOpacity
+            style={styles.periciaHighlight}
+            onPress={() =>
+              navigation.navigate('OSTab', {
+                screen: 'Home',
+              })
+            }
+            activeOpacity={0.85}
+          >
+            <View style={styles.periciaIconWrap}>
+              <Ionicons name="search" size={22} color={colors.black} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.periciaTitle}>
+                {periciasPendentes === 1
+                  ? 'Você tem 1 chamado de perícia pendente'
+                  : `Você tem ${periciasPendentes} chamados de perícia pendentes`}
+              </Text>
+              <Text style={styles.periciaSubtitle}>
+                Toque para ver na aba Serviços
+              </Text>
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={colors.black}
+            />
+          </TouchableOpacity>
+        )}
 
         {/* Posts List */}
         {isLoading ? (
@@ -282,9 +370,41 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  greeting: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginBottom: -2,
+  },
   headerTitle: {
     ...typography.h3,
     color: colors.primary,
+  },
+  periciaHighlight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.primary,
+    marginHorizontal: 16,
+    marginTop: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  periciaIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  periciaTitle: {
+    ...typography.bodySmBold,
+    color: colors.black,
+  },
+  periciaSubtitle: {
+    ...typography.tiny,
+    color: 'rgba(0,0,0,0.7)',
   },
   loadingContainer: {
     flex: 1,
@@ -300,18 +420,39 @@ const styles = StyleSheet.create({
   },
   postCard: {
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: 12,
+    overflow: 'hidden',
+  },
+  postBody: {
+    padding: 16,
+  },
+  heroImage: {
+    width: '100%',
+    aspectRatio: 1,
+    backgroundColor: colors.cardAlt,
+  },
+  heroVideo: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  heroVideoLabel: {
+    ...typography.bodySmBold,
+    color: colors.white,
   },
   pinnedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 10,
-    paddingBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: colors.primary + '12',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
