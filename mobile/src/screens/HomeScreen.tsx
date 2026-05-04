@@ -36,7 +36,6 @@ type NavigationProp = NativeStackNavigationProp<OsStackParamList>;
 
 type FilterStatus =
   | 'all'
-  | 'pericia'
   | OsStatus.PENDING
   | OsStatus.ASSIGNED
   | OsStatus.IN_PROGRESS
@@ -44,7 +43,6 @@ type FilterStatus =
 
 const FILTER_OPTIONS: { key: FilterStatus; label: string }[] = [
   { key: 'all', label: 'Todas' },
-  { key: 'pericia', label: 'Perícias' },
   { key: OsStatus.PENDING, label: 'Pendentes' },
   { key: OsStatus.ASSIGNED, label: 'Atribuídas' },
   { key: OsStatus.IN_PROGRESS, label: 'Em Andamento' },
@@ -65,14 +63,14 @@ export function HomeScreen() {
     async (pageNum: number, isRefresh = false) => {
       try {
         if (!isDeviceOnline()) {
-          // Offline: load from local storage
-          const cachedOrders = await offlineStorage.getServiceOrders();
+          // Offline: load from local storage — esconde perícias (têm aba própria)
+          const cachedOrders = await offlineStorage
+            .getServiceOrders()
+            .then((list) => list.filter((o) => getOsTipo(o) !== 'PERICIA'));
           const filtered =
             filter === 'all'
               ? cachedOrders
-              : filter === 'pericia'
-                ? cachedOrders.filter((o) => getOsTipo(o) === 'PERICIA')
-                : cachedOrders.filter((o) => o.status === filter);
+              : cachedOrders.filter((o) => o.status === filter);
           setOrders(filtered);
           setHasMore(false);
           setPage(1);
@@ -86,7 +84,7 @@ export function HomeScreen() {
           order: 'desc',
         };
 
-        if (filter !== 'all' && filter !== 'pericia') {
+        if (filter !== 'all') {
           params.status = filter;
         }
 
@@ -95,19 +93,17 @@ export function HomeScreen() {
           params,
         );
 
-        const list =
-          filter === 'pericia'
-            ? response.data.filter((o) => getOsTipo(o) === 'PERICIA')
-            : response.data;
+        // Esconde perícias da aba "Serviços" (têm aba própria)
+        const list = response.data.filter((o) => getOsTipo(o) !== 'PERICIA');
 
         if (isRefresh || pageNum === 1) {
           setOrders(list);
-          // Cache for offline use (save unfiltered first page)
+          // Cache for offline use (salva o response completo, sem filtro)
           if (filter === 'all') {
             await offlineStorage.saveServiceOrders(response.data);
           }
         } else {
-          setOrders(prev => [...prev, ...list]);
+          setOrders((prev) => [...prev, ...list]);
         }
 
         setHasMore(pageNum < response.meta.total_pages);

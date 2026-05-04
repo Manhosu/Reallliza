@@ -11,6 +11,7 @@ import { AgendaScreen } from '../screens/AgendaScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { ProposalsScreen } from '../screens/ProposalsScreen';
+import { PericiasScreen } from '../screens/PericiasScreen';
 import { useAuthStore } from '../stores/auth-store';
 import { HeaderBellButton } from '../components/HeaderBellButton';
 import { colors } from '../theme/colors';
@@ -18,6 +19,7 @@ import { colors } from '../theme/colors';
 export type MainTabsParamList = {
   FeedTab: undefined;
   OSTab: undefined;
+  PericiasTab: undefined;
   LearningTab: undefined;
   AgendaTab: undefined;
   NotificationsTab: undefined;
@@ -82,6 +84,19 @@ export function MainTabs() {
           ),
         }}
       />
+      {!isPartner && (
+        <Tab.Screen
+          name="PericiasTab"
+          component={PericiasScreen}
+          options={{
+            headerShown: false,
+            title: 'Perícias',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="search-outline" size={size} color={color} />
+            ),
+          }}
+        />
+      )}
       {!isPartner && (
         <Tab.Screen
           name="LearningTab"

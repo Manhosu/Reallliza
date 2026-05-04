@@ -283,11 +283,7 @@ export function FeedScreen() {
         {periciasPendentes > 0 && (
           <TouchableOpacity
             style={styles.periciaHighlight}
-            onPress={() =>
-              navigation.navigate('OSTab', {
-                screen: 'Home',
-              })
-            }
+            onPress={() => navigation.navigate('PericiasTab' as never)}
             activeOpacity={0.85}
           >
             <View style={styles.periciaIconWrap}>
