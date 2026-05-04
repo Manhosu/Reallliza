@@ -164,6 +164,7 @@ export function MainTabs() {
         options={{
           headerShown: false,
           title: 'Notificações',
+          tabBarItemStyle: { display: 'none' },
           tabBarButton: () => null,
         }}
       />
