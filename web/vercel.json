@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/external/webhooks/retry",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

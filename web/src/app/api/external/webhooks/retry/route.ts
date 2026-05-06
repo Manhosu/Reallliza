@@ -6,14 +6,29 @@ import {
 import { jsonResponse } from "@/lib/api-helpers/response";
 import { retryPendingWebhooks } from "@/lib/api-helpers/webhook-dispatcher";
 
+export const maxDuration = 60;
+
 /**
- * POST /api/external/webhooks/retry
  * Retenta webhooks pendentes (delivered_at IS NULL, attempt_count < 5).
- * Autenticação via X-API-Key header.
+ *
+ * Aceita 3 formas de autenticação:
+ *  - X-API-Key header (compatibilidade com chamadas externas autenticadas)
+ *  - Authorization: Bearer ${CRON_SECRET} (Vercel Cron — env var deve existir)
+ *  - Header `x-vercel-cron` presente (cron jobs do Vercel sempre incluem)
  */
-export async function POST(request: NextRequest) {
+async function authorize(request: NextRequest) {
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = request.headers.get("authorization") || "";
+  if (cronSecret && authHeader === `Bearer ${cronSecret}`) return;
+
+  if (request.headers.get("x-vercel-cron")) return;
+
+  await authenticateApiKey(request);
+}
+
+async function handle(request: NextRequest) {
   try {
-    await authenticateApiKey(request);
+    await authorize(request);
 
     const result = await retryPendingWebhooks();
 
@@ -32,3 +47,6 @@ export async function POST(request: NextRequest) {
     return jsonResponse({ message: "Internal server error" }, 500);
   }
 }
+
+export const GET = handle;
+export const POST = handle;
