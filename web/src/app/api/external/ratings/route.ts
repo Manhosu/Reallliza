@@ -89,3 +89,79 @@ export async function POST(request: NextRequest) {
     return jsonResponse({ message: "Internal server error" }, 500);
   }
 }
+
+/**
+ * GET /api/external/ratings?technician_user_id=...&limit=50
+ * Lista avaliações do cliente, opcionalmente filtradas por técnico.
+ * Retorna os comentários, scores, e nome do técnico (join com profiles).
+ * Usado pelo painel /dashboard/avaliacoes do Garantias.
+ */
+export async function GET(request: NextRequest) {
+  try {
+    await authenticateApiKey(request);
+    const url = request.nextUrl;
+    const technicianId = url.searchParams.get("technician_user_id");
+    const limit = Math.min(
+      parseInt(url.searchParams.get("limit") || "50", 10) || 50,
+      200
+    );
+
+    const supabase = getAdminClient();
+
+    let query = supabase
+      .from("customer_ratings")
+      .select(
+        `
+        id,
+        ticket_id,
+        service_order_id,
+        technician_user_id,
+        quality,
+        punctuality,
+        communication,
+        comment,
+        created_at,
+        technician:profiles!customer_ratings_technician_user_id_fkey(id, full_name)
+      `
+      )
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (technicianId) {
+      query = query.eq("technician_user_id", technicianId);
+    }
+
+    const { data: ratings, error } = await query;
+
+    if (error) {
+      console.error(`Failed to list customer_ratings: ${error.message}`);
+      return jsonResponse({ message: "Erro ao listar avaliações" }, 500);
+    }
+
+    // Estatísticas agregadas
+    const list = ratings || [];
+    const summary =
+      list.length > 0
+        ? {
+            count: list.length,
+            avg_quality:
+              list.reduce((s, r) => s + r.quality, 0) / list.length,
+            avg_punctuality:
+              list.reduce((s, r) => s + r.punctuality, 0) / list.length,
+            avg_communication:
+              list.reduce((s, r) => s + r.communication, 0) / list.length,
+          }
+        : { count: 0 };
+
+    return jsonResponse({ ratings: list, summary });
+  } catch (error) {
+    if (error instanceof ApiKeyError) {
+      return jsonResponse({ message: error.message }, error.status);
+    }
+    if (error instanceof Error) {
+      console.error(`Ratings list error: ${error.message}`);
+      return jsonResponse({ message: error.message }, 500);
+    }
+    return jsonResponse({ message: "Internal server error" }, 500);
+  }
+}
