@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       audienceFilters.push("partners");
     }
 
-    let query = supabase
+    const query = supabase
       .from("feed_posts")
       .select(
         `
@@ -53,8 +53,57 @@ export async function GET(request: NextRequest) {
       return jsonResponse({ message: "Failed to fetch feed posts" }, 500);
     }
 
+    const posts = data || [];
+    const postIds = posts.map((p) => p.id);
+
+    // Carregar contadores e estado de like em paralelo
+    let likeCounts = new Map<string, number>();
+    let commentCounts = new Map<string, number>();
+    const likedByMe = new Set<string>();
+
+    if (postIds.length > 0) {
+      const [likesRes, commentsRes, myLikesRes] = await Promise.all([
+        supabase
+          .from("feed_post_likes")
+          .select("post_id")
+          .in("post_id", postIds),
+        supabase
+          .from("feed_post_comments")
+          .select("post_id")
+          .in("post_id", postIds),
+        supabase
+          .from("feed_post_likes")
+          .select("post_id")
+          .eq("user_id", user.id)
+          .in("post_id", postIds),
+      ]);
+
+      if (likesRes.data) {
+        likeCounts = likesRes.data.reduce((m, r) => {
+          m.set(r.post_id, (m.get(r.post_id) || 0) + 1);
+          return m;
+        }, new Map<string, number>());
+      }
+      if (commentsRes.data) {
+        commentCounts = commentsRes.data.reduce((m, r) => {
+          m.set(r.post_id, (m.get(r.post_id) || 0) + 1);
+          return m;
+        }, new Map<string, number>());
+      }
+      if (myLikesRes.data) {
+        myLikesRes.data.forEach((r) => likedByMe.add(r.post_id));
+      }
+    }
+
+    const enriched = posts.map((p) => ({
+      ...p,
+      like_count: likeCounts.get(p.id) || 0,
+      comment_count: commentCounts.get(p.id) || 0,
+      liked_by_me: likedByMe.has(p.id),
+    }));
+
     return jsonResponse({
-      data: data || [],
+      data: enriched,
       meta: {
         total: count || 0,
         page,

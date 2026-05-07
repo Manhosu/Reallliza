@@ -9,13 +9,15 @@ import {
   Image,
   Linking,
   TouchableOpacity,
+  Share,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useNavigation } from '@react-navigation/native';
-import { apiClient } from '../lib/api';
+import { apiClient, ApiError } from '../lib/api';
 import { PaginatedResponse, ServiceOrder, getOsTipo } from '../lib/types';
 import { EmptyState } from '../components/EmptyState';
 import { HeaderBellButton } from '../components/HeaderBellButton';
@@ -45,6 +47,9 @@ interface FeedPost {
   author: FeedAuthor;
   created_at: string;
   updated_at: string;
+  like_count: number;
+  comment_count: number;
+  liked_by_me: boolean;
 }
 
 const AUDIENCE_LABELS: Record<string, string> = {
@@ -153,6 +158,79 @@ export function FeedScreen() {
     }
   };
 
+  const handleToggleLike = async (post: FeedPost) => {
+    // optimistic update
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === post.id
+          ? {
+              ...p,
+              liked_by_me: !p.liked_by_me,
+              like_count: p.like_count + (p.liked_by_me ? -1 : 1),
+            }
+          : p,
+      ),
+    );
+    try {
+      const r = await apiClient.post<{ liked: boolean; like_count: number }>(
+        `/feed/${post.id}/like`,
+      );
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === post.id
+            ? { ...p, liked_by_me: r.liked, like_count: r.like_count }
+            : p,
+        ),
+      );
+    } catch (error) {
+      // rollback
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === post.id
+            ? {
+                ...p,
+                liked_by_me: post.liked_by_me,
+                like_count: post.like_count,
+              }
+            : p,
+        ),
+      );
+      const msg =
+        error instanceof ApiError ? error.message : 'Erro ao curtir';
+      Alert.alert('Ops', msg);
+    }
+  };
+
+  const handleOpenComments = (post: FeedPost) => {
+    navigation.navigate('Comments' as never, {
+      postId: post.id,
+      postTitle: post.title,
+    } as never);
+  };
+
+  const handleShare = async (post: FeedPost) => {
+    try {
+      const lines: string[] = [];
+      lines.push(`📢 ${post.title}`);
+      lines.push('');
+      lines.push(post.content);
+      if (post.author?.full_name) {
+        lines.push('');
+        lines.push(`— ${post.author.full_name}`);
+      }
+      if (post.media_urls && post.media_urls.length > 0) {
+        lines.push('');
+        lines.push(`Mídia: ${post.media_urls[0]}`);
+      }
+      await Share.share({
+        message: lines.join('\n'),
+        title: post.title,
+      });
+    } catch {
+      // user canceled — ignore
+    }
+  };
+
   const renderPost = ({ item }: { item: FeedPost }) => {
     const firstMedia = item.media_urls?.[0];
     const hasImage = firstMedia && !isVideoUrl(firstMedia);
@@ -251,6 +329,75 @@ export function FeedScreen() {
               )}
             </View>
           )}
+
+          {/* Contadores */}
+          {(item.like_count > 0 || item.comment_count > 0) && (
+            <View style={styles.engagementSummary}>
+              {item.like_count > 0 && (
+                <Text style={styles.engagementSummaryText}>
+                  {item.like_count}{' '}
+                  {item.like_count === 1 ? 'curtida' : 'curtidas'}
+                </Text>
+              )}
+              {item.comment_count > 0 && (
+                <Text style={styles.engagementSummaryText}>
+                  {item.comment_count}{' '}
+                  {item.comment_count === 1
+                    ? 'comentário'
+                    : 'comentários'}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* Ações: curtir / comentar / compartilhar */}
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleToggleLike(item)}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={item.liked_by_me ? 'heart' : 'heart-outline'}
+                size={22}
+                color={item.liked_by_me ? colors.danger : colors.text}
+              />
+              <Text
+                style={[
+                  styles.actionLabel,
+                  item.liked_by_me && { color: colors.danger },
+                ]}
+              >
+                Curtir
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleOpenComments(item)}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="chatbubble-outline"
+                size={22}
+                color={colors.text}
+              />
+              <Text style={styles.actionLabel}>Comentar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleShare(item)}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="share-social-outline"
+                size={22}
+                color={colors.text}
+              />
+              <Text style={styles.actionLabel}>Compartilhar</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     );
@@ -530,5 +677,37 @@ const styles = StyleSheet.create({
   loadingMore: {
     paddingVertical: 16,
     alignItems: 'center',
+  },
+  engagementSummary: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  engagementSummaryText: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+  },
+  actionLabel: {
+    ...typography.bodySmBold,
+    color: colors.text,
   },
 });

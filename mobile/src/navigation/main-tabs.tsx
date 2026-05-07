@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OsStack } from './os-stack';
 import { ToolsStack } from './tools-stack';
-import { FeedScreen } from '../screens/FeedScreen';
+import { FeedStack } from './feed-stack';
 import { LearningScreen } from '../screens/LearningScreen';
 import { AgendaScreen } from '../screens/AgendaScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
@@ -64,7 +64,7 @@ export function MainTabs() {
     >
       <Tab.Screen
         name="FeedTab"
-        component={FeedScreen}
+        component={FeedStack}
         options={{
           headerShown: false,
           title: 'Início',
