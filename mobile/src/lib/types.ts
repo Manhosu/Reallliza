@@ -247,6 +247,8 @@ export interface ToolInventory {
   purchase_value: number | null;
   notes: string | null;
   image_url: string | null;
+  photo_url?: string | null;
+  quantity_available?: number;
   created_at: string;
   updated_at: string;
 }

@@ -83,12 +83,14 @@ export async function PUT(
     }
 
     // Map DTO fields to DB column names
-    const { image_url, purchase_value, ...rest } = body;
+    const { image_url, photo_url, purchase_value, ...rest } = body;
     const updateData: Record<string, unknown> = {
       ...rest,
       updated_at: new Date().toISOString(),
     };
-    if (image_url !== undefined) updateData.photo_url = image_url;
+    if (purchase_value !== undefined) updateData.purchase_value = purchase_value;
+    const finalPhoto = photo_url !== undefined ? photo_url : image_url;
+    if (finalPhoto !== undefined) updateData.photo_url = finalPhoto;
 
     const { data: tool, error } = await supabase
       .from("tool_inventory")

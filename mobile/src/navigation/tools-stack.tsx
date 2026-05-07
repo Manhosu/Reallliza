@@ -39,7 +39,7 @@ export function ToolsStack() {
         name="ToolRequest"
         component={ToolRequestScreen}
         options={{
-          title: 'Nova Solicitação',
+          title: 'Catalogo de Ferramentas',
         }}
       />
     </Stack.Navigator>

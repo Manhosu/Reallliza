@@ -1,4 +1,4 @@
-import { apiClient } from "./client";
+import { apiClient, getAccessToken, BASE_URL, ApiError } from "./client";
 import type {
   ToolInventory,
   ToolCustody,
@@ -86,5 +86,40 @@ export const toolsApi = {
     return apiClient.get<ToolCustody[]>(
       `/tools/${toolId}/history`
     );
+  },
+
+  /** Faz upload de uma foto da ferramenta usando o endpoint /api/feed/upload (bucket photos) */
+  async uploadPhoto(file: File): Promise<string> {
+    const token = await getAccessToken();
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${BASE_URL}/feed/upload`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    let data: unknown;
+    try {
+      data = await res.json();
+    } catch {
+      if (!res.ok) throw new ApiError(res.status, res.statusText);
+      throw new ApiError(res.status, "Upload retornou resposta invalida");
+    }
+
+    if (!res.ok) {
+      const errorBody = data as Record<string, unknown> | undefined;
+      const message =
+        (errorBody?.message as string) ||
+        (errorBody?.error as string) ||
+        res.statusText;
+      throw new ApiError(res.status, message, errorBody);
+    }
+
+    return (data as { url: string }).url;
   },
 };

@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
     const category = searchParams.get("category");
     const search = searchParams.get("search");
+    const available = searchParams.get("available");
 
     const offset = (page - 1) * limit;
     const supabase = getAdminClient();
@@ -39,6 +40,10 @@ export async function GET(request: NextRequest) {
       query = query.or(
         `name.ilike.%${search}%,description.ilike.%${search}%,serial_number.ilike.%${search}%`
       );
+    }
+
+    if (available === "true") {
+      query = query.gt("quantity_available", 0);
     }
 
     query = query
@@ -80,9 +85,12 @@ export async function POST(request: NextRequest) {
     const supabase = getAdminClient();
 
     // Map DTO fields to DB column names
-    const { image_url, purchase_value, ...rest } = body;
+    const { image_url, photo_url, purchase_value, ...rest } = body;
     const insertData: Record<string, unknown> = { ...rest };
-    if (image_url) insertData.photo_url = image_url;
+    if (purchase_value !== undefined) insertData.purchase_value = purchase_value;
+    // Aceita tanto image_url (legacy DTO) quanto photo_url
+    const finalPhoto = photo_url ?? image_url;
+    if (finalPhoto) insertData.photo_url = finalPhoto;
 
     const { data: tool, error } = await supabase
       .from("tool_inventory")

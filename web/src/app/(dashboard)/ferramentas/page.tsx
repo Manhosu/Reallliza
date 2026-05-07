@@ -186,6 +186,7 @@ export default function FerramentasPage() {
   // Create modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [createForm, setCreateForm] = useState({
     name: "",
     description: "",
@@ -195,6 +196,8 @@ export default function FerramentasPage() {
     purchase_value: "",
     purchase_date: "",
     notes: "",
+    photo_url: "",
+    quantity_available: "1",
   });
 
   // Debounce search input
@@ -270,6 +273,7 @@ export default function FerramentasPage() {
 
     setIsCreating(true);
     try {
+      const qty = parseInt(createForm.quantity_available || "1", 10);
       await toolsApi.create({
         name: createForm.name,
         description: createForm.description || null,
@@ -279,16 +283,36 @@ export default function FerramentasPage() {
         purchase_value: createForm.purchase_value ? parseFloat(createForm.purchase_value) : null,
         purchase_date: createForm.purchase_date || null,
         notes: createForm.notes || null,
-        image_url: null,
-      });
+        image_url: createForm.photo_url || null,
+        photo_url: createForm.photo_url || null,
+        quantity_available: Number.isFinite(qty) && qty >= 0 ? qty : 1,
+      } as any);
       toast.success("Ferramenta criada com sucesso!");
       setShowCreateModal(false);
-      setCreateForm({ name: "", description: "", serial_number: "", category: "", condition: ToolCondition.GOOD, purchase_value: "", purchase_date: "", notes: "" });
+      setCreateForm({ name: "", description: "", serial_number: "", category: "", condition: ToolCondition.GOOD, purchase_value: "", purchase_date: "", notes: "", photo_url: "", quantity_available: "1" });
       mutateTools();
     } catch (err: any) {
       toast.error(err?.message || "Erro ao criar ferramenta");
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleUploadPhoto = async (file: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecione uma imagem (JPEG, PNG, WebP).");
+      return;
+    }
+    setIsUploadingPhoto(true);
+    try {
+      const url = await toolsApi.uploadPhoto(file);
+      setCreateForm((f) => ({ ...f, photo_url: url }));
+      toast.success("Foto enviada");
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao enviar foto");
+    } finally {
+      setIsUploadingPhoto(false);
     }
   };
 
@@ -475,17 +499,37 @@ export default function FerramentasPage() {
                       />
                       <CardContent className="p-5">
                         <div className="space-y-3">
-                          {/* Name & Status */}
-                          <div className="flex items-start justify-between gap-2">
+                          {/* Photo + Name + Status */}
+                          <div className="flex items-start gap-3">
+                            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-border bg-secondary/40 flex items-center justify-center">
+                              {(tool.photo_url || tool.image_url) ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={(tool.photo_url || tool.image_url) as string}
+                                  alt={tool.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <Wrench className="h-6 w-6 text-muted-foreground" />
+                              )}
+                            </div>
                             <div className="min-w-0 flex-1">
-                              <h3 className="truncate text-sm font-semibold">
-                                {tool.name}
-                              </h3>
+                              <div className="flex items-start justify-between gap-2">
+                                <h3 className="truncate text-sm font-semibold">
+                                  {tool.name}
+                                </h3>
+                                <StatusBadge status={tool.status} />
+                              </div>
                               <p className="mt-0.5 text-xs text-muted-foreground">
-                                {tool.serial_number}
+                                {tool.serial_number || "Sem serial"}
+                              </p>
+                              <p className="mt-1 text-xs">
+                                <span className="text-muted-foreground">Disponivel: </span>
+                                <span className="font-semibold text-primary">
+                                  {tool.quantity_available ?? 1}
+                                </span>
                               </p>
                             </div>
-                            <StatusBadge status={tool.status} />
                           </div>
 
                           {/* Category & Condition */}
@@ -500,7 +544,7 @@ export default function FerramentasPage() {
 
                           {/* Description if present */}
                           {tool.description && (
-                            <p className="line-clamp-1 text-xs text-muted-foreground">
+                            <p className="line-clamp-2 text-xs text-muted-foreground">
                               {tool.description}
                             </p>
                           )}
@@ -728,17 +772,75 @@ export default function FerramentasPage() {
           <div className="relative z-10 w-full max-w-lg rounded-xl bg-card border p-6 shadow-xl mx-4 max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-semibold mb-4">Nova Ferramenta</h2>
             <div className="space-y-4">
+              {/* Foto */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium leading-none text-foreground/80">
+                  Foto
+                </label>
+                <div className="flex items-center gap-3">
+                  <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-border bg-secondary/40 flex items-center justify-center">
+                    {createForm.photo_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={createForm.photo_url}
+                        alt="Preview"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <Wrench className="h-6 w-6 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleUploadPhoto(f);
+                      }}
+                      className="block w-full text-xs file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
+                      disabled={isUploadingPhoto}
+                    />
+                    {isUploadingPhoto && (
+                      <p className="text-xs text-muted-foreground">Enviando...</p>
+                    )}
+                    {createForm.photo_url && !isUploadingPhoto && (
+                      <button
+                        type="button"
+                        onClick={() => setCreateForm({ ...createForm, photo_url: "" })}
+                        className="text-xs text-destructive hover:underline"
+                      >
+                        Remover foto
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <Input
                 label="Nome *"
                 placeholder="Nome da ferramenta"
                 value={createForm.name}
                 onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
               />
+              <div className="w-full space-y-2">
+                <label className="text-sm font-medium leading-none text-foreground/80">Descricao</label>
+                <textarea
+                  placeholder="Descricao da ferramenta (visivel para tecnicos no catalogo)"
+                  value={createForm.description}
+                  onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
+                  rows={2}
+                  className="flex w-full rounded-xl border border-input bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 focus-visible:border-primary transition-all duration-200 resize-none"
+                />
+              </div>
               <Input
-                label="Descrição"
-                placeholder="Descrição da ferramenta"
-                value={createForm.description}
-                onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
+                label="Quantidade disponivel *"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="1"
+                value={createForm.quantity_available}
+                onChange={(e) => setCreateForm({ ...createForm, quantity_available: e.target.value })}
               />
               <Input
                 label="Número de Serie"
