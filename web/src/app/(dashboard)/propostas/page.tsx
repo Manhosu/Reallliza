@@ -147,7 +147,14 @@ export default function PropostasPage() {
     proposed_value: "",
     message: "",
     expires_at: "",
+    mode: "direct" as "direct" | "broadcast",
+    target_state: "",
   });
+
+  const BR_STATES_UF = [
+    "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA",
+    "PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO",
+  ];
 
   // Select options for the create modal
   const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([]);
@@ -221,8 +228,12 @@ export default function PropostasPage() {
   // ============================================================
 
   const handleCreate = async () => {
-    if (!createForm.service_order_id || !createForm.partner_id) {
-      toast.error("Ordem de servico e parceiro sao obrigatorios");
+    if (!createForm.service_order_id) {
+      toast.error("Ordem de servico e obrigatoria");
+      return;
+    }
+    if (createForm.mode === "direct" && !createForm.partner_id) {
+      toast.error("Selecione um parceiro ou troque para 'Disponivel para todos'");
       return;
     }
 
@@ -230,14 +241,23 @@ export default function PropostasPage() {
     try {
       await proposalsApi.create({
         service_order_id: createForm.service_order_id,
-        partner_id: createForm.partner_id,
+        partner_id:
+          createForm.mode === "direct" ? createForm.partner_id : undefined,
+        target_state:
+          createForm.mode === "broadcast"
+            ? (createForm.target_state || undefined)
+            : undefined,
         proposed_value: createForm.proposed_value
           ? Number(createForm.proposed_value)
           : undefined,
         message: createForm.message || undefined,
         expires_at: createForm.expires_at || undefined,
-      });
-      toast.success("Proposta criada com sucesso!");
+      } as any);
+      toast.success(
+        createForm.mode === "broadcast"
+          ? "Proposta enviada a todos da regiao!"
+          : "Proposta enviada ao parceiro!"
+      );
       setShowCreateModal(false);
       setCreateForm({
         service_order_id: "",
@@ -245,6 +265,8 @@ export default function PropostasPage() {
         proposed_value: "",
         message: "",
         expires_at: "",
+        mode: "direct",
+        target_state: "",
       });
       mutate();
     } catch (err: any) {
@@ -597,37 +619,117 @@ export default function PropostasPage() {
                   </select>
                 </div>
 
-                {/* Partner Select */}
+                {/* Modo: direto ou broadcast */}
                 <div className="w-full space-y-2">
                   <label className="text-sm font-medium leading-none text-foreground/80">
-                    Parceiro *
+                    Tipo de envio *
                   </label>
-                  <select
-                    value={createForm.partner_id}
-                    onChange={(e) =>
-                      setCreateForm({
-                        ...createForm,
-                        partner_id: e.target.value,
-                      })
-                    }
-                    className={cn(
-                      "flex h-11 w-full rounded-xl border border-input bg-background px-4 text-sm",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0",
-                      "focus-visible:border-primary",
-                      "transition-all duration-200"
-                    )}
-                  >
-                    <option value="">Selecione um parceiro...</option>
-                    {partners.map((partner) => (
-                      <option key={partner.id} value={partner.id}>
-                        {partner.company_name}
-                        {partner.trading_name
-                          ? ` (${partner.trading_name})`
-                          : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCreateForm({ ...createForm, mode: "direct" })
+                      }
+                      className={cn(
+                        "flex-1 rounded-xl border p-3 text-left text-sm transition-all",
+                        createForm.mode === "direct"
+                          ? "border-primary bg-primary/5"
+                          : "border-input hover:bg-muted/50"
+                      )}
+                    >
+                      <div className="font-semibold">Parceiro especifico</div>
+                      <div className="text-xs text-muted-foreground">
+                        Envia para 1 parceiro selecionado
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCreateForm({ ...createForm, mode: "broadcast" })
+                      }
+                      className={cn(
+                        "flex-1 rounded-xl border p-3 text-left text-sm transition-all",
+                        createForm.mode === "broadcast"
+                          ? "border-primary bg-primary/5"
+                          : "border-input hover:bg-muted/50"
+                      )}
+                    >
+                      <div className="font-semibold">Disponivel para todos</div>
+                      <div className="text-xs text-muted-foreground">
+                        Tecnicos/parceiros da regiao escolhem
+                      </div>
+                    </button>
+                  </div>
                 </div>
+
+                {createForm.mode === "direct" ? (
+                  /* Partner Select */
+                  <div className="w-full space-y-2">
+                    <label className="text-sm font-medium leading-none text-foreground/80">
+                      Parceiro *
+                    </label>
+                    <select
+                      value={createForm.partner_id}
+                      onChange={(e) =>
+                        setCreateForm({
+                          ...createForm,
+                          partner_id: e.target.value,
+                        })
+                      }
+                      className={cn(
+                        "flex h-11 w-full rounded-xl border border-input bg-background px-4 text-sm",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0",
+                        "focus-visible:border-primary",
+                        "transition-all duration-200"
+                      )}
+                    >
+                      <option value="">Selecione um parceiro...</option>
+                      {partners.map((partner) => (
+                        <option key={partner.id} value={partner.id}>
+                          {partner.company_name}
+                          {partner.trading_name
+                            ? ` (${partner.trading_name})`
+                            : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  /* State Select (broadcast region) */
+                  <div className="w-full space-y-2">
+                    <label className="text-sm font-medium leading-none text-foreground/80">
+                      Estado alvo (UF)
+                    </label>
+                    <select
+                      value={createForm.target_state}
+                      onChange={(e) =>
+                        setCreateForm({
+                          ...createForm,
+                          target_state: e.target.value,
+                        })
+                      }
+                      className={cn(
+                        "flex h-11 w-full rounded-xl border border-input bg-background px-4 text-sm",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0",
+                        "focus-visible:border-primary",
+                        "transition-all duration-200"
+                      )}
+                    >
+                      <option value="">
+                        Sem filtro (qualquer estado)
+                      </option>
+                      {BR_STATES_UF.map((uf) => (
+                        <option key={uf} value={uf}>
+                          {uf}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground">
+                      Se nao escolher, a regiao sera puxada do endereco da OS.
+                      Primeiro tecnico/parceiro a aceitar fica com a OS.
+                    </p>
+                  </div>
+                )}
 
                 {/* Proposed Value */}
                 <Input

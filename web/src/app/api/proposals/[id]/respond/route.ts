@@ -6,12 +6,15 @@ import { logAudit } from "@/lib/api-helpers/audit";
 
 /**
  * POST /api/proposals/[id]/respond
- * Partner responds to a proposal.
+ * Aceitar/recusar uma proposta.
+ *
+ * 2 modos:
+ * - Direta: a proposta tem partner_id; só o user dono daquele partner pode responder.
+ * - Broadcast: partner_id IS NULL; qualquer technician/partner ativo da
+ *   região alvo pode responder. Primeiro a aceitar fica com a OS e as
+ *   demais propostas pendentes do mesmo service_order_id são expiradas.
+ *
  * Body: { action: 'accept' | 'reject', response_message? }
- * Only the partner who received the proposal can respond.
- * If accept: update proposal status to 'accepted', set responded_at,
- *   associate partner to the service_order (update partner_id).
- * If reject: update status to 'rejected', set responded_at.
  */
 export async function POST(
   request: NextRequest,
@@ -33,10 +36,11 @@ export async function POST(
 
     const supabase = getAdminClient();
 
-    // Get the proposal
     const { data: proposal, error: findError } = await supabase
       .from("service_proposals")
-      .select("*, partner:partners!service_proposals_partner_id_fkey(id, user_id, company_name)")
+      .select(
+        "*, partner:partners!service_proposals_partner_id_fkey(id, user_id, company_name)"
+      )
       .eq("id", id)
       .single();
 
@@ -44,15 +48,43 @@ export async function POST(
       throw new AuthError(404, `Proposal with ID ${id} not found`);
     }
 
-    // Only the partner who received the proposal can respond
-    if (!proposal.partner || proposal.partner.user_id !== user.id) {
-      throw new AuthError(
-        403,
-        "You do not have permission to respond to this proposal"
-      );
+    const isBroadcast = !proposal.partner_id;
+
+    // Permissão
+    if (isBroadcast) {
+      // Qualquer technician/partner ativo
+      if (!["technician", "partner"].includes(user.role)) {
+        throw new AuthError(
+          403,
+          "Apenas técnicos ou parceiros podem responder propostas em broadcast"
+        );
+      }
+
+      // Verifica região se proposta tem target_state
+      if (proposal.target_state) {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("operating_region")
+          .eq("id", user.id)
+          .maybeSingle();
+        const region = (profileData?.operating_region || "").toUpperCase();
+        if (region && !region.includes(proposal.target_state)) {
+          throw new AuthError(
+            403,
+            `Esta proposta é para a região ${proposal.target_state} — sua região é ${profileData?.operating_region || "não informada"}`
+          );
+        }
+      }
+    } else {
+      // Direta: só o partner dono
+      if (!proposal.partner || proposal.partner.user_id !== user.id) {
+        throw new AuthError(
+          403,
+          "You do not have permission to respond to this proposal"
+        );
+      }
     }
 
-    // Proposal must be in 'pending' status to respond
     if (proposal.status !== "pending") {
       throw new AuthError(
         400,
@@ -63,52 +95,95 @@ export async function POST(
     const now = new Date().toISOString();
     const newStatus = action === "accept" ? "accepted" : "rejected";
 
-    // Update proposal
     const updateData: Record<string, unknown> = {
       status: newStatus,
       responded_at: now,
       updated_at: now,
     };
+    if (response_message) updateData.response_message = response_message;
+    if (action === "accept") updateData.accepted_by = user.id;
 
-    if (response_message) {
-      updateData.response_message = response_message;
+    // Para broadcast: garante atomicidade — só atualiza se ainda for pending.
+    // Se outro técnico aceitou primeiro (race), `eq("status","pending")` falha.
+    let updatedProposal: Record<string, unknown> | null = null;
+    if (isBroadcast && action === "accept") {
+      const { data, error } = await supabase
+        .from("service_proposals")
+        .update(updateData)
+        .eq("id", id)
+        .eq("status", "pending")
+        .select()
+        .maybeSingle();
+      if (error) {
+        console.error(`Failed to lock-accept proposal: ${error.message}`);
+        throw new Error("Falha ao aceitar proposta");
+      }
+      if (!data) {
+        throw new AuthError(
+          409,
+          "Outro profissional aceitou esta proposta primeiro"
+        );
+      }
+      updatedProposal = data;
+    } else {
+      const { data, error } = await supabase
+        .from("service_proposals")
+        .update(updateData)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) {
+        console.error(`Failed to update proposal ${id}: ${error.message}`);
+        throw new Error("Failed to respond to proposal");
+      }
+      updatedProposal = data;
     }
 
-    const { data: updatedProposal, error: updateError } = await supabase
-      .from("service_proposals")
-      .update(updateData)
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (updateError) {
-      console.error(
-        `Failed to update proposal ${id}: ${updateError.message}`
-      );
-      throw new Error("Failed to respond to proposal");
-    }
-
-    // If accepted, associate partner to the service order
+    // Se aceitou, associa à OS
     if (action === "accept") {
+      const soUpdate: Record<string, unknown> = { updated_at: now };
+      if (isBroadcast) {
+        // Atribui o user (technician/partner) como technician_id
+        soUpdate.technician_id = user.id;
+        soUpdate.status = "assigned";
+      } else if (proposal.partner_id) {
+        soUpdate.partner_id = proposal.partner_id;
+      }
+
       const { error: soUpdateError } = await supabase
         .from("service_orders")
-        .update({
-          partner_id: proposal.partner_id,
-          updated_at: now,
-        })
+        .update(soUpdate)
         .eq("id", proposal.service_order_id);
 
       if (soUpdateError) {
         console.error(
-          `Failed to associate partner to service order: ${soUpdateError.message}`
+          `Failed to associate proposal to service order: ${soUpdateError.message}`
         );
+      }
+
+      // Para broadcast: expira outras propostas pendentes da mesma OS
+      if (isBroadcast) {
+        await supabase
+          .from("service_proposals")
+          .update({ status: "expired", updated_at: now })
+          .eq("service_order_id", proposal.service_order_id)
+          .eq("status", "pending")
+          .neq("id", id);
+
+        // Histórico de status da OS
+        await supabase.from("os_status_history").insert({
+          service_order_id: proposal.service_order_id,
+          from_status: "pending",
+          to_status: "assigned",
+          changed_by: user.id,
+          notes: `Proposta broadcast aceita por ${user.full_name || user.email}`,
+        });
       }
     }
 
-    // Audit log
     logAudit({
       userId: user.id,
-      action: `proposal.${newStatus}`,
+      action: `proposal.${newStatus}${isBroadcast ? ".broadcast" : ""}`,
       entityType: "proposal",
       entityId: id,
       oldData: { status: "pending" },

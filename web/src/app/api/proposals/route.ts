@@ -40,22 +40,52 @@ export async function GET(request: NextRequest) {
       );
 
     // Role-based access control
-    if (user.role === "partner") {
-      // Get the partner record for this user
-      const { data: partnerData } = await supabase
-        .from("partners")
-        .select("id")
-        .eq("user_id", user.id)
-        .single();
+    if (user.role === "partner" || user.role === "technician") {
+      // Partners/Technicians: veem propostas direcionadas a eles + broadcast
+      // que casa com sua região (operating_region contém target_state).
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("operating_region")
+        .eq("id", user.id)
+        .maybeSingle();
+      const region = (profileData?.operating_region || "").toUpperCase();
 
-      if (partnerData) {
-        query = query.eq("partner_id", partnerData.id);
+      // Para partner_id direto, o partner_id da proposta = id da tabela partners
+      // que liga a um user_id. Para broadcast, partner_id IS NULL.
+      // Aceitação direta também passa por user.id em accepted_by.
+      let partnerOwnId: string | null = null;
+      if (user.role === "partner") {
+        const { data: partnerData } = await supabase
+          .from("partners")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        partnerOwnId = partnerData?.id ?? null;
+      }
+
+      // Build OR filter: (partner_id = my_partner_id) OR (broadcast E região casa)
+      const orParts: string[] = [];
+      if (partnerOwnId) {
+        orParts.push(`partner_id.eq.${partnerOwnId}`);
+      }
+      // Broadcast geral (target_state IS NULL) — sempre aparece
+      // Broadcast com state específico — só se region casa
+      if (region) {
+        orParts.push(
+          `and(partner_id.is.null,or(target_state.is.null,target_state.eq.${region.slice(0, 2)}))`
+        );
       } else {
+        // sem região cadastrada: vê apenas broadcasts globais
+        orParts.push(`and(partner_id.is.null,target_state.is.null)`);
+      }
+
+      if (orParts.length === 0) {
         return jsonResponse({
           data: [],
           meta: { total: 0, page, limit, total_pages: 0 },
         });
       }
+      query = query.or(orParts.join(","));
     } else {
       checkRole(user, ["admin", "manager"]);
     }
@@ -107,14 +137,26 @@ export async function POST(request: NextRequest) {
     checkRole(user, ["admin"]);
 
     const body = await request.json();
-    const { service_order_id, partner_id, proposed_value, message, expires_at } =
-      body;
+    const {
+      service_order_id,
+      partner_id,
+      target_state,
+      proposed_value,
+      message,
+      expires_at,
+    } = body;
 
     if (!service_order_id) {
       throw new AuthError(400, "service_order_id is required");
     }
-    if (!partner_id) {
-      throw new AuthError(400, "partner_id is required");
+    // Modo direto: partner_id obrigatório.
+    // Modo broadcast: partner_id ausente; target_state opcional (UF).
+    const isBroadcast = !partner_id;
+    if (target_state && (typeof target_state !== "string" || target_state.length !== 2)) {
+      throw new AuthError(
+        400,
+        "target_state deve ser uma UF de 2 letras (ex: SP, PB)"
+      );
     }
 
     const supabase = getAdminClient();
@@ -122,7 +164,7 @@ export async function POST(request: NextRequest) {
     // Verify service order exists
     const { data: serviceOrder, error: soError } = await supabase
       .from("service_orders")
-      .select("id, title, client_name")
+      .select("id, title, client_name, address_state")
       .eq("id", service_order_id)
       .single();
 
@@ -133,24 +175,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify partner exists and get user_id for notification
-    const { data: partner, error: partnerError } = await supabase
-      .from("partners")
-      .select("id, company_name, user_id")
-      .eq("id", partner_id)
-      .single();
+    let partner: { id: string; company_name: string; user_id: string | null } | null = null;
+    if (!isBroadcast) {
+      const { data, error: partnerError } = await supabase
+        .from("partners")
+        .select("id, company_name, user_id")
+        .eq("id", partner_id)
+        .single();
 
-    if (partnerError || !partner) {
-      throw new AuthError(404, `Partner with ID ${partner_id} not found`);
+      if (partnerError || !data) {
+        throw new AuthError(404, `Partner with ID ${partner_id} not found`);
+      }
+      partner = data;
     }
 
     // Build insert data
     const insertData: Record<string, unknown> = {
       service_order_id,
-      partner_id,
+      partner_id: partner?.id ?? null,
       status: "pending",
       proposed_by: user.id,
     };
+
+    if (isBroadcast) {
+      insertData.target_state =
+        (target_state ? target_state.toUpperCase() : null) ||
+        serviceOrder.address_state ||
+        null;
+    }
 
     if (proposed_value !== undefined && proposed_value !== null) {
       insertData.proposed_value = proposed_value;
@@ -176,7 +228,7 @@ export async function POST(request: NextRequest) {
     // Audit log
     logAudit({
       userId: user.id,
-      action: "proposal.created",
+      action: isBroadcast ? "proposal.broadcast" : "proposal.created",
       entityType: "proposal",
       entityId: proposal.id,
       newData: proposal as Record<string, unknown>,
@@ -184,8 +236,37 @@ export async function POST(request: NextRequest) {
       userAgent: request.headers.get("user-agent"),
     });
 
-    // Notify the partner's user
-    if (partner.user_id) {
+    if (isBroadcast) {
+      // Notifica todos os technicians/partners da região alvo (ou todos
+      // se target_state é null). Fire-and-forget.
+      (async () => {
+        try {
+          let q = supabase
+            .from("profiles")
+            .select("id, operating_region")
+            .in("role", ["technician", "partner"])
+            .eq("status", "active");
+          const targetUF = (proposal.target_state as string | null) || "";
+          const { data: candidates } = await q;
+          const list = (candidates || []).filter((p) => {
+            if (!targetUF) return true;
+            const region = (p.operating_region || "").toUpperCase();
+            return !region || region.includes(targetUF);
+          });
+          for (const p of list) {
+            createNotification(
+              p.id,
+              "Nova proposta disponível",
+              `OS "${serviceOrder.title}" — primeiro a aceitar fica com o serviço.`,
+              "general",
+              { proposal_id: proposal.id, service_order_id, broadcast: true }
+            ).catch(() => {});
+          }
+        } catch (err) {
+          console.error("broadcast notify error:", err);
+        }
+      })();
+    } else if (partner?.user_id) {
       try {
         await createNotification(
           partner.user_id,

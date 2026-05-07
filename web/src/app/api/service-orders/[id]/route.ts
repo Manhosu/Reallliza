@@ -177,6 +177,8 @@ export async function PUT(
         "acrescimo",
         "desconto",
         "vale_troca",
+        // Termo de conclusão (admin define texto customizado por OS)
+        "completion_terms",
       ];
 
       for (const field of allowedFields) {
@@ -190,7 +192,13 @@ export async function PUT(
         throw new AuthError(403, "You do not have permission to update this service order");
       }
 
-      const techAllowedFields = ["notes", "metadata"];
+      const techAllowedFields = [
+        "notes",
+        "metadata",
+        // Aceite do termo + assinatura mobile
+        "terms_accepted_text",
+        "terms_accepted_at",
+      ];
       for (const field of techAllowedFields) {
         if (body[field] !== undefined) {
           updatePayload[field] = body[field];

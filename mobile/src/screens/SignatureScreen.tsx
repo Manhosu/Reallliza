@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   PanResponder,
   Dimensions,
+  ScrollView,
   GestureResponderEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,7 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import Svg, { Path } from 'react-native-svg';
 import ViewShot, { captureRef } from 'react-native-view-shot';
-import { uploadFile } from '../lib/api';
+import { apiClient, uploadFile } from '../lib/api';
+import { useAuthStore } from '../stores/auth-store';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import type { OsStackParamList } from '../navigation/os-stack';
@@ -24,7 +26,26 @@ type SignatureRoute = RouteProp<OsStackParamList, 'Signature'>;
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CANVAS_WIDTH = SCREEN_WIDTH - 32;
-const CANVAS_HEIGHT = 300;
+const CANVAS_HEIGHT = 240;
+
+const DEFAULT_TERMS = `TERMO DE CONCLUSÃO DE SERVIÇO E ENTREGA
+
+Declaro que recebi os serviços contratados na presente Ordem de Serviço, conferindo:
+
+• Material instalado/aplicado conforme especificado
+• Quantidade e dimensões executadas
+• Limpeza do local após o serviço
+• Funcionamento e acabamento do produto entregue
+
+Estou ciente que a Reallliza Revestimentos cumpriu as condições contratadas e que eventuais ajustes ou revisões devem ser solicitados pelos canais oficiais.
+
+Ao assinar abaixo, autorizo o registro digital desta assinatura como aceite do serviço executado.`;
+
+interface OsDetailLite {
+  id: string;
+  completion_terms?: string | null;
+  client_name?: string | null;
+}
 
 // ============================================================
 // Component
@@ -34,14 +55,39 @@ export function SignatureScreen() {
   const route = useRoute<SignatureRoute>();
   const navigation = useNavigation();
   const { serviceOrderId } = route.params;
+  const profile = useAuthStore((s) => s.profile);
 
   const viewShotRef = useRef<ViewShot>(null);
   const [paths, setPaths] = useState<string[]>([]);
   const [currentPath, setCurrentPath] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
+  const [accepted, setAccepted] = useState(false);
+  const [termsText, setTermsText] = useState<string>(DEFAULT_TERMS);
+  const [clientName, setClientName] = useState<string>('');
 
-  // Mutable ref to track current path - avoids stale closure in PanResponder
   const currentPathRef = useRef<string>('');
+
+  // Carrega termo personalizado da OS (se admin tiver definido) e nome do cliente.
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .get<OsDetailLite>(`/service-orders/${serviceOrderId}`)
+      .then((os) => {
+        if (cancelled) return;
+        if (os?.completion_terms && os.completion_terms.trim()) {
+          setTermsText(os.completion_terms);
+        }
+        if (os?.client_name) {
+          setClientName(os.client_name);
+        }
+      })
+      .catch(() => {
+        // mantém o default
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [serviceOrderId]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -64,7 +110,7 @@ export function SignatureScreen() {
       onPanResponderRelease: () => {
         const pathToSave = currentPathRef.current;
         if (pathToSave) {
-          setPaths(prev => [...prev, pathToSave]);
+          setPaths((prev) => [...prev, pathToSave]);
         }
         currentPathRef.current = '';
         setCurrentPath('');
@@ -79,6 +125,13 @@ export function SignatureScreen() {
   }, []);
 
   const handleSave = async () => {
+    if (!accepted) {
+      Alert.alert(
+        'Aceite necessário',
+        'O cliente precisa marcar "Li e aceito o termo" antes de assinar.',
+      );
+      return;
+    }
     if (paths.length === 0) {
       Alert.alert('Aviso', 'Desenhe a assinatura antes de salvar.');
       return;
@@ -87,14 +140,13 @@ export function SignatureScreen() {
     try {
       setIsUploading(true);
 
-      // Capture the signature canvas as PNG
       const uri = await captureRef(viewShotRef, {
         format: 'png',
         quality: 1,
         result: 'tmpfile',
       });
 
-      // Upload as photo with type 'signature'
+      // Sobe assinatura como photo type=signature
       await uploadFile({
         path: '/photos/upload',
         file: {
@@ -109,12 +161,22 @@ export function SignatureScreen() {
         },
       });
 
-      Alert.alert('Sucesso', 'Assinatura capturada com sucesso!', [
+      // Persiste snapshot do termo aceito + timestamp na OS
+      try {
+        await apiClient.put(`/service-orders/${serviceOrderId}`, {
+          terms_accepted_text: termsText,
+          terms_accepted_at: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn('Não foi possível gravar terms_accepted', err);
+      }
+
+      Alert.alert('Sucesso', 'Assinatura e termo registrados!', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
     } catch (error) {
       console.error('Error uploading signature:', error);
-      Alert.alert('Erro', 'Nao foi possivel salvar a assinatura.');
+      Alert.alert('Erro', 'Não foi possível salvar a assinatura.');
     } finally {
       setIsUploading(false);
     }
@@ -123,24 +185,64 @@ export function SignatureScreen() {
   const hasSignature = paths.length > 0 || currentPath.length > 0;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
-      <View style={styles.container}>
-        {/* Instructions */}
-        <View style={styles.instructionBox}>
-          <Ionicons name="finger-print-outline" size={20} color={colors.primary} />
-          <Text style={styles.instructionText}>
-            Peca ao cliente para assinar no espaco abaixo
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      edges={['top']}
+    >
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Header instrução */}
+        <View style={styles.headerBox}>
+          <Ionicons
+            name="document-text-outline"
+            size={20}
+            color={colors.primary}
+          />
+          <Text style={styles.headerText}>
+            Leia o termo abaixo, marque o aceite e peça ao cliente para assinar.
           </Text>
         </View>
 
-        {/* Signature Canvas */}
+        {/* Termo de conclusão */}
+        <View style={styles.termsBox}>
+          <Text style={styles.termsText}>{termsText}</Text>
+        </View>
+
+        {clientName ? (
+          <View style={styles.clientBox}>
+            <Text style={styles.clientLabel}>Cliente:</Text>
+            <Text style={styles.clientName}>{clientName}</Text>
+          </View>
+        ) : null}
+
+        {/* Aceite */}
+        <TouchableOpacity
+          style={styles.acceptRow}
+          onPress={() => setAccepted((v) => !v)}
+          activeOpacity={0.7}
+        >
+          <View
+            style={[styles.checkbox, accepted && styles.checkboxChecked]}
+          >
+            {accepted && (
+              <Ionicons name="checkmark" size={16} color={colors.black} />
+            )}
+          </View>
+          <Text style={styles.acceptText}>
+            Li e aceito o termo de conclusão de serviço acima.
+          </Text>
+        </TouchableOpacity>
+
+        {/* Canvas */}
         <View style={styles.canvasWrapper}>
           <ViewShot ref={viewShotRef} style={styles.canvas}>
             <View
               style={styles.canvasInner}
               {...panResponder.panHandlers}
             >
-              {/* pointerEvents="none" prevents SVG from stealing touch events on Android */}
               <View style={StyleSheet.absoluteFill} pointerEvents="none">
                 <Svg width={CANVAS_WIDTH} height={CANVAS_HEIGHT}>
                   {paths.map((d, i) => (
@@ -167,22 +269,21 @@ export function SignatureScreen() {
                 </Svg>
               </View>
 
-              {/* Signature line */}
               <View style={styles.signatureLine} pointerEvents="none" />
 
-              {/* Placeholder text */}
               {!hasSignature && (
-                <View style={styles.placeholderContainer} pointerEvents="none">
-                  <Text style={styles.placeholderText}>
-                    Assine aqui
-                  </Text>
+                <View
+                  style={styles.placeholderContainer}
+                  pointerEvents="none"
+                >
+                  <Text style={styles.placeholderText}>Assine aqui</Text>
                 </View>
               )}
             </View>
           </ViewShot>
         </View>
 
-        {/* Action buttons */}
+        {/* Ações */}
         <View style={styles.actions}>
           <TouchableOpacity
             style={[styles.button, styles.clearButton]}
@@ -196,15 +297,23 @@ export function SignatureScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.button, styles.saveButton]}
+            style={[
+              styles.button,
+              styles.saveButton,
+              (!accepted || !hasSignature) && styles.buttonDisabled,
+            ]}
             onPress={handleSave}
-            disabled={!hasSignature || isUploading}
+            disabled={!accepted || !hasSignature || isUploading}
           >
             {isUploading ? (
               <ActivityIndicator size="small" color={colors.black} />
             ) : (
               <>
-                <Ionicons name="checkmark-circle-outline" size={20} color={colors.black} />
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={20}
+                  color={colors.black}
+                />
                 <Text style={[styles.buttonText, { color: colors.black }]}>
                   Salvar Assinatura
                 </Text>
@@ -212,7 +321,7 @@ export function SignatureScreen() {
             )}
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -222,25 +331,78 @@ export function SignatureScreen() {
 // ============================================================
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
+  scrollContent: {
     padding: 16,
+    paddingBottom: 32,
   },
-  instructionBox: {
+  headerBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     backgroundColor: colors.card,
     borderRadius: 10,
     padding: 14,
-    marginBottom: 20,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  instructionText: {
+  headerText: {
     ...typography.bodySm,
     color: colors.textSecondary,
+    flex: 1,
+  },
+  termsBox: {
+    backgroundColor: colors.cardAlt,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  termsText: {
+    ...typography.bodySm,
+    color: colors.text,
+    lineHeight: 20,
+  },
+  clientBox: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  clientLabel: {
+    ...typography.captionBold,
+    color: colors.textMuted,
+  },
+  clientName: {
+    ...typography.bodySmBold,
+    color: colors.text,
+  },
+  acceptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    marginBottom: 12,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  acceptText: {
+    ...typography.bodySm,
+    color: colors.text,
     flex: 1,
   },
   canvasWrapper: {
@@ -261,7 +423,7 @@ const styles = StyleSheet.create({
   },
   signatureLine: {
     position: 'absolute',
-    bottom: 60,
+    bottom: 50,
     left: 30,
     right: 30,
     height: 1,
@@ -283,7 +445,7 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 24,
+    marginTop: 16,
   },
   button: {
     flexDirection: 'row',
@@ -301,6 +463,9 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     backgroundColor: colors.primary,
+  },
+  buttonDisabled: {
+    opacity: 0.4,
   },
   buttonText: {
     ...typography.button,
