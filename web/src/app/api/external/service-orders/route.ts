@@ -65,17 +65,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resolver e validar technician_id (opcional)
+    // Se Garantias enviou um technician_id (já fez auto-match por nome), validamos
+    // que existe um profile ativo com role technician|partner|admin antes de atribuir.
+    let assignedTechnicianId: string | null = null;
+    let technicianMeta: { id: string; full_name: string | null } | null = null;
+    if (body.technician_id) {
+      const { data: tech } = await supabase
+        .from("profiles")
+        .select("id, full_name, role, status")
+        .eq("id", body.technician_id)
+        .maybeSingle();
+
+      if (
+        tech &&
+        tech.status === "active" &&
+        ["technician", "partner", "admin"].includes(tech.role)
+      ) {
+        assignedTechnicianId = tech.id;
+        technicianMeta = { id: tech.id, full_name: tech.full_name };
+      } else {
+        console.warn(
+          `External create: technician_id ${body.technician_id} ignorado (não existe, inativo ou role inválido)`
+        );
+      }
+    }
+
     // Montar dados da OS
     const insertData: Record<string, unknown> = {
       title: body.title,
       client_name: body.client_name,
-      status: "pending",
+      status: assignedTechnicianId ? "assigned" : "pending",
       created_by: SYSTEM_USER_ID,
       external_system: body.external_system,
       external_id: body.external_id,
       external_callback_url: body.external_callback_url || null,
       external_metadata: body.external_metadata || {},
     };
+
+    if (assignedTechnicianId) {
+      insertData.technician_id = assignedTechnicianId;
+    }
 
     // Campos opcionais
     const optionalFields = [
@@ -123,13 +153,18 @@ export async function POST(request: NextRequest) {
       throw new Error("Failed to create service order");
     }
 
-    // Status history
+    // Status history (sempre cria entrada inicial)
+    const initialStatus = assignedTechnicianId ? "assigned" : "pending";
     await supabase.from("os_status_history").insert({
       service_order_id: order.id,
       from_status: null,
-      to_status: "pending",
+      to_status: initialStatus,
       changed_by: SYSTEM_USER_ID,
-      notes: `Criada via integração externa (${body.external_system})`,
+      notes: `Criada via integração externa (${body.external_system})${
+        technicianMeta?.full_name
+          ? ` — atribuída automaticamente a ${technicianMeta.full_name}`
+          : ""
+      }`,
     });
 
     // Audit log
@@ -150,13 +185,22 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_APP_URL || "https://reallliza-web.vercel.app"
     }/service-orders/${order.id}`;
 
-    // Disparar webhook de criação (fire-and-forget)
+    // Disparar webhook (fire-and-forget). Se houve auto-atribuição,
+    // dispara `service_order.assigned` para o Garantias mover o ticket
+    // pra status AGENDADO. Caso contrário, `service_order.created`.
     if (body.external_callback_url) {
-      dispatchWebhook(order.id, "service_order.created", {
+      const eventType = assignedTechnicianId
+        ? "service_order.assigned"
+        : "service_order.created";
+      dispatchWebhook(order.id, eventType, {
+        from_status: null,
+        to_status: order.status,
         data: {
           order_number: order.order_number,
           status: order.status,
           tracking_url: trackingUrl,
+          technician_id: technicianMeta?.id ?? null,
+          technician_name: technicianMeta?.full_name ?? null,
         },
       }).catch((err) =>
         console.error("Webhook dispatch failed:", err)
