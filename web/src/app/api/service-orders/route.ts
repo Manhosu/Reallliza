@@ -188,6 +188,14 @@ export async function POST(request: NextRequest) {
       "scheduled_end_time",
       "notes",
       "metadata",
+      // Modelo Cenize
+      "historico",
+      "client_contact_name",
+      "client_rg_ie",
+      "previsao_conclusao",
+      "acrescimo",
+      "desconto",
+      "vale_troca",
     ];
 
     for (const field of optionalFields) {

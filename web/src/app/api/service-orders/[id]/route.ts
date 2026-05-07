@@ -73,10 +73,30 @@ export async function GET(
       .order("created_at", { ascending: false })
       .limit(10);
 
+    // Itens (produtos/servicos) - visiveis para admin/manager/technician designado
+    const { data: items } = await supabase
+      .from("service_order_items")
+      .select("*")
+      .eq("service_order_id", id)
+      .order("position", { ascending: true });
+
+    // Parcelas - apenas admin/manager
+    let payments: unknown[] = [];
+    if (user.role === "admin" || user.role === "manager") {
+      const { data: paymentsData } = await supabase
+        .from("service_order_payments")
+        .select("*")
+        .eq("service_order_id", id)
+        .order("position", { ascending: true });
+      payments = paymentsData || [];
+    }
+
     return jsonResponse({
       ...order,
       photos_count: photosCount || 0,
       status_history: statusHistory || [],
+      items: items || [],
+      payments,
     });
   } catch (error) {
     return errorResponse(error);
@@ -149,6 +169,14 @@ export async function PUT(
         "estimated_value",
         "notes",
         "metadata",
+        // Modelo Cenize
+        "historico",
+        "client_contact_name",
+        "client_rg_ie",
+        "previsao_conclusao",
+        "acrescimo",
+        "desconto",
+        "vale_troca",
       ];
 
       for (const field of allowedFields) {

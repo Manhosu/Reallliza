@@ -19,16 +19,24 @@ const STATUS_LABELS: Record<string, string> = {
   rejected: "Rejeitada",
 };
 
-const PRIORITY_LABELS: Record<string, string> = {
-  low: "Baixa",
-  medium: "Media",
-  high: "Alta",
-  urgent: "Urgente",
+const KIND_LABELS: Record<string, string> = { S: "Serv.", P: "Prod." };
+
+const fmtBRL = (v: number | string | null | undefined): string => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "R$ 0,00";
+  return `R$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
+
+const fmtDate = (d: string | null): string =>
+  d ? new Date(d).toLocaleDateString("pt-BR") : "-";
+
+const fmtDateTime = (d: string | null): string =>
+  d ? new Date(d).toLocaleString("pt-BR") : "-";
 
 /**
  * GET /api/service-orders/[id]/report
- * Generate a PDF report for a single service order.
+ * Gera PDF da OS no layout Cenize (cabecalho, cliente, itens,
+ * totais, parcelas, observacoes, aprovacao).
  */
 export async function GET(
   request: NextRequest,
@@ -40,7 +48,6 @@ export async function GET(
 
     const supabase = getAdminClient();
 
-    // Fetch OS with related data
     const { data: order, error: orderError } = await supabase
       .from("service_orders")
       .select(
@@ -57,88 +64,122 @@ export async function GET(
       return new Response("Service order not found", { status: 404 });
     }
 
-    // Fetch checklists
-    const { data: checklists } = await supabase
-      .from("checklists")
-      .select(
-        `
-        *,
-        template:checklist_templates(id, name)
-      `
-      )
-      .eq("service_order_id", id)
-      .order("created_at", { ascending: true });
-
-    // Fetch photos
-    const { data: photos } = await supabase
-      .from("photos")
+    const { data: items } = await supabase
+      .from("service_order_items")
       .select("*")
       .eq("service_order_id", id)
-      .order("created_at", { ascending: true });
+      .order("position", { ascending: true });
 
-    // Fetch status history
-    const { data: history } = await supabase
-      .from("os_status_history")
-      .select(
-        `
-        *,
-        changed_by_user:profiles!os_status_history_changed_by_fkey(id, full_name)
-      `
-      )
+    const { data: payments } = await supabase
+      .from("service_order_payments")
+      .select("*")
       .eq("service_order_id", id)
-      .order("created_at", { ascending: true });
+      .order("position", { ascending: true });
 
-    // Generate PDF
-    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const doc = new PDFDocument({ size: "A4", margin: 40 });
     const chunks: Buffer[] = [];
-
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
-
     const pdfPromise = new Promise<Buffer>((resolve) => {
       doc.on("end", () => resolve(Buffer.concat(chunks)));
     });
 
-    // --- Header ---
+    const pageWidth = doc.page.width - 80; // 555 - 40 - 40
+    const leftX = 40;
+    const rightX = doc.page.width - 40;
+
+    // ============================================
+    // HEADER
+    // ============================================
+    const headerTop = doc.y;
+
+    // Lado esquerdo: empresa
     doc
-      .fontSize(20)
+      .fontSize(14)
       .font("Helvetica-Bold")
-      .text("REALLLIZA REVESTIMENTOS", { align: "center" });
-    doc.fontSize(12).font("Helvetica").text("Relatorio de Ordem de Servico", {
-      align: "center",
+      .fillColor("#000000")
+      .text("REALLLIZA REVESTIMENTOS VINILICOS", leftX, headerTop, { width: 320 });
+    doc
+      .fontSize(8)
+      .font("Helvetica")
+      .fillColor("#444444")
+      .text("VEXA REVESTIMENTOS LTDA", leftX, doc.y + 2, { width: 320 });
+    doc
+      .fontSize(8)
+      .fillColor("#666666")
+      .text("Av. Brasil, 1234 - Centro - Sao Paulo/SP", leftX, doc.y + 1, { width: 320 });
+    doc.text("contato@reallliza.com.br", leftX, doc.y + 1, { width: 320 });
+
+    // Lado direito: dados da OS
+    const rightBoxX = 380;
+    const rightBoxW = rightX - rightBoxX;
+    doc
+      .fontSize(13)
+      .font("Helvetica-Bold")
+      .fillColor("#EAB308")
+      .text("Ordem de Servico", rightBoxX, headerTop, { width: rightBoxW, align: "right" });
+    doc
+      .fontSize(9)
+      .font("Helvetica")
+      .fillColor("#000000")
+      .text(`Numero: #${order.order_number || "N/A"}`, rightBoxX, doc.y + 2, {
+        width: rightBoxW,
+        align: "right",
+      });
+    doc.text(`Data: ${fmtDate(order.created_at)}`, rightBoxX, doc.y + 1, {
+      width: rightBoxW,
+      align: "right",
     });
-    doc.moveDown(0.5);
+    doc.text(
+      `Situacao: ${STATUS_LABELS[order.status] || order.status}`,
+      rightBoxX,
+      doc.y + 1,
+      { width: rightBoxW, align: "right" }
+    );
+    doc.text(
+      `Prev. Conclusao: ${fmtDate(order.previsao_conclusao)}`,
+      rightBoxX,
+      doc.y + 1,
+      { width: rightBoxW, align: "right" }
+    );
+
+    // Linha amarela
+    const lineY = Math.max(doc.y, headerTop + 70) + 6;
     doc
       .strokeColor("#EAB308")
-      .lineWidth(2)
-      .moveTo(50, doc.y)
-      .lineTo(545, doc.y)
+      .lineWidth(1.5)
+      .moveTo(leftX, lineY)
+      .lineTo(rightX, lineY)
       .stroke();
-    doc.moveDown(1);
+    doc.y = lineY + 8;
 
-    // --- OS Info ---
-    doc.fontSize(14).font("Helvetica-Bold").text("Informacoes da OS");
-    doc.moveDown(0.3);
-    doc.fontSize(10).font("Helvetica");
+    // ============================================
+    // HISTORICO
+    // ============================================
+    if (order.historico) {
+      doc
+        .fontSize(10)
+        .font("Helvetica-Bold")
+        .fillColor("#000000")
+        .text("Historico", leftX, doc.y);
+      doc
+        .fontSize(9)
+        .font("Helvetica")
+        .fillColor("#222222")
+        .text(order.historico, leftX, doc.y + 2, { width: pageWidth });
+      doc.moveDown(0.5);
+    }
 
-    const orderNumber = order.order_number || "N/A";
-    const lines = [
-      `Numero: #${orderNumber}`,
-      `Titulo: ${order.title || "N/A"}`,
-      `Status: ${STATUS_LABELS[order.status] || order.status}`,
-      `Prioridade: ${PRIORITY_LABELS[order.priority] || order.priority}`,
-      `Descricao: ${order.description || "N/A"}`,
-    ];
-    lines.forEach((line) => doc.text(line));
-    doc.moveDown(1);
+    // ============================================
+    // CLIENTE
+    // ============================================
+    doc
+      .fontSize(10)
+      .font("Helvetica-Bold")
+      .fillColor("#000000")
+      .text("Cliente", leftX, doc.y);
 
-    // --- Client Info ---
-    doc.fontSize(14).font("Helvetica-Bold").text("Dados do Cliente");
-    doc.moveDown(0.3);
-    doc.fontSize(10).font("Helvetica");
-    doc.text(`Nome: ${order.client_name || "N/A"}`);
-    doc.text(`Telefone: ${order.client_phone || "N/A"}`);
-    doc.text(`E-mail: ${order.client_email || "N/A"}`);
-    doc.text(`CPF/CNPJ: ${order.client_document || "N/A"}`);
+    doc.fontSize(9).font("Helvetica").fillColor("#222222");
+    doc.text(`Nome: ${order.client_name || "-"}`, leftX, doc.y + 2);
 
     const addressParts = [
       order.address_street,
@@ -150,150 +191,225 @@ export async function GET(
       order.address_zip,
     ].filter(Boolean);
     if (addressParts.length > 0) {
-      doc.text(`Endereco: ${addressParts.join(", ")}`);
+      doc.text(`Endereco: ${addressParts.join(", ")}`, leftX, doc.y + 1, { width: pageWidth });
     }
-    doc.moveDown(1);
 
-    // --- Responsavel ---
-    doc.fontSize(14).font("Helvetica-Bold").text("Responsavel");
-    doc.moveDown(0.3);
-    doc.fontSize(10).font("Helvetica");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tech = order.technician as any;
-    doc.text(`Tecnico: ${tech?.full_name || "Nao atribuido"}`);
-    doc.text(`Telefone: ${tech?.phone || "N/A"}`);
+    doc.text(
+      `CPF/CNPJ: ${order.client_document || "-"}    RG/Insc.Estadual: ${order.client_rg_ie || "-"}`,
+      leftX,
+      doc.y + 1
+    );
+    doc.text(
+      `Telefone: ${order.client_phone || "-"}    Contato: ${order.client_contact_name || "-"}`,
+      leftX,
+      doc.y + 1
+    );
+    doc.moveDown(0.5);
+
+    // ============================================
+    // PRODUTOS E SERVICOS
+    // ============================================
+    doc
+      .fontSize(10)
+      .font("Helvetica-Bold")
+      .fillColor("#000000")
+      .text("Produtos e Servicos", leftX, doc.y);
+
+    const itemList = items || [];
+    const tableTop = doc.y + 4;
+    const colX = {
+      kind: leftX,
+      ident: leftX + 36,
+      desc: leftX + 76,
+      unit: leftX + 320,
+      value: leftX + 360,
+      qtde: leftX + 425,
+      total: leftX + 470,
+    };
+    const colW = {
+      kind: 36,
+      ident: 40,
+      desc: 244,
+      unit: 40,
+      value: 65,
+      qtde: 45,
+      total: 45,
+    };
+
+    // Header row
+    doc
+      .rect(leftX, tableTop, pageWidth, 16)
+      .fillColor("#F5F5F5")
+      .fill();
+    doc.fillColor("#000000").fontSize(8).font("Helvetica-Bold");
+    doc.text("Cod.B.", colX.kind + 2, tableTop + 4, { width: colW.kind - 4 });
+    doc.text("Identif.", colX.ident + 2, tableTop + 4, { width: colW.ident - 4 });
+    doc.text("Descricao", colX.desc + 2, tableTop + 4, { width: colW.desc - 4 });
+    doc.text("Un.", colX.unit + 2, tableTop + 4, { width: colW.unit - 4 });
+    doc.text("Valor", colX.value + 2, tableTop + 4, { width: colW.value - 4, align: "right" });
+    doc.text("Qtde", colX.qtde + 2, tableTop + 4, { width: colW.qtde - 4, align: "right" });
+    doc.text("Total", colX.total + 2, tableTop + 4, { width: colW.total - 4, align: "right" });
+
+    let rowY = tableTop + 16;
+    doc.font("Helvetica").fontSize(8);
+    let subtotal = 0;
+    if (itemList.length === 0) {
+      doc.fillColor("#888888").text("(Sem itens)", leftX + 4, rowY + 4);
+      rowY += 16;
+    } else {
+      for (const it of itemList) {
+        // Quebra de pagina
+        if (rowY > 740) {
+          doc.addPage();
+          rowY = 40;
+        }
+        const total = Number(it.total ?? Number(it.unit_value) * Number(it.quantity));
+        subtotal += total;
+        doc.fillColor("#222222");
+        doc.text(KIND_LABELS[it.kind] || it.kind, colX.kind + 2, rowY + 2, { width: colW.kind - 4 });
+        doc.text(it.identification || "-", colX.ident + 2, rowY + 2, { width: colW.ident - 4 });
+        doc.text(it.description || "-", colX.desc + 2, rowY + 2, { width: colW.desc - 4 });
+        doc.text(it.unit || "-", colX.unit + 2, rowY + 2, { width: colW.unit - 4 });
+        doc.text(fmtBRL(it.unit_value), colX.value + 2, rowY + 2, { width: colW.value - 4, align: "right" });
+        doc.text(String(it.quantity), colX.qtde + 2, rowY + 2, { width: colW.qtde - 4, align: "right" });
+        doc.text(fmtBRL(total), colX.total + 2, rowY + 2, { width: colW.total - 4, align: "right" });
+        rowY += 14;
+        // Separador
+        doc.strokeColor("#EEEEEE").lineWidth(0.5).moveTo(leftX, rowY).lineTo(rightX, rowY).stroke();
+      }
+    }
+
+    doc.y = rowY + 6;
+
+    // ============================================
+    // TOTAIS
+    // ============================================
+    const acrescimo = Number(order.acrescimo || 0);
+    const desconto = Number(order.desconto || 0);
+    const valeTroca = Number(order.vale_troca || 0);
+    const totalLiquido = subtotal + acrescimo - desconto - valeTroca;
+
+    const totalsLeftLabel = leftX;
+    doc.fontSize(9).font("Helvetica").fillColor("#444444");
+    doc.text(`Total de Itens: ${itemList.length}`, totalsLeftLabel, doc.y);
+
+    const totalsX = 360;
+    const totalsW = rightX - totalsX;
+    let totalsY = doc.y - 12;
+
+    const drawTotalRow = (
+      label: string,
+      value: string,
+      bold: boolean = false,
+      highlight: boolean = false
+    ) => {
+      if (highlight) {
+        doc.rect(totalsX, totalsY, totalsW, 16).fillColor("#FFF7CC").fill();
+      }
+      doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(bold ? 10 : 9);
+      doc.fillColor(bold ? "#000000" : "#444444");
+      doc.text(label, totalsX + 4, totalsY + 3, { width: totalsW * 0.5 });
+      doc.text(value, totalsX + 4 + totalsW * 0.5, totalsY + 3, {
+        width: totalsW * 0.5 - 4,
+        align: "right",
+      });
+      totalsY += 14;
+    };
+
+    drawTotalRow("Total Produtos/Servicos", fmtBRL(subtotal));
+    drawTotalRow("Acrescimo", fmtBRL(acrescimo));
+    drawTotalRow("Desconto", fmtBRL(desconto));
+    drawTotalRow("Vale Troca", fmtBRL(valeTroca));
+    drawTotalRow("Total Liquido", fmtBRL(totalLiquido), true, true);
+
+    doc.y = Math.max(doc.y, totalsY) + 10;
+
+    // ============================================
+    // PARCELAS
+    // ============================================
+    const pmts = payments || [];
+    if (pmts.length > 0) {
+      if (doc.y > 700) {
+        doc.addPage();
+      }
+      doc.fontSize(10).font("Helvetica-Bold").fillColor("#000000").text("Parcelas", leftX, doc.y);
+      const pTop = doc.y + 4;
+      const pColX = {
+        type: leftX,
+        num: leftX + 130,
+        doc: leftX + 200,
+        due: leftX + 290,
+        val: leftX + 400,
+      };
+      const pColW = { type: 130, num: 70, doc: 90, due: 110, val: 115 };
+
+      doc.rect(leftX, pTop, pageWidth, 16).fillColor("#F5F5F5").fill();
+      doc.fillColor("#000000").fontSize(8).font("Helvetica-Bold");
+      doc.text("Tipo Pgto", pColX.type + 2, pTop + 4, { width: pColW.type - 4 });
+      doc.text("Numero", pColX.num + 2, pTop + 4, { width: pColW.num - 4 });
+      doc.text("Num.Doc", pColX.doc + 2, pTop + 4, { width: pColW.doc - 4 });
+      doc.text("Vencimento", pColX.due + 2, pTop + 4, { width: pColW.due - 4 });
+      doc.text("Valor", pColX.val + 2, pTop + 4, { width: pColW.val - 4, align: "right" });
+
+      let pY = pTop + 16;
+      doc.font("Helvetica").fontSize(8);
+      for (const p of pmts) {
+        if (pY > 740) {
+          doc.addPage();
+          pY = 40;
+        }
+        doc.fillColor("#222222");
+        doc.text(p.payment_type || "-", pColX.type + 2, pY + 2, { width: pColW.type - 4 });
+        doc.text(p.number_label || "-", pColX.num + 2, pY + 2, { width: pColW.num - 4 });
+        doc.text(p.doc_number || "-", pColX.doc + 2, pY + 2, { width: pColW.doc - 4 });
+        doc.text(fmtDate(p.due_date), pColX.due + 2, pY + 2, { width: pColW.due - 4 });
+        doc.text(fmtBRL(p.value), pColX.val + 2, pY + 2, { width: pColW.val - 4, align: "right" });
+        pY += 14;
+        doc.strokeColor("#EEEEEE").lineWidth(0.5).moveTo(leftX, pY).lineTo(rightX, pY).stroke();
+      }
+      doc.y = pY + 6;
+    }
+
+    // ============================================
+    // OUTRAS INFORMACOES
+    // ============================================
+    if (doc.y > 700) doc.addPage();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const creator = order.creator as any;
-    doc.text(`Criado por: ${creator?.full_name || "N/A"}`);
-    doc.moveDown(1);
-
-    // --- Datas ---
-    doc.fontSize(14).font("Helvetica-Bold").text("Datas");
-    doc.moveDown(0.3);
-    doc.fontSize(10).font("Helvetica");
-    const fmtDate = (d: string | null) =>
-      d ? new Date(d).toLocaleDateString("pt-BR") : "N/A";
-    const fmtDateTime = (d: string | null) =>
-      d
-        ? new Date(d).toLocaleString("pt-BR")
-        : "N/A";
-    doc.text(`Criada em: ${fmtDateTime(order.created_at)}`);
-    doc.text(`Agendada para: ${fmtDate(order.scheduled_date)}`);
-    doc.text(`Iniciada em: ${fmtDateTime(order.started_at)}`);
-    doc.text(`Concluida em: ${fmtDateTime(order.completed_at)}`);
-    doc.moveDown(1);
-
-    // --- Financeiro ---
-    if (order.estimated_value || order.final_value) {
-      doc.fontSize(14).font("Helvetica-Bold").text("Financeiro");
-      doc.moveDown(0.3);
-      doc.fontSize(10).font("Helvetica");
-      const fmt = (v: number | null) =>
-        v != null
-          ? `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
-          : "N/A";
-      doc.text(`Valor Estimado: ${fmt(order.estimated_value)}`);
-      doc.text(`Valor Final: ${fmt(order.final_value)}`);
-      doc.moveDown(1);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tech = order.technician as any;
+    doc.fontSize(10).font("Helvetica-Bold").fillColor("#000000").text("Outras Informacoes", leftX, doc.y);
+    doc.fontSize(9).font("Helvetica").fillColor("#222222");
+    doc.text(`Responsavel: ${creator?.full_name || "-"}`, leftX, doc.y + 2);
+    doc.text(`Tecnico: ${tech?.full_name || "-"}`, leftX, doc.y + 1);
+    if (order.notes) {
+      doc.text(`Observacoes: ${order.notes}`, leftX, doc.y + 1, { width: pageWidth });
     }
+    doc.moveDown(0.5);
 
-    // --- Checklists ---
-    if (checklists && checklists.length > 0) {
-      doc.addPage();
-      doc.fontSize(14).font("Helvetica-Bold").text("Checklists");
-      doc.moveDown(0.3);
+    // ============================================
+    // APROVACAO
+    // ============================================
+    if (doc.y > 720) doc.addPage();
+    doc.fontSize(10).font("Helvetica-Bold").fillColor("#000000").text("Aprovacao", leftX, doc.y);
+    doc.fontSize(9).font("Helvetica").fillColor("#222222");
+    doc.text(`Aprovado Em: ${fmtDateTime(order.aprovado_em)}`, leftX, doc.y + 2);
+    doc.text(`Aprovado Por: ${order.aprovado_por || "-"}`, leftX, doc.y + 1);
 
-      for (const cl of checklists) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const tpl = cl.template as any;
-        doc
-          .fontSize(11)
-          .font("Helvetica-Bold")
-          .text(tpl?.name || cl.title || "Checklist");
-        doc
-          .fontSize(9)
-          .font("Helvetica")
-          .text(
-            `Status: ${cl.is_completed ? "Concluido" : "Pendente"} | Data: ${fmtDateTime(cl.completed_at || cl.created_at)}`
-          );
-        doc.moveDown(0.2);
+    // Linha de assinatura
+    const sigY = doc.y + 30;
+    doc.strokeColor("#000000").lineWidth(0.8).moveTo(leftX + 40, sigY).lineTo(leftX + 280, sigY).stroke();
+    doc.fontSize(8).fillColor("#666666").text("Assinatura", leftX + 40, sigY + 4, { width: 240, align: "center" });
 
-        const items = (cl.items || []) as Array<{
-          label?: string;
-          checked?: boolean;
-          notes?: string;
-        }>;
-        for (const item of items) {
-          const check = item.checked ? "[x]" : "[ ]";
-          doc.fontSize(9).font("Helvetica").text(`  ${check} ${item.label || ""}`);
-          if (item.notes) {
-            doc
-              .fontSize(8)
-              .fillColor("#666666")
-              .text(`      Obs: ${item.notes}`)
-              .fillColor("#000000");
-          }
-        }
-        doc.moveDown(0.5);
-      }
-    }
-
-    // --- Photos ---
-    if (photos && photos.length > 0) {
-      doc.addPage();
-      doc.fontSize(14).font("Helvetica-Bold").text("Registro Fotografico");
-      doc.moveDown(0.3);
-      doc.fontSize(10).font("Helvetica");
-
-      const TYPE_LABELS: Record<string, string> = {
-        before: "Antes",
-        during: "Durante",
-        after: "Depois",
-        issue: "Problema",
-        signature: "Assinatura",
-      };
-
-      for (const photo of photos) {
-        doc.text(
-          `- [${TYPE_LABELS[photo.type] || photo.type}] ${photo.description || photo.original_filename || "Foto"} (${fmtDateTime(photo.created_at)})`
-        );
-      }
-      doc.moveDown(1);
-    }
-
-    // --- Status History ---
-    if (history && history.length > 0) {
-      doc.fontSize(14).font("Helvetica-Bold").text("Historico de Status");
-      doc.moveDown(0.3);
-      doc.fontSize(10).font("Helvetica");
-
-      for (const entry of history) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const user = entry.changed_by_user as any;
-        const from = STATUS_LABELS[entry.from_status] || entry.from_status || "N/A";
-        const to = STATUS_LABELS[entry.to_status] || entry.to_status;
-        doc.text(
-          `${fmtDateTime(entry.created_at)} - ${from} -> ${to} (por ${user?.full_name || "Sistema"})`
-        );
-        if (entry.notes) {
-          doc
-            .fontSize(8)
-            .fillColor("#666666")
-            .text(`   Obs: ${entry.notes}`)
-            .fillColor("#000000")
-            .fontSize(10);
-        }
-      }
-    }
-
-    // --- Footer ---
-    doc.moveDown(2);
+    // Footer
     doc
-      .fontSize(8)
+      .fontSize(7)
       .fillColor("#999999")
       .text(
-        `Relatorio gerado em ${new Date().toLocaleString("pt-BR")} | Reallliza Revestimentos`,
-        { align: "center" }
+        `Documento gerado em ${new Date().toLocaleString("pt-BR")} - Reallliza Revestimentos`,
+        leftX,
+        780,
+        { align: "center", width: pageWidth }
       );
 
     doc.end();
@@ -304,7 +420,7 @@ export async function GET(
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="OS_${orderNumber}_relatorio.pdf"`,
+        "Content-Disposition": `attachment; filename="OS_${order.order_number || id}_relatorio.pdf"`,
         "Content-Length": String(pdfBuffer.length),
       },
     });

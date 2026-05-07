@@ -78,7 +78,19 @@ export function OsDetailScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { id } = route.params;
 
-  const [order, setOrder] = useState<ServiceOrder | null>(null);
+  type OsItem = {
+    id: string;
+    kind: 'S' | 'P';
+    identification: string | null;
+    description: string;
+    unit: string | null;
+    unit_value: number | string;
+    quantity: number | string;
+    total: number | string;
+  };
+
+  const [order, setOrder] = useState<(ServiceOrder & { items?: OsItem[] }) | null>(null);
+  const [items, setItems] = useState<OsItem[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,14 +98,21 @@ export function OsDetailScreen() {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isFromCache, setIsFromCache] = useState(false);
 
+  const formatBRL = (n: number | string): string => {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return 'R$ 0,00';
+    return `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
   const fetchData = useCallback(async () => {
     try {
       const [orderData, checklistData, photoData] = await Promise.all([
-        apiClient.get<ServiceOrder>(`/service-orders/${id}`),
+        apiClient.get<ServiceOrder & { items?: OsItem[] }>(`/service-orders/${id}`),
         apiClient.get<Checklist[]>(`/service-orders/${id}/checklists`),
         apiClient.get<Photo[]>(`/service-orders/${id}/photos`),
       ]);
       setOrder(orderData);
+      setItems(orderData.items || []);
       setChecklists(checklistData);
       setPhotos(photoData);
       setIsFromCache(false);
@@ -111,12 +130,13 @@ export function OsDetailScreen() {
       if (!isDeviceOnline()) {
         try {
           const cached = await offlineStorage.getOsDetail(id) as {
-            order: ServiceOrder;
+            order: ServiceOrder & { items?: OsItem[] };
             checklists: Checklist[];
             photos: Photo[];
           } | null;
           if (cached) {
             setOrder(cached.order);
+            setItems(cached.order?.items || []);
             setChecklists(cached.checklists ?? []);
             setPhotos(cached.photos ?? []);
             setIsFromCache(true);
@@ -605,6 +625,66 @@ export function OsDetailScreen() {
           </View>
         )}
       </View>
+
+      {/* Itens da OS (read-only) */}
+      {items.length > 0 && (
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderLeft}>
+              <Ionicons name="cube-outline" size={22} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Itens da OS</Text>
+            </View>
+            <Text style={{ ...typography.caption, color: colors.textMuted }}>
+              {items.length} {items.length === 1 ? 'item' : 'itens'}
+            </Text>
+          </View>
+          <View style={{ marginTop: 8, gap: 8 }}>
+            {items.map((it) => (
+              <View
+                key={it.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  padding: 10,
+                  backgroundColor: colors.background,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <View
+                    style={{
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 4,
+                      backgroundColor: it.kind === 'S' ? '#1E3A8A' : '#581C87',
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>
+                      {it.kind === 'S' ? 'SERV' : 'PROD'}
+                    </Text>
+                  </View>
+                  {it.identification && (
+                    <Text style={{ ...typography.caption, color: colors.textMuted }}>
+                      #{it.identification}
+                    </Text>
+                  )}
+                </View>
+                <Text style={{ ...typography.bodySmBold, color: colors.text }}>
+                  {it.description}
+                </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                  <Text style={{ ...typography.caption, color: colors.textMuted }}>
+                    {Number(it.quantity)} {it.unit || ''} x {formatBRL(it.unit_value)}
+                  </Text>
+                  <Text style={{ ...typography.bodySmBold, color: colors.primary }}>
+                    {formatBRL(it.total)}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
 
       {/* Etapas Obrigatórias da Execução */}
       {(order.status === OsStatus.IN_PROGRESS ||

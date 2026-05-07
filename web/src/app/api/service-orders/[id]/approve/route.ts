@@ -6,9 +6,11 @@ import { logAudit } from "@/lib/api-helpers/audit";
 
 /**
  * POST /api/service-orders/[id]/approve
- * Approve a completed service order. Admin only.
- * Changes status from 'completed' to 'invoiced'.
- * If the order is not in 'completed' status, returns 400.
+ * Aprova a OS, registrando aprovado_em e aprovado_por (modelo Cenize).
+ * Idempotente: se ja aprovada, retorna 200 com a OS atual.
+ *
+ * Adicionalmente, se a OS estiver em status 'completed', faz a transicao
+ * para 'invoiced' (compatibilidade com fluxo financeiro existente).
  */
 export async function POST(
   request: NextRequest,
@@ -19,13 +21,11 @@ export async function POST(
     checkRole(user, ["admin"]);
 
     const { id } = await params;
-
     const supabase = getAdminClient();
 
-    // Get current order
     const { data: order, error: findError } = await supabase
       .from("service_orders")
-      .select("id, status, order_number, title")
+      .select("*")
       .eq("id", id)
       .single();
 
@@ -33,58 +33,65 @@ export async function POST(
       throw new AuthError(404, `Service order with ID ${id} not found`);
     }
 
-    if (order.status !== "completed") {
-      throw new AuthError(
-        400,
-        `Cannot approve a service order with status '${order.status}'. Only orders with status 'completed' can be approved.`
-      );
+    // Idempotente: se ja aprovada, retorna a OS atual
+    if (order.aprovado_em) {
+      return jsonResponse({
+        ...order,
+        already_approved: true,
+      });
     }
 
     const now = new Date().toISOString();
+    const updatePayload: Record<string, unknown> = {
+      aprovado_em: now,
+      aprovado_por: user.full_name || user.email,
+      updated_at: now,
+    };
 
-    // Update status to 'invoiced'
+    // Quando OS esta 'completed', tambem transiciona para 'invoiced'
+    let didStatusTransition = false;
+    if (order.status === "completed") {
+      updatePayload.status = "invoiced";
+      didStatusTransition = true;
+    }
+
     const { data: updatedOrder, error: updateError } = await supabase
       .from("service_orders")
-      .update({
-        status: "invoiced",
-        updated_at: now,
-      })
+      .update(updatePayload)
       .eq("id", id)
       .select()
       .single();
 
     if (updateError) {
-      console.error(
-        `Failed to approve service order ${id}: ${updateError.message}`
-      );
+      console.error(`Failed to approve order ${id}: ${updateError.message}`);
       throw new Error("Failed to approve service order");
     }
 
-    // Create status history entry
-    const { error: historyError } = await supabase
-      .from("os_status_history")
-      .insert({
-        service_order_id: id,
-        from_status: "completed",
-        to_status: "invoiced",
-        changed_by: user.id,
-        notes: "Ordem de servico aprovada",
-      });
+    if (didStatusTransition) {
+      const { error: historyError } = await supabase
+        .from("os_status_history")
+        .insert({
+          service_order_id: id,
+          from_status: "completed",
+          to_status: "invoiced",
+          changed_by: user.id,
+          notes: "Ordem de servico aprovada",
+        });
 
-    if (historyError) {
-      console.warn(
-        `Failed to create status history for order ${id}: ${historyError.message}`
-      );
+      if (historyError) {
+        console.warn(
+          `Failed to create status history for order ${id}: ${historyError.message}`
+        );
+      }
     }
 
-    // Audit log
     logAudit({
       userId: user.id,
       action: "service_order.approved",
       entityType: "service_order",
       entityId: id,
-      oldData: { status: "completed" },
-      newData: { status: "invoiced" },
+      oldData: order as Record<string, unknown>,
+      newData: updatedOrder as Record<string, unknown>,
       ipAddress: request.headers.get("x-forwarded-for"),
       userAgent: request.headers.get("user-agent"),
     });

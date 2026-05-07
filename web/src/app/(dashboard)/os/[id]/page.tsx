@@ -30,6 +30,8 @@ import {
   Check,
   Save,
   Download,
+  Package,
+  CreditCard,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1433,6 +1435,233 @@ export default function OsDetailPage() {
               </CardContent>
             </Card>
           </motion.div>
+
+          {/* Itens (Produtos e Servicos) */}
+          <motion.div variants={itemVariants}>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5 text-primary" />
+                  Itens
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const orderAny = order as any;
+                  const orderItems = (orderAny.items || []) as Array<{
+                    id: string;
+                    kind: "S" | "P";
+                    identification: string | null;
+                    description: string;
+                    unit: string | null;
+                    unit_value: number | string;
+                    quantity: number | string;
+                    total: number | string;
+                  }>;
+                  if (orderItems.length === 0) {
+                    return (
+                      <p className="text-sm text-muted-foreground text-center py-6">
+                        Nenhum item cadastrado
+                      </p>
+                    );
+                  }
+                  const subtotal = orderItems.reduce(
+                    (acc, it) => acc + Number(it.total || 0),
+                    0
+                  );
+                  return (
+                    <div className="space-y-3">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b text-xs text-muted-foreground">
+                              <th className="px-2 py-2 text-left">Tipo</th>
+                              <th className="px-2 py-2 text-left">Identif.</th>
+                              <th className="px-2 py-2 text-left">Descrição</th>
+                              <th className="px-2 py-2 text-left">Un.</th>
+                              <th className="px-2 py-2 text-right">Valor</th>
+                              <th className="px-2 py-2 text-right">Qtde</th>
+                              <th className="px-2 py-2 text-right">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {orderItems.map((it) => (
+                              <tr key={it.id} className="border-b last:border-0">
+                                <td className="px-2 py-2">
+                                  <Badge variant={it.kind === "S" ? "info" : "purple" as any} size="sm">
+                                    {it.kind === "S" ? "Serviço" : "Produto"}
+                                  </Badge>
+                                </td>
+                                <td className="px-2 py-2 text-muted-foreground">{it.identification || "-"}</td>
+                                <td className="px-2 py-2">{it.description}</td>
+                                <td className="px-2 py-2 text-muted-foreground">{it.unit || "-"}</td>
+                                <td className="px-2 py-2 text-right">{formatCurrency(Number(it.unit_value))}</td>
+                                <td className="px-2 py-2 text-right">{Number(it.quantity)}</td>
+                                <td className="px-2 py-2 text-right font-semibold">
+                                  {formatCurrency(Number(it.total))}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 pt-3 border-t text-sm">
+                        <div className="flex items-center justify-between gap-6 w-full max-w-xs">
+                          <span className="text-muted-foreground">Subtotal</span>
+                          <span className="font-medium">{formatCurrency(subtotal)}</span>
+                        </div>
+                        {Number(orderAny.acrescimo) > 0 && (
+                          <div className="flex items-center justify-between gap-6 w-full max-w-xs">
+                            <span className="text-muted-foreground">Acréscimo</span>
+                            <span className="font-medium">+ {formatCurrency(Number(orderAny.acrescimo))}</span>
+                          </div>
+                        )}
+                        {Number(orderAny.desconto) > 0 && (
+                          <div className="flex items-center justify-between gap-6 w-full max-w-xs">
+                            <span className="text-muted-foreground">Desconto</span>
+                            <span className="font-medium">- {formatCurrency(Number(orderAny.desconto))}</span>
+                          </div>
+                        )}
+                        {Number(orderAny.vale_troca) > 0 && (
+                          <div className="flex items-center justify-between gap-6 w-full max-w-xs">
+                            <span className="text-muted-foreground">Vale Troca</span>
+                            <span className="font-medium">- {formatCurrency(Number(orderAny.vale_troca))}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between gap-6 w-full max-w-xs pt-2 mt-1 border-t">
+                          <span className="font-bold">Total Líquido</span>
+                          <span className="text-lg font-bold text-primary">
+                            {formatCurrency(
+                              subtotal +
+                                Number(orderAny.acrescimo || 0) -
+                                Number(orderAny.desconto || 0) -
+                                Number(orderAny.vale_troca || 0)
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Parcelas */}
+          {!isPartner && (() => {
+            const orderAny = order as any;
+            const pmts = (orderAny.payments || []) as Array<{
+              id: string;
+              payment_type: string | null;
+              number_label: string | null;
+              doc_number: string | null;
+              due_date: string | null;
+              value: number | string;
+              paid_at: string | null;
+            }>;
+            return (
+              <motion.div variants={itemVariants}>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <CreditCard className="h-5 w-5 text-primary" />
+                      Parcelas
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {pmts.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-6">
+                        Nenhuma parcela cadastrada
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b text-xs text-muted-foreground">
+                              <th className="px-2 py-2 text-left">Tipo</th>
+                              <th className="px-2 py-2 text-left">Número</th>
+                              <th className="px-2 py-2 text-left">Num.Doc</th>
+                              <th className="px-2 py-2 text-left">Vencimento</th>
+                              <th className="px-2 py-2 text-right">Valor</th>
+                              <th className="px-2 py-2 text-left">Pago em</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pmts.map((p) => (
+                              <tr key={p.id} className="border-b last:border-0">
+                                <td className="px-2 py-2">{p.payment_type || "-"}</td>
+                                <td className="px-2 py-2">{p.number_label || "-"}</td>
+                                <td className="px-2 py-2 text-muted-foreground">{p.doc_number || "-"}</td>
+                                <td className="px-2 py-2">{p.due_date ? formatDate(p.due_date) : "-"}</td>
+                                <td className="px-2 py-2 text-right font-semibold">
+                                  {formatCurrency(Number(p.value))}
+                                </td>
+                                <td className="px-2 py-2 text-muted-foreground">
+                                  {p.paid_at ? formatDateTime(p.paid_at) : "—"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })()}
+
+          {/* Aprovacao */}
+          {!isPartner && (() => {
+            const orderAny = order as any;
+            const aprovadoEm = orderAny.aprovado_em as string | null;
+            const aprovadoPor = orderAny.aprovado_por as string | null;
+            const isAdmin = user?.role === UserRole.ADMIN;
+            return (
+              <motion.div variants={itemVariants}>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-primary" />
+                      Aprovação
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {aprovadoEm ? (
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                            <span className="text-sm font-medium">OS aprovada</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Em {formatDateTime(aprovadoEm)} por <strong>{aprovadoPor || "—"}</strong>
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm text-muted-foreground">
+                          Esta OS ainda não foi aprovada.
+                        </p>
+                        {isAdmin && (
+                          <Button
+                            onClick={handleApprove}
+                            disabled={isApproving}
+                            isLoading={isApproving}
+                            className="bg-green-600 text-white hover:bg-green-700"
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                            Aprovar OS
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })()}
 
           {/* Checklist Section */}
           <motion.div variants={itemVariants}>
