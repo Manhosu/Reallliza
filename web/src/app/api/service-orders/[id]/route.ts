@@ -179,6 +179,8 @@ export async function PUT(
         "vale_troca",
         // Termo de conclusão (admin define texto customizado por OS)
         "completion_terms",
+        // Template de execução escolhido pelo operador
+        "step_template_group_id",
       ];
 
       for (const field of allowedFields) {

@@ -169,7 +169,6 @@ export function VistoriaScreen() {
         setSyncStatus('syncing');
         const vistoria: VistoriaData = {
           ambientes,
-          finalizada_at: null,
         };
         await saveVistoriaRemote({ ticketId, vistoria, finalizar: false });
         setSyncStatus('synced');
@@ -454,8 +453,8 @@ export function VistoriaScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
               {syncStatus === 'syncing' && (
                 <>
-                  <ActivityIndicator size="small" color={colors.muted} />
-                  <Text style={{ color: colors.muted, fontSize: 11 }}>
+                  <ActivityIndicator size="small" color={colors.textMuted} />
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>
                     Enviando para o Garantias...
                   </Text>
                 </>
@@ -489,7 +488,7 @@ export function VistoriaScreen() {
                 paddingHorizontal: 12,
                 paddingVertical: 6,
                 borderRadius: 8,
-                backgroundColor: colors.surface,
+                backgroundColor: colors.card,
                 borderWidth: 1,
                 borderColor: colors.border,
               }}

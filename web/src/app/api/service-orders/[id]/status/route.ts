@@ -5,6 +5,7 @@ import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { createNotification } from "@/lib/api-helpers/notifications";
 import { dispatchWebhook } from "@/lib/api-helpers/webhook-dispatcher";
+import { provisionSteps } from "../provision-steps/route";
 
 /**
  * Valid status transitions state machine.
@@ -49,7 +50,7 @@ export async function PATCH(
     // Get current order
     const { data: order, error: findError } = await supabase
       .from("service_orders")
-      .select("id, status, order_number, title, started_at, technician_id, partner_id, external_callback_url, external_system, external_id")
+      .select("id, status, order_number, title, started_at, technician_id, partner_id, external_callback_url, external_system, external_id, step_template_group_id")
       .eq("id", id)
       .single();
 
@@ -141,6 +142,22 @@ export async function PATCH(
       console.warn(
         `Failed to create status history for order ${id}: ${historyError.message}`
       );
+    }
+
+    // Auto-provisiona etapas a partir do template quando a OS é designada/iniciada.
+    // Não bloqueia a transição se não houver template vinculado ou se já houver execuções.
+    if (
+      (newStatus === "assigned" || newStatus === "in_progress") &&
+      order.step_template_group_id
+    ) {
+      try {
+        await provisionSteps(supabase, id, order.step_template_group_id as string);
+      } catch (err) {
+        console.warn(
+          `Step auto-provisioning skipped for ${id}:`,
+          err instanceof Error ? err.message : err
+        );
+      }
     }
 
     // Audit log

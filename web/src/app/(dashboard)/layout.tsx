@@ -24,6 +24,7 @@ import {
   Menu,
   X,
   ChevronRight,
+  Hammer,
   Shield,
   Check,
   Megaphone,
@@ -104,6 +105,12 @@ const allNavItems = [
     roles: [UserRole.ADMIN, UserRole.TECHNICIAN],
   },
   {
+    label: "Templates de Execução",
+    href: "/templates-execucao",
+    icon: Hammer,
+    roles: [UserRole.ADMIN],
+  },
+  {
     label: "Avaliações",
     href: "/avaliacoes",
     icon: Star,
@@ -150,6 +157,7 @@ const breadcrumbLabels: Record<string, string> = {
   parceiros: "Parceiros",
   ferramentas: "Ferramentas",
   checklists: "Checklists",
+  "templates-execucao": "Templates de Execução",
   avaliacoes: "Avaliações",
   relatorios: "Relatórios",
   auditoria: "Auditoria",

@@ -196,6 +196,7 @@ export async function POST(request: NextRequest) {
       "acrescimo",
       "desconto",
       "vale_troca",
+      "step_template_group_id",
     ];
 
     for (const field of optionalFields) {

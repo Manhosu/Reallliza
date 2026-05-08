@@ -28,7 +28,8 @@ type NavigationProp = NativeStackNavigationProp<OsStackParamList>;
 interface StepExecution {
   id: string;
   service_order_id: string;
-  template_id: string;
+  template_id: string | null;
+  template_item_id: string | null;
   step_key: string;
   order_index: number;
   status: 'pending' | 'in_progress' | 'completed' | 'skipped';
@@ -37,6 +38,9 @@ interface StepExecution {
   photos_count: number;
   notes: string | null;
   metadata: Record<string, unknown> | null;
+  photo_initial_url?: string | null;
+  photo_final_url?: string | null;
+  occurrence_text?: string | null;
 }
 
 interface StepWithTemplate extends StepExecution {
@@ -116,7 +120,8 @@ export function StepsScreen() {
       ]);
 
       const enriched = stepData.map((s) => {
-        const meta = STEP_LABELS[s.step_key] || {
+        const fromMeta = (s.metadata || {}) as Record<string, unknown>;
+        const fallback = STEP_LABELS[s.step_key] || {
           name: s.step_key,
           description: '',
           minPhotos: 0,
@@ -126,11 +131,12 @@ export function StepsScreen() {
         return {
           ...s,
           template: {
-            name: meta.name,
-            description: meta.description,
-            requires_photos_min: meta.minPhotos,
-            requires_notes: meta.needsNotes,
-            requires_signature: meta.needsSignature,
+            name: (fromMeta.name as string) || fallback.name,
+            description: (fromMeta.description as string) || fallback.description,
+            requires_photos_min:
+              (fromMeta.photos_required_min as number | undefined) ?? fallback.minPhotos,
+            requires_notes: fallback.needsNotes,
+            requires_signature: fallback.needsSignature,
           },
         };
       });
@@ -291,13 +297,25 @@ export function StepsScreen() {
       </View>
 
       {steps.map((step, idx) => {
-        const isLocked = idx > 0 && steps[idx - 1].status !== 'completed' && step.status === 'pending';
+        // Lock sequencial: bloqueia qualquer etapa pending cuja anterior não esteja concluída.
+        const isLocked =
+          idx > 0 &&
+          steps[idx - 1].status !== 'completed' &&
+          step.status === 'pending';
         const isCompleted = step.status === 'completed';
         const isInProgress = step.status === 'in_progress';
         const photosCount = photosByStep[step.step_key] ?? step.photos_count;
         const canComplete =
           isInProgress &&
           (!step.template || photosCount >= step.template.requires_photos_min);
+
+        const openDetail = () => {
+          if (isLocked) return;
+          navigation.navigate('StepDetail', {
+            serviceOrderId,
+            stepId: step.id,
+          });
+        };
 
         return (
           <View
@@ -308,7 +326,12 @@ export function StepsScreen() {
               isLocked && styles.stepCardLocked,
             ]}
           >
-            <View style={styles.stepHeader}>
+            <TouchableOpacity
+              disabled={isLocked}
+              onPress={openDetail}
+              activeOpacity={0.7}
+              style={styles.stepHeader}
+            >
               <View style={[styles.stepNumber, isCompleted && styles.stepNumberDone]}>
                 {isCompleted ? (
                   <Ionicons name="checkmark" size={18} color={colors.black} />
@@ -323,7 +346,10 @@ export function StepsScreen() {
                 )}
               </View>
               {isLocked && <Ionicons name="lock-closed" size={16} color={colors.textDark} />}
-            </View>
+              {!isLocked && (
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              )}
+            </TouchableOpacity>
 
             {!isLocked && (
               <View style={styles.stepBody}>
@@ -494,7 +520,7 @@ export function StepsScreen() {
 
             {isLocked && (
               <Text style={styles.lockedText}>
-                Conclua a etapa anterior para desbloquear.
+                Conclua a etapa anterior primeiro.
               </Text>
             )}
           </View>

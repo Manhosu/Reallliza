@@ -15,6 +15,14 @@ export { ratingsApi } from "./ratings";
 export { proposalsApi } from "./proposals";
 export { trackingApi } from "./tracking";
 export { consentApi } from "./consent";
+export { stepTemplatesApi } from "./step-templates";
+export type {
+  StepTemplateGroup,
+  StepTemplateItem,
+  StepTemplateItemPayload,
+  CreateStepTemplatePayload,
+  UpdateStepTemplatePayload,
+} from "./step-templates";
 
 // Re-export request/query payload types for convenience
 export type {

@@ -8,6 +8,7 @@ import { ChecklistScreen } from '../screens/ChecklistScreen';
 import { CameraScreen } from '../screens/CameraScreen';
 import { SignatureScreen } from '../screens/SignatureScreen';
 import { StepsScreen } from '../screens/StepsScreen';
+import { StepDetailScreen } from '../screens/StepDetailScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { VistoriaScreen } from '../screens/VistoriaScreen';
 import { HeaderBellButton } from '../components/HeaderBellButton';
@@ -17,6 +18,7 @@ export type OsStackParamList = {
   Home: undefined;
   OsDetail: { id: string };
   Steps: { serviceOrderId: string };
+  StepDetail: { serviceOrderId: string; stepId: string };
   Chat: { serviceOrderId: string };
   Checklist: { serviceOrderId: string };
   Camera: { serviceOrderId: string };
@@ -84,6 +86,13 @@ export function OsStack() {
         component={StepsScreen}
         options={{
           title: 'Etapas da Execução',
+        }}
+      />
+      <Stack.Screen
+        name="StepDetail"
+        component={StepDetailScreen}
+        options={{
+          title: 'Etapa',
         }}
       />
       <Stack.Screen

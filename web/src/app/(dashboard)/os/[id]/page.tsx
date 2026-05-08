@@ -62,8 +62,10 @@ import {
   usersApi,
   partnersApi,
   apiClient,
+  stepTemplatesApi,
 } from "@/lib/api";
 import type { PhotoCountResponse } from "@/lib/api";
+import type { StepTemplateGroup } from "@/lib/api/step-templates";
 import { useApi } from "@/hooks/use-api";
 import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "sonner";
@@ -864,7 +866,9 @@ export default function OsDetailPage() {
     scheduled_date: "",
     estimated_value: "",
     notes: "",
+    step_template_group_id: "",
   });
+  const [stepTemplates, setStepTemplates] = useState<StepTemplateGroup[]>([]);
 
   // Fetch service order by ID
   const {
@@ -925,17 +929,22 @@ export default function OsDetailPage() {
       scheduled_date: order.scheduled_date || "",
       estimated_value: order.estimated_value != null ? String(order.estimated_value) : "",
       notes: order.notes || "",
+      step_template_group_id:
+        (order as unknown as { step_template_group_id?: string | null }).step_template_group_id ||
+        "",
     });
     setShowEditModal(true);
     // Load dropdowns for technicians and partners
     setLoadingDropdowns(true);
     try {
-      const [techRes, partRes] = await Promise.all([
+      const [techRes, partRes, tplRes] = await Promise.all([
         usersApi.list({ role: UserRole.TECHNICIAN, limit: 100 }),
         partnersApi.list({ is_active: true, limit: 100 }),
+        stepTemplatesApi.list().catch(() => [] as StepTemplateGroup[]),
       ]);
       setTechnicians(techRes.data);
       setPartnersList(partRes.data);
+      setStepTemplates(tplRes || []);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro ao carregar dados";
       toast.error(message);
@@ -976,6 +985,7 @@ export default function OsDetailPage() {
         scheduled_date: editForm.scheduled_date || undefined,
         estimated_value: editForm.estimated_value ? parseFloat(editForm.estimated_value) : undefined,
         notes: editForm.notes.trim() || undefined,
+        step_template_group_id: editForm.step_template_group_id || undefined,
       };
       // Remove undefined keys so they don't appear as null in JSON
       const payload = Object.fromEntries(
@@ -2021,6 +2031,23 @@ export default function OsDetailPage() {
                 value={editForm.estimated_value}
                 onChange={(e) => setEditForm({ ...editForm, estimated_value: e.target.value })}
               />
+              <SelectNative
+                label="Template de Execução"
+                value={editForm.step_template_group_id}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, step_template_group_id: e.target.value })
+                }
+                disabled={loadingDropdowns}
+              >
+                <option value="">
+                  {loadingDropdowns ? "Carregando..." : "Sem template (etapas manuais)"}
+                </option>
+                {stepTemplates.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name} ({g.items?.length ?? 0} etapas)
+                  </option>
+                ))}
+              </SelectNative>
               <div className="space-y-2">
                 <label className="text-sm font-medium leading-none text-foreground/80">Observações</label>
                 <textarea

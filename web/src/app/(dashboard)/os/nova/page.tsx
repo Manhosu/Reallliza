@@ -25,7 +25,8 @@ import { Input } from "@/components/ui/input";
 import { SelectNative } from "@/components/ui/select-native";
 import { cn } from "@/lib/utils";
 import { OsPriority, OS_PRIORITY_LABELS, UserRole, type Partner, type Profile } from "@/lib/types";
-import { serviceOrdersApi, partnersApi, usersApi } from "@/lib/api";
+import { serviceOrdersApi, partnersApi, usersApi, stepTemplatesApi } from "@/lib/api";
+import type { StepTemplateGroup } from "@/lib/api/step-templates";
 import { apiClient } from "@/lib/api/client";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -78,6 +79,7 @@ interface FormData {
   acrescimo: string;
   desconto: string;
   vale_troca: string;
+  step_template_group_id: string;
 }
 
 interface ItemRow {
@@ -119,6 +121,7 @@ export default function NovaOsPage() {
 
   const [partners, setPartners] = useState<Partner[]>([]);
   const [technicians, setTechnicians] = useState<Profile[]>([]);
+  const [stepTemplates, setStepTemplates] = useState<StepTemplateGroup[]>([]);
   const [loadingDropdowns, setLoadingDropdowns] = useState(true);
 
   const [form, setForm] = useState<FormData>({
@@ -150,6 +153,7 @@ export default function NovaOsPage() {
     acrescimo: "0",
     desconto: "0",
     vale_troca: "0",
+    step_template_group_id: "",
   });
 
   const [items, setItems] = useState<ItemRow[]>([]);
@@ -165,13 +169,15 @@ export default function NovaOsPage() {
       }
       setLoadingDropdowns(true);
       try {
-        const [partnersRes, techniciansRes] = await Promise.all([
+        const [partnersRes, techniciansRes, templatesRes] = await Promise.all([
           partnersApi.list({ is_active: true, limit: 100 }),
           usersApi.list({ role: UserRole.TECHNICIAN, limit: 100 }),
+          stepTemplatesApi.list().catch(() => [] as StepTemplateGroup[]),
         ]);
         if (!cancelled) {
           setPartners(partnersRes.data);
           setTechnicians(techniciansRes.data);
+          setStepTemplates(templatesRes || []);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Erro ao carregar dados";
@@ -281,6 +287,7 @@ export default function NovaOsPage() {
       if (acrescimo) payload.acrescimo = acrescimo;
       if (desconto) payload.desconto = desconto;
       if (valeTroca) payload.vale_troca = valeTroca;
+      if (form.step_template_group_id) payload.step_template_group_id = form.step_template_group_id;
 
       const created = await serviceOrdersApi.create(payload as any) as any;
       const orderId = created.id;
@@ -559,6 +566,23 @@ export default function NovaOsPage() {
                   value={form.previsao_conclusao}
                   onChange={(e) => updateField("previsao_conclusao", e.target.value)}
                 />
+                {!isPartner && (
+                  <SelectNative
+                    label="Template de Execução"
+                    value={form.step_template_group_id}
+                    onChange={(e) => updateField("step_template_group_id", e.target.value)}
+                    disabled={loadingDropdowns}
+                  >
+                    <option value="">
+                      {loadingDropdowns ? "Carregando..." : "Sem template (etapas manuais)"}
+                    </option>
+                    {stepTemplates.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name} ({g.items?.length ?? 0} etapas)
+                      </option>
+                    ))}
+                  </SelectNative>
+                )}
               </div>
             </CardContent>
           </Card>
