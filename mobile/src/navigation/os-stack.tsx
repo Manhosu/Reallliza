@@ -21,7 +21,7 @@ export type OsStackParamList = {
   Checklist: { serviceOrderId: string };
   Camera: { serviceOrderId: string };
   Signature: { serviceOrderId: string };
-  Vistoria: { ticketId?: string; ticketProtocol?: string };
+  Vistoria: { ticketId?: string; ticketProtocol?: string; osId?: string };
 };
 
 const Stack = createNativeStackNavigator<OsStackParamList>();

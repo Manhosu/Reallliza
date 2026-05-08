@@ -151,6 +151,35 @@ export function VistoriaScreen() {
     ).catch(() => {});
   }, [ambientes, draftKey]);
 
+  // Auto-sync para o Garantias enquanto o tecnico preenche.
+  // Jessica 08/05: "Ao mesmo tempo que ele preenche a vistoria no app
+  // de execucao a plataforma de garantia vai sendo alimentada".
+  // Debounce de 4s para nao spammar a rede.
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'offline'>('idle');
+  useEffect(() => {
+    if (!hasLoadedRef.current || !ticketId || isFinalized) return;
+    setSyncStatus('idle');
+    const timer = setTimeout(async () => {
+      try {
+        const online = await isDeviceOnline();
+        if (!online) {
+          setSyncStatus('offline');
+          return;
+        }
+        setSyncStatus('syncing');
+        const vistoria: VistoriaData = {
+          ambientes,
+          finalizada_at: null,
+        };
+        await saveVistoriaRemote({ ticketId, vistoria, finalizar: false });
+        setSyncStatus('synced');
+      } catch {
+        setSyncStatus('offline');
+      }
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [ambientes, ticketId, isFinalized]);
+
   // ===================== Mutators =====================
 
   function updateAmbiente(id: string, updater: (a: VistoriaAmbiente) => VistoriaAmbiente) {
@@ -420,6 +449,61 @@ export function VistoriaScreen() {
                 Finalizada
               </Text>
             </View>
+          )}
+          {!isFinalized && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+              {syncStatus === 'syncing' && (
+                <>
+                  <ActivityIndicator size="small" color={colors.muted} />
+                  <Text style={{ color: colors.muted, fontSize: 11 }}>
+                    Enviando para o Garantias...
+                  </Text>
+                </>
+              )}
+              {syncStatus === 'synced' && (
+                <>
+                  <Ionicons name="cloud-done-outline" size={14} color={colors.success} />
+                  <Text style={{ color: colors.success, fontSize: 11 }}>
+                    Sincronizado com o Garantias
+                  </Text>
+                </>
+              )}
+              {syncStatus === 'offline' && (
+                <>
+                  <Ionicons name="cloud-offline-outline" size={14} color="#FCD34D" />
+                  <Text style={{ color: '#FCD34D', fontSize: 11 }}>
+                    Sem internet (rascunho local salvo)
+                  </Text>
+                </>
+              )}
+            </View>
+          )}
+          {(route.params as any)?.osId && (
+            <TouchableOpacity
+              style={{
+                marginTop: 10,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                alignSelf: 'flex-start',
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 8,
+                backgroundColor: colors.surface,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
+              onPress={() =>
+                navigation.navigate('OsDetail', {
+                  id: (route.params as any).osId,
+                })
+              }
+            >
+              <Ionicons name="information-circle-outline" size={16} color={colors.text} />
+              <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>
+                Detalhes da OS
+              </Text>
+            </TouchableOpacity>
           )}
         </View>
 

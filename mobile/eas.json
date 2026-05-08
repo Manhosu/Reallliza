@@ -18,12 +18,16 @@
         "credentialsSource": "local"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://reallliza-web.vercel.app/api"
+        "EXPO_PUBLIC_API_URL": "https://reallliza-web.vercel.app/api",
+        "EXPO_PUBLIC_GARANTIAS_URL": "https://plataforma-garantias-reallliza.vercel.app",
+        "EXPO_PUBLIC_GARANTIAS_API_KEY": "fe0da03659bd004aebc536a94dc8b455cccf29d1287068719cfad1468c159a86"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://reallliza-web.vercel.app/api"
+        "EXPO_PUBLIC_API_URL": "https://reallliza-web.vercel.app/api",
+        "EXPO_PUBLIC_GARANTIAS_URL": "https://plataforma-garantias-reallliza.vercel.app",
+        "EXPO_PUBLIC_GARANTIAS_API_KEY": "fe0da03659bd004aebc536a94dc8b455cccf29d1287068719cfad1468c159a86"
       }
     }
   },

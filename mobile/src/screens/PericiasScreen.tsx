@@ -114,7 +114,20 @@ export function PericiasScreen() {
   const renderOrder = ({ item }: { item: ServiceOrder }) => (
     <TouchableOpacity
       style={styles.orderCard}
-      onPress={() => navigation.navigate('OsDetail', { id: item.id })}
+      onPress={() => {
+        // Tap no card da pericia abre direto a Vistoria (atalho explicito
+        // pedido pela Jessica). Para ver dados do cliente/endereco/historico,
+        // ha botao "Detalhes" dentro da VistoriaScreen.
+        const protocolMatch = item.title?.match(/TK-[A-Z0-9-]+/i);
+        const ticketProtocol = protocolMatch ? protocolMatch[0] : undefined;
+        const meta = (item as any)?.external_metadata || {};
+        const ticketId = (meta as any)?.ticket_id as string | undefined;
+        navigation.navigate('Vistoria', {
+          osId: item.id,
+          ticketId,
+          ticketProtocol,
+        });
+      }}
       activeOpacity={0.7}
     >
       <View style={styles.periciaBadge}>
