@@ -4,6 +4,53 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { createNotification } from "@/lib/api-helpers/notifications";
+import { loadRatingsAverages, rankCandidates } from "@/lib/proposals/ranking";
+
+// Campos sensíveis do cliente que só ficam visíveis após o aceite.
+const CLIENT_SENSITIVE_FIELDS = [
+  "client_name",
+  "client_phone",
+  "client_email",
+  "client_document",
+  "address_street",
+  "address_number",
+  "address_complement",
+] as const;
+
+/**
+ * Mascara campos sensíveis do cliente em uma proposta enquanto ela ainda
+ * estiver pendente. Mantém visíveis: tipo, cidade/estado aproximados,
+ * área, valor estimado, data prevista e centroide do bairro.
+ */
+function maskClientFields(
+  proposal: Record<string, unknown> & {
+    status?: string;
+    accepted_by?: string | null;
+    service_order?: Record<string, unknown> | null;
+  },
+  viewerUserId: string
+): Record<string, unknown> {
+  const acceptedByMe = proposal.accepted_by === viewerUserId;
+  if (proposal.status === "accepted" && acceptedByMe) return proposal;
+
+  const out = { ...proposal };
+  const so = (out.service_order as Record<string, unknown> | null) || null;
+  if (so) {
+    const masked: Record<string, unknown> = { ...so };
+    for (const f of CLIENT_SENSITIVE_FIELDS) {
+      if (f in masked) masked[f] = null;
+    }
+    // Geocoordenadas: trunca para 2 casas (~1km de precisão)
+    if (typeof masked.geo_lat === "number") {
+      masked.geo_lat = Math.round((masked.geo_lat as number) * 100) / 100;
+    }
+    if (typeof masked.geo_lng === "number") {
+      masked.geo_lng = Math.round((masked.geo_lng as number) * 100) / 100;
+    }
+    out.service_order = masked;
+  }
+  return out;
+}
 
 /**
  * GET /api/proposals
@@ -33,7 +80,12 @@ export async function GET(request: NextRequest) {
       .select(
         `
         *,
-        service_order:service_orders!service_proposals_service_order_id_fkey(id, title, client_name),
+        service_order:service_orders!service_proposals_service_order_id_fkey(
+          id, title, description, client_name, client_phone, client_email, client_document,
+          address_street, address_number, address_complement, address_neighborhood,
+          address_city, address_state, address_zip, geo_lat, geo_lng,
+          scheduled_date, estimated_value, status, priority
+        ),
         partner:partners!service_proposals_partner_id_fkey(id, company_name)
       `,
         { count: "exact" }
@@ -111,8 +163,16 @@ export async function GET(request: NextRequest) {
       throw new Error("Failed to fetch proposals");
     }
 
+    // Aplicar mascaramento para technician/partner enquanto a proposta
+    // ainda não foi aceita por eles. Admin/manager veem tudo.
+    const isPrivileged = user.role === "admin" || user.role === "manager";
+    const out =
+      data && !isPrivileged
+        ? data.map((p) => maskClientFields(p as Record<string, unknown>, user.id))
+        : data || [];
+
     return jsonResponse({
-      data: data || [],
+      data: out,
       meta: {
         total: count || 0,
         page,
@@ -237,29 +297,125 @@ export async function POST(request: NextRequest) {
     });
 
     if (isBroadcast) {
-      // Notifica todos os technicians/partners da região alvo (ou todos
-      // se target_state é null). Fire-and-forget.
+      // Carrega coordenadas da OS para ranquear por proximidade. Reusa o
+      // service_orders do passo de validação acima quando possível.
+      const { data: soFull } = await supabase
+        .from("service_orders")
+        .select("geo_lat, geo_lng, address_state, external_metadata")
+        .eq("id", service_order_id)
+        .maybeSingle();
+
+      const obraLat = (soFull?.geo_lat as number | null) ?? null;
+      const obraLng = (soFull?.geo_lng as number | null) ?? null;
+      // Heurística: o tipo de serviço pode estar em external_metadata.service_type
+      // (ainda não há coluna dedicada). Se não vier, ignoramos specialty_match.
+      const serviceType =
+        (soFull?.external_metadata as { service_type?: string } | null)?.service_type ||
+        null;
+
+      // Notificação ranqueada (top 10) por score composto. Fire-and-forget.
+      // TODO multi-onda: hoje só uma onda; adicionar onda 2 (todos) com
+      // delay de 5min via cron quando a infra de scheduling estiver pronta.
       (async () => {
         try {
-          let q = supabase
+          const targetUF = (proposal.target_state as string | null) || "";
+          const { data: rawCandidates } = await supabase
             .from("profiles")
-            .select("id, operating_region")
+            .select(
+              "id, full_name, operating_region, specialties, updated_at"
+            )
             .in("role", ["technician", "partner"])
             .eq("status", "active");
-          const targetUF = (proposal.target_state as string | null) || "";
-          const { data: candidates } = await q;
-          const list = (candidates || []).filter((p) => {
+
+          const filtered = (rawCandidates || []).filter((p) => {
             if (!targetUF) return true;
             const region = (p.operating_region || "").toUpperCase();
             return !region || region.includes(targetUF);
           });
-          for (const p of list) {
+
+          if (filtered.length === 0) return;
+
+          const userIds = filtered.map((p) => p.id);
+
+          // Localização mais recente reportada por cada técnico (mobile).
+          const { data: locs } = await supabase
+            .from("technician_locations")
+            .select("user_id, latitude, longitude, recorded_at")
+            .in("user_id", userIds)
+            .order("recorded_at", { ascending: false });
+          const lastLoc = new Map<
+            string,
+            { lat: number; lng: number; ts: string }
+          >();
+          for (const l of (locs || []) as Array<{
+            user_id: string;
+            latitude: number;
+            longitude: number;
+            recorded_at: string;
+          }>) {
+            if (!lastLoc.has(l.user_id)) {
+              lastLoc.set(l.user_id, {
+                lat: l.latitude,
+                lng: l.longitude,
+                ts: l.recorded_at,
+              });
+            }
+          }
+
+          const ratings = await loadRatingsAverages(supabase, userIds);
+
+          const enriched = filtered.map((p) => {
+            const loc = lastLoc.get(p.id);
+            return {
+              id: p.id,
+              full_name: p.full_name,
+              operating_region: p.operating_region,
+              specialties: p.specialties as string[] | null,
+              geo_lat: loc?.lat ?? null,
+              geo_lng: loc?.lng ?? null,
+              last_sign_in_at: loc?.ts ?? null,
+              updated_at: (p.updated_at as string | null) ?? null,
+            };
+          });
+
+          const ranked = await rankCandidates({
+            candidates: enriched,
+            obraLat,
+            obraLng,
+            serviceType,
+            ratingsByUser: ratings,
+          });
+
+          const topN = ranked.slice(0, 10);
+
+          // Persiste ranking no metadata da proposta para auditoria
+          await supabase
+            .from("service_proposals")
+            .update({
+              metadata: {
+                ranked_top: topN.map((r) => ({
+                  user_id: r.id,
+                  score: Number(r.score.toFixed(3)),
+                  distance_km:
+                    r.distance_km == null ? null : Number(r.distance_km.toFixed(1)),
+                })),
+                ranking_strategy: "uber_v1",
+              },
+            })
+            .eq("id", proposal.id);
+
+          for (const r of topN) {
             createNotification(
-              p.id,
+              r.id,
               "Nova proposta disponível",
               `OS "${serviceOrder.title}" — primeiro a aceitar fica com o serviço.`,
               "general",
-              { proposal_id: proposal.id, service_order_id, broadcast: true }
+              {
+                proposal_id: proposal.id,
+                service_order_id,
+                broadcast: true,
+                rank_score: Number(r.score.toFixed(3)),
+              }
             ).catch(() => {});
           }
         } catch (err) {
