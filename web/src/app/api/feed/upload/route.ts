@@ -10,12 +10,17 @@ const ALLOWED_MIME_TYPES = [
   "image/jpg",
   "image/png",
   "image/webp",
+  "image/gif",
+  "image/heic",
   "video/mp4",
   "video/webm",
   "video/quicktime",
+  "video/x-matroska",
 ];
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB (larger for video)
+// Limite alinhado com o bucket photos (200MB) e o config de storage do
+// projeto. Aumentado pra suportar videos de demonstracao do Feed.
+const MAX_FILE_SIZE = 200 * 1024 * 1024;
 
 /**
  * POST /api/feed/upload
