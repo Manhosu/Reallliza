@@ -453,6 +453,36 @@ export function OsDetailScreen() {
               </Text>
             </View>
           )}
+          <TouchableOpacity
+            onPress={() => {
+              const meta = order.external_metadata as Record<string, unknown> | null;
+              const ticketId = (meta?.ticket_id as string | undefined) || undefined;
+              const protoFromTitle = (() => {
+                const m = order.title?.match(/(TK-\d{4,})/i);
+                return m ? m[1].toUpperCase() : undefined;
+              })();
+              const ticketProtocol =
+                (meta?.protocolo as string | undefined) ||
+                (meta?.ticket_protocolo as string | undefined) ||
+                protoFromTitle;
+              navigation.navigate('Vistoria', { ticketId, ticketProtocol });
+            }}
+            style={{
+              marginTop: 12,
+              backgroundColor: '#EAB308',
+              borderRadius: 10,
+              paddingVertical: 12,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+            }}
+          >
+            <Ionicons name="clipboard" size={18} color="#000" />
+            <Text style={{ color: '#000', fontWeight: '700', fontSize: 14 }}>
+              Iniciar Vistoria Tecnica
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 

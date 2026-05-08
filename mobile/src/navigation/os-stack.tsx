@@ -9,6 +9,7 @@ import { CameraScreen } from '../screens/CameraScreen';
 import { SignatureScreen } from '../screens/SignatureScreen';
 import { StepsScreen } from '../screens/StepsScreen';
 import { ChatScreen } from '../screens/ChatScreen';
+import { VistoriaScreen } from '../screens/VistoriaScreen';
 import { HeaderBellButton } from '../components/HeaderBellButton';
 import { colors } from '../theme/colors';
 
@@ -20,6 +21,7 @@ export type OsStackParamList = {
   Checklist: { serviceOrderId: string };
   Camera: { serviceOrderId: string };
   Signature: { serviceOrderId: string };
+  Vistoria: { ticketId?: string; ticketProtocol?: string };
 };
 
 const Stack = createNativeStackNavigator<OsStackParamList>();
@@ -110,6 +112,13 @@ export function OsStack() {
         component={SignatureScreen}
         options={{
           title: 'Assinatura do Cliente',
+        }}
+      />
+      <Stack.Screen
+        name="Vistoria"
+        component={VistoriaScreen}
+        options={{
+          title: 'Vistoria Tecnica',
         }}
       />
     </Stack.Navigator>
