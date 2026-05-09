@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class MarkArrivedDto {
   @ApiPropertyOptional({
@@ -28,4 +28,11 @@ export class MarkArrivedDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional({
+    description: 'Forçar chegada mesmo fora do raio de 300m (requer confirmação)',
+  })
+  @IsBoolean()
+  @IsOptional()
+  force_override?: boolean;
 }

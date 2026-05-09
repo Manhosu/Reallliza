@@ -13,6 +13,7 @@ import {
   User,
   Plus,
   X,
+  ClipboardList,
 } from "lucide-react";
 import {
   format,
@@ -167,6 +168,8 @@ function ScheduleBlock({
     schedule.end_time
   );
 
+  const isFromOs = schedule.source === "os";
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -174,16 +177,20 @@ function ScheduleBlock({
       className={cn(
         "absolute inset-x-1 z-10 cursor-pointer overflow-hidden rounded-lg border-l-[3px] px-2 py-1.5 transition-all duration-200 hover:shadow-md",
         colors.bg,
-        colors.border
+        colors.border,
+        isFromOs && "ring-1 ring-primary/30"
       )}
       style={{
         top: `${top}px`,
         height: `${height}px`,
       }}
     >
-      <p className={cn("truncate text-[11px] font-semibold", colors.text)}>
-        {schedule.service_order?.title || schedule.service_order?.order_number || schedule.service_order_id.slice(0, 8)}
-      </p>
+      <div className="flex items-center gap-1">
+        {isFromOs && <ClipboardList className={cn("h-2.5 w-2.5 shrink-0", colors.text)} />}
+        <p className={cn("truncate text-[11px] font-semibold", colors.text)}>
+          {schedule.service_order?.title || schedule.service_order?.order_number || schedule.service_order_id.slice(0, 8)}
+        </p>
+      </div>
       {height > 48 && (
         <p className="truncate text-[10px] text-muted-foreground">
           {schedule.technician?.full_name || schedule.technician_id.slice(0, 8)}
@@ -850,9 +857,17 @@ export default function AgendaPage() {
 
                           {/* Info */}
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold">
-                              {schedule.service_order?.title || schedule.service_order?.order_number || schedule.service_order_id.slice(0, 8)}
-                            </p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="truncate text-sm font-semibold">
+                                {schedule.service_order?.title || schedule.service_order?.order_number || schedule.service_order_id.slice(0, 8)}
+                              </p>
+                              {schedule.source === "os" && (
+                                <span className="shrink-0 inline-flex items-center gap-0.5 rounded bg-primary/10 px-1.5 py-px text-[9px] font-semibold text-primary">
+                                  <ClipboardList className="h-2.5 w-2.5" />
+                                  OS
+                                </span>
+                              )}
+                            </div>
                             <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <User className="h-3 w-3" />

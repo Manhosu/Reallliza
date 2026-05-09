@@ -31,6 +31,7 @@ import {
   MapPin,
   Star,
   Send,
+  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserRole, type Notification } from "@/lib/types";
@@ -67,6 +68,12 @@ const allNavItems = [
     href: "/propostas",
     icon: Send,
     roles: [UserRole.ADMIN, UserRole.PARTNER],
+  },
+  {
+    label: "Chats",
+    href: "/chats",
+    icon: MessageSquare,
+    roles: [UserRole.ADMIN],
   },
   {
     label: "Agenda",

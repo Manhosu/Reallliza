@@ -338,4 +338,49 @@ export class SchedulesService {
       }
     }
   }
+
+  /**
+   * Sincroniza automaticamente a Agenda com os dados da OS.
+   * Chamado sempre que uma OS com scheduled_date e technician_id é criada/atualizada.
+   * - Se já existe um schedule para essa OS, atualiza data/técnico.
+   * - Caso contrário, cria novo com source='os'.
+   */
+  async syncFromServiceOrder(os: {
+    id: string;
+    technician_id: string;
+    scheduled_date: string;
+    title: string;
+    estimated_duration_minutes?: number | null;
+  }): Promise<void> {
+    const supabase = this.supabaseService.getClient();
+
+    // Extrai apenas a parte de data (YYYY-MM-DD)
+    const date = os.scheduled_date.substring(0, 10);
+
+    const { data: existing } = await supabase
+      .from('schedules')
+      .select('id')
+      .eq('service_order_id', os.id)
+      .maybeSingle();
+
+    if (existing) {
+      await supabase
+        .from('schedules')
+        .update({
+          technician_id: os.technician_id,
+          date,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id);
+    } else {
+      await supabase.from('schedules').insert({
+        service_order_id: os.id,
+        technician_id: os.technician_id,
+        date,
+        status: 'scheduled',
+        notes: `[Sincronizado da OS] ${os.title}`,
+        source: 'os',
+      });
+    }
+  }
 }

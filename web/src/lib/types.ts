@@ -289,6 +289,7 @@ export interface Schedule {
   end_time: string | null;
   status: ScheduleStatus;
   notes: string | null;
+  source?: "manual" | "os";
   created_at: string;
   updated_at: string;
   technician?: { id: string; full_name: string; email?: string; phone?: string | null; avatar_url?: string | null };

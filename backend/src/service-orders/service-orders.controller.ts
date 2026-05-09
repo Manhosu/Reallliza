@@ -153,6 +153,7 @@ export class ServiceOrdersController {
       dto.lat,
       dto.lng,
       dto.notes,
+      dto.force_override,
     );
   }
 

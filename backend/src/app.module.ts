@@ -22,6 +22,7 @@ import { ExternalModule } from './external/external.module';
 import { MessagesModule } from './messages/messages.module';
 import { LearningModule } from './learning/learning.module';
 import { ProfileModule } from './profile/profile.module';
+import { ProposalsModule } from './proposals/proposals.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
 @Module({
@@ -63,6 +64,7 @@ import { AuditInterceptor } from './common/interceptors/audit.interceptor';
     MessagesModule,
     LearningModule,
     ProfileModule,
+    ProposalsModule,
   ],
   controllers: [AppController],
   providers: [

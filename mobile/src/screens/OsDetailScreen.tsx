@@ -197,46 +197,77 @@ export function OsDetailScreen() {
     }
   };
 
+  const doMarkArrived = async (lat?: number, lng?: number, forceOverride?: boolean) => {
+    try {
+      setIsUpdatingStatus(true);
+      await apiClient.patch(`/service-orders/${id}/arrived`, { lat, lng, force_override: forceOverride });
+      await fetchData();
+    } catch (error: unknown) {
+      console.error('Error marking arrival:', error);
+      const message =
+        error && typeof error === 'object' && 'message' in error
+          ? (error as { message: string }).message
+          : 'Não foi possível registrar a chegada.';
+
+      // Se o erro for de distância, oferecer force_override
+      if (typeof message === 'string' && message.includes('m do local')) {
+        Alert.alert(
+          'Fora do raio de chegada',
+          `${message}\n\nDeseja confirmar mesmo assim?`,
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+              text: 'Confirmar mesmo assim',
+              style: 'destructive',
+              onPress: () => doMarkArrived(lat, lng, true),
+            },
+          ],
+        );
+      } else {
+        Alert.alert('Erro', message);
+      }
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
   const handleArrived = async () => {
+    let lat: number | undefined;
+    let lng: number | undefined;
+    let distanceMsg = '';
+
+    try {
+      const Location = await import('expo-location');
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+
+        if (order?.geo_lat && order?.geo_lng) {
+          const R = 6_371_000;
+          const toRad = (d: number) => (d * Math.PI) / 180;
+          const dLat = toRad(order.geo_lat - lat);
+          const dLng = toRad(order.geo_lng - lng);
+          const a =
+            Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(lat)) * Math.cos(toRad(order.geo_lat)) * Math.sin(dLng / 2) ** 2;
+          const dist = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+          distanceMsg = dist < 1000
+            ? `\nDistância do local: ${dist}m`
+            : `\nDistância do local: ${(dist / 1000).toFixed(1)}km`;
+        }
+      }
+    } catch {
+      // GPS opcional
+    }
+
     Alert.alert(
       'Cheguei no Local',
-      'Deseja registrar sua chegada no local da OS?',
+      `Deseja registrar sua chegada no local da OS?${distanceMsg}`,
       [
         { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Confirmar',
-          onPress: async () => {
-            try {
-              setIsUpdatingStatus(true);
-              let lat: number | undefined;
-              let lng: number | undefined;
-              try {
-                const Location = await import('expo-location');
-                const { status } = await Location.getForegroundPermissionsAsync();
-                if (status === 'granted') {
-                  const pos = await Location.getCurrentPositionAsync({
-                    accuracy: Location.Accuracy.Balanced,
-                  });
-                  lat = pos.coords.latitude;
-                  lng = pos.coords.longitude;
-                }
-              } catch {
-                // GPS opcional — segue sem coordenadas
-              }
-              await apiClient.patch(`/service-orders/${id}/arrived`, { lat, lng });
-              await fetchData();
-            } catch (error: unknown) {
-              console.error('Error marking arrival:', error);
-              const message =
-                error && typeof error === 'object' && 'message' in error
-                  ? (error as { message: string }).message
-                  : 'Não foi possível registrar a chegada.';
-              Alert.alert('Erro', message);
-            } finally {
-              setIsUpdatingStatus(false);
-            }
-          },
-        },
+        { text: 'Confirmar', onPress: () => doMarkArrived(lat, lng, false) },
       ],
     );
   };
@@ -823,7 +854,7 @@ export function OsDetailScreen() {
               size={22}
               color={colors.primary}
             />
-            <Text style={styles.sectionTitle}>Fotos</Text>
+            <Text style={styles.sectionTitle}>Imagens do Local</Text>
           </View>
           <Ionicons
             name="chevron-forward"
@@ -852,7 +883,7 @@ export function OsDetailScreen() {
             )}
           </View>
         ) : (
-          <Text style={styles.noDataText}>Nenhuma foto</Text>
+          <Text style={styles.noDataText}>Imagens do local enviadas pela empresa como referência</Text>
         )}
       </TouchableOpacity>
 

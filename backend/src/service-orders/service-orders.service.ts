@@ -17,6 +17,22 @@ import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WebhookDispatcherService } from '../external/webhook-dispatcher.service';
 import { StepsService } from './steps/steps.service';
+import { Inject, forwardRef } from '@nestjs/common';
+import { SchedulesService } from '../schedules/schedules.service';
+
+/** Calcula distância em metros entre dois pontos GPS usando fórmula Haversine */
+function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6_371_000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+const GPS_ARRIVAL_RADIUS_METERS = 300;
 
 /**
  * Defines the allowed status transitions for service orders.
@@ -51,6 +67,8 @@ export class ServiceOrdersService {
     private readonly notificationsService: NotificationsService,
     private readonly webhookDispatcher: WebhookDispatcherService,
     private readonly stepsService: StepsService,
+    @Inject(forwardRef(() => SchedulesService))
+    private readonly schedulesService: SchedulesService,
   ) {}
 
   /**
@@ -301,6 +319,18 @@ export class ServiceOrdersService {
       }
     }
 
+    // Sync to Agenda if scheduled
+    if (data.technician_id && data.scheduled_date) {
+      this.schedulesService
+        .syncFromServiceOrder({
+          id: order.id,
+          technician_id: data.technician_id,
+          scheduled_date: data.scheduled_date,
+          title: data.title,
+        })
+        .catch((err) => this.logger.warn(`Agenda sync failed: ${err.message}`));
+    }
+
     return order;
   }
 
@@ -374,6 +404,20 @@ export class ServiceOrdersService {
       oldData: existing as unknown as Record<string, unknown>,
       newData: order as unknown as Record<string, unknown>,
     });
+
+    // Sync to Agenda if scheduled_date or technician changed
+    const techId = (data.technician_id ?? existing.technician_id) as string | null;
+    const schedDate = (data.scheduled_date ?? existing.scheduled_date) as string | null;
+    if (techId && schedDate) {
+      this.schedulesService
+        .syncFromServiceOrder({
+          id,
+          technician_id: techId,
+          scheduled_date: schedDate,
+          title: (data.title ?? existing.title) as string,
+        })
+        .catch((err) => this.logger.warn(`Agenda sync failed: ${err.message}`));
+    }
 
     return order;
   }
@@ -587,12 +631,13 @@ export class ServiceOrdersService {
     lat?: number,
     lng?: number,
     notes?: string,
+    forceOverride?: boolean,
   ) {
     const supabase = this.supabaseService.getClient();
 
     const { data: order, error: findError } = await supabase
       .from('service_orders')
-      .select('id, status, order_number, technician_id, arrived_at')
+      .select('id, status, order_number, technician_id, arrived_at, geo_lat, geo_lng')
       .eq('id', id)
       .single();
 
@@ -609,6 +654,16 @@ export class ServiceOrdersService {
     // Idempotência: se já marcou, devolve o estado atual sem regravar
     if (order.arrived_at) {
       return order;
+    }
+
+    // Validação de proximidade GPS (300m) — se a OS tem coordenadas e o técnico forneceu GPS
+    if (lat !== undefined && lng !== undefined && order.geo_lat && order.geo_lng && !forceOverride) {
+      const distanceMeters = haversineMeters(lat, lng, order.geo_lat as number, order.geo_lng as number);
+      if (distanceMeters > GPS_ARRIVAL_RADIUS_METERS) {
+        throw new BadRequestException(
+          `Você está a ${Math.round(distanceMeters)}m do local. É necessário estar a menos de ${GPS_ARRIVAL_RADIUS_METERS}m para registrar chegada. Caso o GPS esteja impreciso, use a opção de confirmar mesmo assim.`,
+        );
+      }
     }
 
     const arrivedAt = new Date().toISOString();

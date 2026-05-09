@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Param,
+  Query,
   ParseUUIDPipe,
   UseGuards,
 } from '@nestjs/common';
@@ -13,6 +14,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiParam,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { MessagesService } from './messages.service';
 import { CreateMessageDto } from './dto';
@@ -21,6 +23,27 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '../common/types/database.types';
+
+@ApiTags('OS Messages (Chat)')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth()
+@Controller('messages')
+export class ChatOverviewController {
+  constructor(private readonly messagesService: MessagesService) {}
+
+  @Get('chats')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Lista todas as OS com mensagens (central de chats)' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiResponse({ status: 200, description: 'Chats ativos retornados' })
+  async listChats(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.messagesService.listActiveChats(page ? +page : 1, limit ? +limit : 30);
+  }
+}
 
 @ApiTags('OS Messages (Chat)')
 @Controller('service-orders')

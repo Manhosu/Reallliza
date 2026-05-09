@@ -611,7 +611,7 @@ function PhotosSection({
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2">
           <Camera className="h-5 w-5 text-primary" />
-          Fotos
+          Imagens do Local da OS
           {photoCounts && photoCounts.total > 0 && (
             <Badge variant="gray" size="sm">
               {photoCounts.total}
@@ -704,7 +704,7 @@ function PhotosSection({
             <div className="text-center">
               <p className="font-medium">Nenhuma foto registrada</p>
               <p className="text-sm text-muted-foreground">
-                Fotos do antes, durante e depois do serviço aparecerão aqui
+                Imagens de referência do ambiente adicionadas pelo operador para o técnico visualizar antes do serviço.
               </p>
             </div>
             <Button

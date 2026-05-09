@@ -10,20 +10,7 @@ import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../common/types/database.types';
 import { WebhookDispatcherService } from '../external/webhook-dispatcher.service';
-
-interface OsMessage {
-  id: string;
-  service_order_id: string;
-  sender_user_id: string | null;
-  sender_role: string;
-  sender_name: string;
-  content: string;
-  attachment_url: string | null;
-  attachment_type: string | null;
-  read_at: string | null;
-  external_message_id: string | null;
-  created_at: string;
-}
+import { OsMessage } from './dto';
 
 @Injectable()
 export class MessagesService {
@@ -163,6 +150,24 @@ export class MessagesService {
             ),
           );
       }
+
+      // Notifica admins para atualizar a central de chats no Enterprise Web
+      try {
+        const { data: admins } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('role', 'admin')
+          .eq('status', 'active');
+        for (const admin of admins ?? []) {
+          await this.notificationsService.create(
+            admin.id,
+            `Mensagem de técnico na OS #${order.order_number}`,
+            payload.content.slice(0, 120),
+            NotificationType.SYSTEM,
+            { service_order_id: serviceOrderId, message_id: msg.id, type: 'message' },
+          );
+        }
+      } catch { /* não bloqueia */ }
     } else if (order.technician_id) {
       try {
         await this.notificationsService.create(
@@ -248,5 +253,47 @@ export class MessagesService {
     }
 
     return msg as OsMessage;
+  }
+
+  /**
+   * Lista OS que têm mensagens, com a última mensagem de cada.
+   * Usado pelo Enterprise Web /chats.
+   */
+  async listActiveChats(page = 1, limit = 30) {
+    const supabase = this.supabaseService.getClient();
+    const offset = (page - 1) * limit;
+
+    const { data, error, count } = await supabase
+      .from('os_messages')
+      .select(
+        `service_order_id,
+         service_order:service_orders!os_messages_service_order_id_fkey(
+           id, order_number, title, status,
+           technician:profiles!service_orders_technician_id_fkey(id, full_name)
+         )`,
+        { count: 'exact' },
+      )
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) {
+      this.logger.error(`listActiveChats error: ${error.message}`);
+      throw new InternalServerErrorException('Erro ao listar chats ativos');
+    }
+
+    // De-duplicate por service_order_id mantendo apenas o mais recente
+    const seen = new Set<string>();
+    const chats: unknown[] = [];
+    for (const row of data ?? []) {
+      if (!seen.has(row.service_order_id)) {
+        seen.add(row.service_order_id);
+        chats.push(row);
+      }
+    }
+
+    return {
+      data: chats,
+      meta: { total: count ?? 0, page, limit, total_pages: Math.ceil((count ?? 0) / limit) },
+    };
   }
 }

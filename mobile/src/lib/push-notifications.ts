@@ -100,9 +100,13 @@ interface NotificationData {
     | 'os_assigned'
     | 'os_status_changed'
     | 'schedule_reminder'
-    | 'tool_custody';
+    | 'tool_custody'
+    | 'message'
+    | 'proposal_available'
+    | 'proposal_accepted';
   os_id?: string;
   service_order_id?: string;
+  proposal_id?: string;
   [key: string]: unknown;
 }
 
@@ -141,6 +145,22 @@ export function setupNotificationListeners(
 
         case 'tool_custody':
           navigation.navigate('ToolsTab', undefined);
+          break;
+
+        case 'message': {
+          const osId = data.os_id || data.service_order_id;
+          if (osId) {
+            navigation.navigate('OSTab', undefined);
+            setTimeout(() => {
+              navigation.navigate('OsDetail', { id: osId, openChat: true });
+            }, 100);
+          }
+          break;
+        }
+
+        case 'proposal_available':
+        case 'proposal_accepted':
+          navigation.navigate('ProposalsTab', undefined);
           break;
       }
     });

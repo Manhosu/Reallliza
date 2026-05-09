@@ -16,6 +16,8 @@ export { proposalsApi } from "./proposals";
 export { trackingApi } from "./tracking";
 export { consentApi } from "./consent";
 export { stepTemplatesApi } from "./step-templates";
+export { messagesApi } from "./messages";
+export type { OsMessage, OsWithLastMessage } from "./messages";
 export type {
   StepTemplateGroup,
   StepTemplateItem,

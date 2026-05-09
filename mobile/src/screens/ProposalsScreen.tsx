@@ -26,8 +26,9 @@ import { typography } from '../theme/typography';
 interface Proposal {
   id: string;
   service_order_id: string;
-  partner_id: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  partner_id: string | null;
+  accepted_by: string | null;
+  status: 'pending' | 'accepted' | 'rejected' | 'expired';
   proposed_value: number | null;
   message: string | null;
   response_message: string | null;
@@ -39,11 +40,16 @@ interface Proposal {
   service_order?: {
     id: string;
     title: string;
-    client_name: string;
-  };
-  partner?: {
-    id: string;
-    company_name: string;
+    description: string | null;
+    priority: string;
+    client_name: string | null;    // null quando pending (privacidade)
+    address_neighborhood: string | null;
+    address_city: string | null;
+    address_state: string | null;
+    geo_lat: number | null;
+    geo_lng: number | null;
+    scheduled_date: string | null;
+    estimated_value: number | null;
   };
 }
 
@@ -51,6 +57,15 @@ const STATUS_LABELS: Record<string, string> = {
   pending: 'Pendente',
   accepted: 'Aceita',
   rejected: 'Rejeitada',
+  expired: 'Expirada',
+};
+
+const PRIORITY_LABELS: Record<string, string> = {
+  low: 'Baixa', medium: 'Normal', high: 'Alta', urgent: 'Urgente',
+};
+
+const PRIORITY_COLORS: Record<string, string> = {
+  low: '#6B7280', medium: '#3B82F6', high: '#F59E0B', urgent: '#EF4444',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -170,30 +185,60 @@ export function ProposalsScreen() {
     const isPending = item.status === 'pending';
     const isResponding = respondingId === item.id;
 
+    const os = item.service_order;
+    const priority = os?.priority || 'medium';
+
     return (
       <View style={styles.card}>
-        {/* Header: status badge */}
+        {/* Header: status + priority */}
         <View style={styles.cardHeader}>
           <View style={styles.osInfo}>
             <Ionicons name="clipboard-outline" size={16} color={colors.primary} />
             <Text style={styles.osTitle} numberOfLines={1}>
-              {item.service_order?.title || 'OS sem titulo'}
+              {os?.title || 'OS sem título'}
             </Text>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
-            <Text style={[styles.statusText, { color: statusColor }]}>
-              {STATUS_LABELS[item.status] || item.status}
-            </Text>
+          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+            {priority !== 'medium' && (
+              <View style={[styles.statusBadge, { backgroundColor: PRIORITY_COLORS[priority] + '20' }]}>
+                <Text style={[styles.statusText, { color: PRIORITY_COLORS[priority] }]}>
+                  {PRIORITY_LABELS[priority]}
+                </Text>
+              </View>
+            )}
+            <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
+              <Text style={[styles.statusText, { color: statusColor }]}>
+                {STATUS_LABELS[item.status] || item.status}
+              </Text>
+            </View>
           </View>
         </View>
 
-        {/* Client name */}
-        <View style={styles.infoRow}>
-          <Ionicons name="person-outline" size={14} color={colors.textMuted} />
-          <Text style={styles.infoText}>
-            Cliente: {item.service_order?.client_name || '-'}
-          </Text>
-        </View>
+        {/* Localização — visível sempre */}
+        {(os?.address_city || os?.address_neighborhood) && (
+          <View style={styles.infoRow}>
+            <Ionicons name="location-outline" size={14} color={colors.textMuted} />
+            <Text style={styles.infoText}>
+              {[os?.address_neighborhood, os?.address_city, os?.address_state].filter(Boolean).join(', ')}
+            </Text>
+          </View>
+        )}
+
+        {/* Cliente — somente após aceite */}
+        {item.status !== 'pending' && os?.client_name && (
+          <View style={styles.infoRow}>
+            <Ionicons name="person-outline" size={14} color={colors.textMuted} />
+            <Text style={styles.infoText}>Cliente: {os.client_name}</Text>
+          </View>
+        )}
+
+        {/* Aviso de privacidade para propostas pendentes */}
+        {isPending && (
+          <View style={styles.privacyRow}>
+            <Ionicons name="eye-off-outline" size={12} color={colors.textMuted} />
+            <Text style={styles.privacyText}>Dados do cliente visíveis após aceite</Text>
+          </View>
+        )}
 
         {/* Value */}
         {item.proposed_value != null && (
@@ -210,6 +255,16 @@ export function ProposalsScreen() {
           <View style={styles.messageBox}>
             <Text style={styles.messageText} numberOfLines={3}>
               {item.message}
+            </Text>
+          </View>
+        )}
+
+        {/* Data agendada */}
+        {os?.scheduled_date && (
+          <View style={styles.infoRow}>
+            <Ionicons name="calendar-outline" size={14} color={colors.textMuted} />
+            <Text style={styles.infoText}>
+              Agendado: {format(new Date(os.scheduled_date), 'dd/MM/yyyy', { locale: ptBR })}
             </Text>
           </View>
         )}
@@ -424,6 +479,18 @@ const styles = StyleSheet.create({
   expirationText: {
     ...typography.caption,
     color: colors.warning,
+  },
+  privacyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    opacity: 0.6,
+  },
+  privacyText: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontStyle: 'italic',
   },
   actionButtons: {
     flexDirection: 'row',
