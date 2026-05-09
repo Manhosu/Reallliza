@@ -21,7 +21,7 @@ interface StepTemplate {
   requires_signature: boolean;
 }
 
-interface StepExecution {
+export interface StepExecution {
   id: string;
   service_order_id: string;
   template_id: string;

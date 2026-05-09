@@ -7,7 +7,8 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { LearningService, LearningCategory } from './learning.service';
+import { LearningService } from './learning.service';
+import type { LearningCategory } from './learning.service';
 
 @ApiTags('Aprendizado')
 @Controller('learning')
