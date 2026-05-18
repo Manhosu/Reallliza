@@ -36,6 +36,7 @@ import {
   Map,
   UserCheck,
   Award,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserRole, type Notification } from "@/lib/types";
@@ -146,6 +147,12 @@ const allNavItems = [
     roles: [UserRole.ADMIN],
   },
   {
+    label: "Qualidade",
+    href: "/qualidade",
+    icon: ShieldCheck,
+    roles: [UserRole.ADMIN],
+  },
+  {
     label: "Avaliações",
     href: "/avaliacoes",
     icon: Star,
@@ -197,6 +204,7 @@ const breadcrumbLabels: Record<string, string> = {
   servicos: "Serviços",
   regioes: "Regiões",
   especialidades: "Especialidades",
+  qualidade: "Qualidade",
   avaliacoes: "Avaliações",
   relatorios: "Relatórios",
   auditoria: "Auditoria",

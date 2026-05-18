@@ -46,6 +46,13 @@ export type {
   UpdateSpecialtyPayload,
   ChecklistItemPayload,
 } from "./specialties";
+export { qualityEvaluationsApi } from "./quality-evaluations";
+export type {
+  QualityEvaluation,
+  QualityEvaluationScore,
+  QualityScorePayload,
+  CreateQualityEvaluationPayload,
+} from "./quality-evaluations";
 export { messagesApi } from "./messages";
 export type { OsMessage, OsWithLastMessage } from "./messages";
 export type {
