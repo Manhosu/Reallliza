@@ -32,6 +32,7 @@ import {
   Star,
   Send,
   MessageSquare,
+  Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserRole, type Notification } from "@/lib/types";
@@ -118,6 +119,12 @@ const allNavItems = [
     roles: [UserRole.ADMIN],
   },
   {
+    label: "Serviços",
+    href: "/servicos",
+    icon: Package,
+    roles: [UserRole.ADMIN],
+  },
+  {
     label: "Avaliações",
     href: "/avaliacoes",
     icon: Star,
@@ -165,6 +172,7 @@ const breadcrumbLabels: Record<string, string> = {
   ferramentas: "Ferramentas",
   checklists: "Checklists",
   "templates-execucao": "Templates de Execução",
+  servicos: "Serviços",
   avaliacoes: "Avaliações",
   relatorios: "Relatórios",
   auditoria: "Auditoria",
