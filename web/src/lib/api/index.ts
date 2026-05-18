@@ -25,6 +25,12 @@ export type {
   CreateServicePayload,
   UpdateServicePayload,
 } from "./services";
+export { regionsApi } from "./regions";
+export type {
+  Region,
+  CreateRegionPayload,
+  UpdateRegionPayload,
+} from "./regions";
 export { messagesApi } from "./messages";
 export type { OsMessage, OsWithLastMessage } from "./messages";
 export type {
