@@ -38,6 +38,14 @@ export type {
   HomologationProfile,
   RegisterProfessionalPayload,
 } from "./homologation";
+export { specialtiesApi } from "./specialties";
+export type {
+  Specialty,
+  SpecialtyChecklistItem,
+  CreateSpecialtyPayload,
+  UpdateSpecialtyPayload,
+  ChecklistItemPayload,
+} from "./specialties";
 export { messagesApi } from "./messages";
 export type { OsMessage, OsWithLastMessage } from "./messages";
 export type {

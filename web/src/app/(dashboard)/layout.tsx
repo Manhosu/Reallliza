@@ -35,6 +35,7 @@ import {
   Package,
   Map,
   UserCheck,
+  Award,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserRole, type Notification } from "@/lib/types";
@@ -139,6 +140,12 @@ const allNavItems = [
     roles: [UserRole.ADMIN],
   },
   {
+    label: "Especialidades",
+    href: "/especialidades",
+    icon: Award,
+    roles: [UserRole.ADMIN],
+  },
+  {
     label: "Avaliações",
     href: "/avaliacoes",
     icon: Star,
@@ -189,6 +196,7 @@ const breadcrumbLabels: Record<string, string> = {
   "templates-execucao": "Templates de Execução",
   servicos: "Serviços",
   regioes: "Regiões",
+  especialidades: "Especialidades",
   avaliacoes: "Avaliações",
   relatorios: "Relatórios",
   auditoria: "Auditoria",
