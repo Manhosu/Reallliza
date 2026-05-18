@@ -265,3 +265,45 @@ export async function concluirOS(opts: {
   });
   return parseResponse<{ ok: boolean }>(res);
 }
+
+export interface MinhaOS {
+  id: string;
+  numero: string;
+  status: string;
+  cliente_nome: string;
+  endereco: string | null;
+  valor_repasse_total: number;
+  data_prevista: string | null;
+  concluida_at: string | null;
+  created_at: string;
+}
+
+/** Lista as OS atribuídas ao técnico (aceitas, em execução, concluídas). */
+export async function fetchMinhasOS(email: string): Promise<MinhaOS[]> {
+  const url = `${GARANTIAS_BASE_URL}/api/external/mobile/minhas-os?email=${encodeURIComponent(email)}`;
+  const res = await fetch(url, { headers: authHeaders() });
+  return parseResponse<MinhaOS[]>(res);
+}
+
+/** Upload de foto da OS (evidência de etapa ou assinatura). Retorna a URL pública. */
+export async function uploadFotoOS(opts: {
+  email: string;
+  osId: string;
+  tipo: 'etapa' | 'assinatura';
+  file: { uri: string; name: string; type: string };
+}): Promise<{ url: string }> {
+  const form = new FormData();
+  form.append('email', opts.email);
+  form.append('tipo', opts.tipo);
+  form.append('file', {
+    uri: opts.file.uri,
+    type: opts.file.type,
+    name: opts.file.name,
+  } as unknown as Blob);
+
+  const res = await fetch(
+    `${GARANTIAS_BASE_URL}/api/external/mobile/os/${opts.osId}/upload`,
+    { method: 'POST', headers: { 'X-API-Key': GARANTIAS_API_KEY }, body: form }
+  );
+  return parseResponse<{ url: string }>(res);
+}
