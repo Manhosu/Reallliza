@@ -65,27 +65,45 @@ export function NivelEcossistemaCard() {
         </View>
       </View>
 
-      {/* Especialidades com estrelas */}
-      {perfil.especialidades.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Especialidades</Text>
-          {perfil.especialidades.map((e) => (
-            <View key={e.id} style={styles.espRow}>
-              <Text style={styles.espNome}>{e.especialidade?.nome ?? '—'}</Text>
-              <View style={styles.estrelas}>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <Ionicons
-                    key={n}
-                    name={n <= e.nivel ? 'star' : 'star-outline'}
-                    size={13}
-                    color={n <= e.nivel ? colors.primary : colors.textMuted}
-                  />
-                ))}
-              </View>
-            </View>
-          ))}
+      {/* Competências: atendimento ao cliente + especialidades com estrelas */}
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Competências</Text>
+
+        {/* Atendimento ao cliente — alimentado pelas avaliações dos clientes */}
+        <View style={styles.espRow}>
+          <Text style={styles.espNome}>Atendimento ao cliente</Text>
+          <View style={styles.estrelas}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <Ionicons
+                key={n}
+                name={n <= Math.round(perfil.avaliacao_cliente.media) ? 'star' : 'star-outline'}
+                size={13}
+                color={
+                  n <= Math.round(perfil.avaliacao_cliente.media)
+                    ? colors.primary
+                    : colors.textMuted
+                }
+              />
+            ))}
+          </View>
         </View>
-      )}
+
+        {perfil.especialidades.map((e) => (
+          <View key={e.id} style={styles.espRow}>
+            <Text style={styles.espNome}>{e.especialidade?.nome ?? '—'}</Text>
+            <View style={styles.estrelas}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Ionicons
+                  key={n}
+                  name={n <= e.nivel ? 'star' : 'star-outline'}
+                  size={13}
+                  color={n <= e.nivel ? colors.primary : colors.textMuted}
+                />
+              ))}
+            </View>
+          </View>
+        ))}
+      </View>
 
       {/* Certificações */}
       {perfil.certificacoes.length > 0 && (
