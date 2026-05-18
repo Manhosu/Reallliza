@@ -34,6 +34,7 @@ import {
   MessageSquare,
   Package,
   Map,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserRole, type Notification } from "@/lib/types";
@@ -99,6 +100,12 @@ const allNavItems = [
     label: "Parceiros",
     href: "/parceiros",
     icon: Building2,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    label: "Homologação",
+    href: "/homologacao",
+    icon: UserCheck,
     roles: [UserRole.ADMIN],
   },
   {
@@ -176,6 +183,7 @@ const breadcrumbLabels: Record<string, string> = {
   mapa: "Mapa",
   usuarios: "Usuários",
   parceiros: "Parceiros",
+  homologacao: "Homologação",
   ferramentas: "Ferramentas",
   checklists: "Checklists",
   "templates-execucao": "Templates de Execução",

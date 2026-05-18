@@ -31,6 +31,13 @@ export type {
   CreateRegionPayload,
   UpdateRegionPayload,
 } from "./regions";
+export { homologationApi } from "./homologation";
+export type {
+  HomologationRequest,
+  HomologationStatus,
+  HomologationProfile,
+  RegisterProfessionalPayload,
+} from "./homologation";
 export { messagesApi } from "./messages";
 export type { OsMessage, OsWithLastMessage } from "./messages";
 export type {
