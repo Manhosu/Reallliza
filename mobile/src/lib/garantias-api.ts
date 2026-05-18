@@ -125,3 +125,143 @@ export async function uploadEvidenciaRemote(opts: {
   });
   return parseResponse<{ success: boolean; evidencia: PericiaEvidencia; url: string }>(res);
 }
+
+// ============================================================
+// MARCO 5 — Ecossistema Operacional
+// Endpoints /api/external/mobile/* do Garantias. O técnico é
+// identificado pelo e-mail (mesmo do login). API key no header.
+// ============================================================
+
+export interface EcossistemaEspecialidade {
+  id: string;
+  nivel: number;
+  especialidade: { id: string; nome: string } | null;
+}
+export interface EcossistemaPerfil {
+  id: string;
+  full_name: string;
+  role: string;
+  nivel: 'BRONZE' | 'PRATA' | 'OURO';
+  avatar_url: string | null;
+  cpf: string | null;
+  phone: string | null;
+  endereco_base: string | null;
+  especialidades: EcossistemaEspecialidade[];
+  avaliacoes_internas: { total: number; media: number };
+  avaliacao_cliente: { total: number; media: number };
+  certificacoes: { id: string; codigo: string; curso_nome: string | null; emitido_at: string }[];
+}
+
+export interface PropostaOS {
+  id: string;
+  status: string;
+  score: number;
+  ofertada_at: string;
+  os: {
+    id: string;
+    numero: string;
+    cliente_nome: string;
+    endereco: string | null;
+    valor_repasse_total: number;
+    status: string;
+    data_prevista: string | null;
+  } | null;
+}
+
+export interface OsEtapaMobile {
+  id: string;
+  nome: string;
+  ordem: number;
+  status: 'PENDENTE' | 'EM_ANDAMENTO' | 'CONCLUIDA';
+  foto_inicio_url: string | null;
+  foto_fim_url: string | null;
+  iniciada_at: string | null;
+  concluida_at: string | null;
+}
+export interface OsDetalheMobile {
+  id: string;
+  numero: string;
+  status: string;
+  cliente_nome: string;
+  cliente_telefone: string | null;
+  endereco: string | null;
+  endereco_lat: number | null;
+  endereco_lng: number | null;
+  valor_repasse_total: number;
+  data_prevista: string | null;
+  assinatura_cliente_url: string | null;
+  itens: { id: string; descricao: string | null; quantidade: number; valor_repasse_unit: number }[];
+  etapas: OsEtapaMobile[];
+  eventos: { id: string; tipo: string; descricao: string | null; created_at: string }[];
+}
+
+/** Perfil profissional completo do técnico (nível, especialidades, avaliações). */
+export async function fetchEcossistemaPerfil(email: string): Promise<EcossistemaPerfil> {
+  const url = `${GARANTIAS_BASE_URL}/api/external/mobile/perfil?email=${encodeURIComponent(email)}`;
+  const res = await fetch(url, { headers: authHeaders() });
+  return parseResponse<EcossistemaPerfil>(res);
+}
+
+/** Propostas de OS ofertadas ao técnico. */
+export async function fetchPropostasOS(email: string): Promise<PropostaOS[]> {
+  const url = `${GARANTIAS_BASE_URL}/api/external/mobile/propostas?email=${encodeURIComponent(email)}`;
+  const res = await fetch(url, { headers: authHeaders() });
+  return parseResponse<PropostaOS[]>(res);
+}
+
+/** Detalhe de uma OS para o técnico. */
+export async function fetchOsDetalhe(email: string, osId: string): Promise<OsDetalheMobile> {
+  const url = `${GARANTIAS_BASE_URL}/api/external/mobile/os/${osId}?email=${encodeURIComponent(email)}`;
+  const res = await fetch(url, { headers: authHeaders() });
+  return parseResponse<OsDetalheMobile>(res);
+}
+
+/** Técnico aceita uma OS ofertada. */
+export async function aceitarOS(email: string, osId: string): Promise<{ ok: boolean }> {
+  const res = await fetch(`${GARANTIAS_BASE_URL}/api/external/mobile/os/${osId}/aceitar`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ email }),
+  });
+  return parseResponse<{ ok: boolean }>(res);
+}
+
+/** Atualiza uma etapa da OS (início/fim + foto de evidência). */
+export async function atualizarEtapaOS(opts: {
+  email: string;
+  osId: string;
+  etapaId: string;
+  status?: 'EM_ANDAMENTO' | 'CONCLUIDA';
+  fotoInicioUrl?: string;
+  fotoFimUrl?: string;
+}): Promise<OsEtapaMobile> {
+  const res = await fetch(`${GARANTIAS_BASE_URL}/api/external/mobile/os/${opts.osId}/etapa`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      email: opts.email,
+      etapa_id: opts.etapaId,
+      status: opts.status,
+      foto_inicio_url: opts.fotoInicioUrl,
+      foto_fim_url: opts.fotoFimUrl,
+    }),
+  });
+  return parseResponse<OsEtapaMobile>(res);
+}
+
+/** Conclui a OS — exige a assinatura do cliente (gate). */
+export async function concluirOS(opts: {
+  email: string;
+  osId: string;
+  assinaturaClienteUrl: string;
+}): Promise<{ ok: boolean }> {
+  const res = await fetch(`${GARANTIAS_BASE_URL}/api/external/mobile/os/${opts.osId}/concluir`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      email: opts.email,
+      assinatura_cliente_url: opts.assinaturaClienteUrl,
+    }),
+  });
+  return parseResponse<{ ok: boolean }>(res);
+}

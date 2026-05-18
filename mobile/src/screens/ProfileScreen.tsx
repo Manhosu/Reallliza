@@ -17,6 +17,7 @@ import { useAuthStore } from '../stores/auth-store';
 import { apiClient } from '../lib/api';
 import { USER_ROLE_LABELS } from '../lib/types';
 import { PerformanceCard } from '../components/PerformanceCard';
+import { NivelEcossistemaCard } from '../components/NivelEcossistemaCard';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -124,6 +125,9 @@ export function ProfileScreen() {
           </View>
         )}
       </View>
+
+      {/* Perfil no ecossistema — nível Bronze/Prata/Ouro, especialidades, certificações */}
+      <NivelEcossistemaCard />
 
       {/* Desempenho */}
       <PerformanceCard />
