@@ -307,3 +307,24 @@ export async function uploadFotoOS(opts: {
   );
   return parseResponse<{ url: string }>(res);
 }
+
+/** Upload da foto de perfil do técnico. Vira a avatar_url no Garantias. */
+export async function uploadFotoPerfil(opts: {
+  email: string;
+  file: { uri: string; name: string; type: string };
+}): Promise<{ url: string }> {
+  const form = new FormData();
+  form.append('email', opts.email);
+  form.append('file', {
+    uri: opts.file.uri,
+    type: opts.file.type,
+    name: opts.file.name,
+  } as unknown as Blob);
+
+  const res = await fetch(`${GARANTIAS_BASE_URL}/api/external/mobile/perfil/foto`, {
+    method: 'POST',
+    headers: { 'X-API-Key': GARANTIAS_API_KEY },
+    body: form,
+  });
+  return parseResponse<{ url: string }>(res);
+}

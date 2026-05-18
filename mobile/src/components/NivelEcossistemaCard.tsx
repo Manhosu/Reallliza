@@ -1,8 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  TouchableOpacity,
+  Image,
+  Alert,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../stores/auth-store';
-import { fetchEcossistemaPerfil, type EcossistemaPerfil } from '../lib/garantias-api';
+import {
+  fetchEcossistemaPerfil,
+  uploadFotoPerfil,
+  type EcossistemaPerfil,
+} from '../lib/garantias-api';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -14,17 +27,21 @@ const NIVEL_INFO: Record<string, { label: string; cor: string }> = {
 
 /**
  * Card do perfil profissional no ecossistema (Marco 5):
- * nível Bronze/Prata/Ouro, especialidades com estrelas, avaliação
- * do cliente e certificações Reallliza. Dados vêm do Garantias.
+ * foto de perfil, nível Bronze/Prata/Ouro, especialidades com
+ * estrelas, avaliação do cliente e certificações Reallliza.
+ * Dados vêm do Garantias. A foto é a mesma enviada ao cliente
+ * na avaliação pós-OS.
  */
 export function NivelEcossistemaCard() {
   const { user } = useAuthStore();
   const [perfil, setPerfil] = useState<EcossistemaPerfil | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+  const [uploadingFoto, setUploadingFoto] = useState(false);
+
+  const email = user?.email;
 
   useEffect(() => {
-    const email = user?.email;
     if (!email) {
       setLoading(false);
       return;
@@ -33,7 +50,57 @@ export function NivelEcossistemaCard() {
       .then(setPerfil)
       .catch(() => setErro('Perfil do ecossistema indisponível'))
       .finally(() => setLoading(false));
-  }, [user?.email]);
+  }, [email]);
+
+  async function capturarFoto(origem: 'camera' | 'galeria') {
+    if (!email) return;
+    try {
+      let res: ImagePicker.ImagePickerResult;
+      if (origem === 'camera') {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('Permissão necessária', 'Autorize o uso da câmera para tirar a foto.');
+          return;
+        }
+        res = await ImagePicker.launchCameraAsync({
+          quality: 0.6,
+          allowsEditing: true,
+          aspect: [1, 1],
+        });
+      } else {
+        res = await ImagePicker.launchImageLibraryAsync({
+          quality: 0.6,
+          allowsEditing: true,
+          aspect: [1, 1],
+        });
+      }
+      if (res.canceled || !res.assets?.[0]) return;
+
+      const a = res.assets[0];
+      setUploadingFoto(true);
+      const up = await uploadFotoPerfil({
+        email,
+        file: {
+          uri: a.uri,
+          name: a.fileName ?? `foto_${Date.now()}.jpg`,
+          type: a.mimeType ?? 'image/jpeg',
+        },
+      });
+      setPerfil((prev) => (prev ? { ...prev, avatar_url: up.url } : prev));
+    } catch {
+      Alert.alert('Erro', 'Não foi possível atualizar a foto de perfil.');
+    } finally {
+      setUploadingFoto(false);
+    }
+  }
+
+  function escolherFoto() {
+    Alert.alert('Foto de perfil', 'Escolha a origem da imagem', [
+      { text: 'Tirar foto', onPress: () => capturarFoto('camera') },
+      { text: 'Escolher da galeria', onPress: () => capturarFoto('galeria') },
+      { text: 'Cancelar', style: 'cancel' },
+    ]);
+  }
 
   if (loading) {
     return (
@@ -50,6 +117,27 @@ export function NivelEcossistemaCard() {
 
   return (
     <View style={styles.card}>
+      {/* Foto de perfil */}
+      <View style={styles.avatarWrap}>
+        <TouchableOpacity onPress={escolherFoto} disabled={uploadingFoto} activeOpacity={0.8}>
+          <View style={styles.avatarCircle}>
+            {perfil.avatar_url ? (
+              <Image source={{ uri: perfil.avatar_url }} style={styles.avatarImg} />
+            ) : (
+              <Ionicons name="person" size={34} color={colors.textMuted} />
+            )}
+            {uploadingFoto && (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator color={colors.primary} />
+              </View>
+            )}
+          </View>
+          <View style={styles.camBadge}>
+            <Ionicons name="camera" size={13} color={colors.black} />
+          </View>
+        </TouchableOpacity>
+      </View>
+
       {/* Nível */}
       <View style={styles.nivelRow}>
         <View style={[styles.nivelBadge, { backgroundColor: nivel.cor + '22' }]}>
@@ -128,6 +216,44 @@ const styles = StyleSheet.create({
     padding: 16,
     marginHorizontal: 16,
     marginTop: 12,
+  },
+  avatarWrap: {
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  avatarCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: colors.background,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  camBadge: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.card,
   },
   nivelRow: {
     flexDirection: 'row',
