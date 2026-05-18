@@ -183,7 +183,6 @@ export interface OsDetalheMobile {
   numero: string;
   status: string;
   cliente_nome: string;
-  cliente_telefone: string | null;
   endereco: string | null;
   endereco_lat: number | null;
   endereco_lng: number | null;
