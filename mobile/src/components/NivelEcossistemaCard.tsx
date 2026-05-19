@@ -1,65 +1,49 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ActivityIndicator,
   TouchableOpacity,
   Image,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../stores/auth-store';
-import {
-  fetchEcossistemaPerfil,
-  uploadFotoPerfil,
-  type EcossistemaPerfil,
-} from '../lib/garantias-api';
+import { apiClient } from '../lib/api';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
 const NIVEL_INFO: Record<string, { label: string; cor: string }> = {
-  BRONZE: { label: 'Bronze', cor: '#CD7F32' },
-  PRATA: { label: 'Prata', cor: '#A8A8B3' },
-  OURO: { label: 'Ouro', cor: '#FFD600' },
+  bronze: { label: 'Bronze', cor: '#CD7F32' },
+  prata: { label: 'Prata', cor: '#A8A8B3' },
+  ouro: { label: 'Ouro', cor: '#FFD600' },
 };
 
 /**
- * Card do perfil profissional no ecossistema (Marco 5):
- * foto de perfil, nível Bronze/Prata/Ouro, especialidades com
- * estrelas, avaliação do cliente e certificações Reallliza.
- * Dados vêm do Garantias. A foto é a mesma enviada ao cliente
- * na avaliação pós-OS.
+ * Card do perfil profissional no ecossistema (Marco 6): foto, nível
+ * Bronze/Prata/Ouro, score geral e os 3 scores (Sistema, Cliente,
+ * Qualidade) + especialidades. Dados vêm da Reallliza Execução
+ * (perfil do usuário logado).
  */
 export function NivelEcossistemaCard() {
-  const { user } = useAuthStore();
-  const [perfil, setPerfil] = useState<EcossistemaPerfil | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState<string | null>(null);
+  const { profile, fetchProfile } = useAuthStore();
   const [uploadingFoto, setUploadingFoto] = useState(false);
 
-  const email = user?.email;
+  if (!profile) return null;
 
-  useEffect(() => {
-    if (!email) {
-      setLoading(false);
-      return;
-    }
-    fetchEcossistemaPerfil(email)
-      .then(setPerfil)
-      .catch(() => setErro('Perfil do ecossistema indisponível'))
-      .finally(() => setLoading(false));
-  }, [email]);
+  const nivel = NIVEL_INFO[profile.level ?? 'bronze'] ?? NIVEL_INFO.bronze;
+  const fmt = (v: number | null | undefined) =>
+    typeof v === 'number' ? String(Math.round(v)) : '—';
 
   async function capturarFoto(origem: 'camera' | 'galeria') {
-    if (!email) return;
     try {
       let res: ImagePicker.ImagePickerResult;
       if (origem === 'camera') {
         const perm = await ImagePicker.requestCameraPermissionsAsync();
         if (!perm.granted) {
-          Alert.alert('Permissão necessária', 'Autorize o uso da câmera para tirar a foto.');
+          Alert.alert('Permissão necessária', 'Autorize o uso da câmera.');
           return;
         }
         res = await ImagePicker.launchCameraAsync({
@@ -78,15 +62,12 @@ export function NivelEcossistemaCard() {
 
       const a = res.assets[0];
       setUploadingFoto(true);
-      const up = await uploadFotoPerfil({
-        email,
-        file: {
-          uri: a.uri,
-          name: a.fileName ?? `foto_${Date.now()}.jpg`,
-          type: a.mimeType ?? 'image/jpeg',
-        },
+      await apiClient.upload<{ avatar_url: string }>('/profile/me/avatar', {
+        uri: a.uri,
+        name: a.fileName ?? `foto_${Date.now()}.jpg`,
+        type: a.mimeType ?? 'image/jpeg',
       });
-      setPerfil((prev) => (prev ? { ...prev, avatar_url: up.url } : prev));
+      await fetchProfile();
     } catch {
       Alert.alert('Erro', 'Não foi possível atualizar a foto de perfil.');
     } finally {
@@ -102,27 +83,21 @@ export function NivelEcossistemaCard() {
     ]);
   }
 
-  if (loading) {
-    return (
-      <View style={styles.card}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
-  }
-  if (erro || !perfil) {
-    return null; // silencioso — não atrapalha o resto do perfil
-  }
-
-  const nivel = NIVEL_INFO[perfil.nivel] ?? NIVEL_INFO.BRONZE;
-
   return (
     <View style={styles.card}>
       {/* Foto de perfil */}
       <View style={styles.avatarWrap}>
-        <TouchableOpacity onPress={escolherFoto} disabled={uploadingFoto} activeOpacity={0.8}>
+        <TouchableOpacity
+          onPress={escolherFoto}
+          disabled={uploadingFoto}
+          activeOpacity={0.8}
+        >
           <View style={styles.avatarCircle}>
-            {perfil.avatar_url ? (
-              <Image source={{ uri: perfil.avatar_url }} style={styles.avatarImg} />
+            {profile.avatar_url ? (
+              <Image
+                source={{ uri: profile.avatar_url }}
+                style={styles.avatarImg}
+              />
             ) : (
               <Ionicons name="person" size={34} color={colors.textMuted} />
             )}
@@ -138,73 +113,49 @@ export function NivelEcossistemaCard() {
         </TouchableOpacity>
       </View>
 
-      {/* Nível */}
+      {/* Nível + score geral */}
       <View style={styles.nivelRow}>
         <View style={[styles.nivelBadge, { backgroundColor: nivel.cor + '22' }]}>
           <Ionicons name="ribbon" size={18} color={nivel.cor} />
-          <Text style={[styles.nivelText, { color: nivel.cor }]}>Nível {nivel.label}</Text>
-        </View>
-        <View style={styles.avalBox}>
-          <Ionicons name="star" size={14} color={colors.primary} />
-          <Text style={styles.avalText}>
-            {perfil.avaliacao_cliente.media.toFixed(1)}
-            <Text style={styles.avalSub}> ({perfil.avaliacao_cliente.total})</Text>
+          <Text style={[styles.nivelText, { color: nivel.cor }]}>
+            Nível {nivel.label}
           </Text>
+        </View>
+        <View style={styles.overallBox}>
+          <Text style={styles.overallValue}>{fmt(profile.overall_score)}</Text>
+          <Text style={styles.overallLabel}>score geral</Text>
         </View>
       </View>
 
-      {/* Competências: atendimento ao cliente + especialidades com estrelas */}
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Competências</Text>
+      {/* Os 3 scores */}
+      <View style={styles.scoresRow}>
+        <ScoreCell label="Sistema" value={fmt(profile.system_score)} />
+        <ScoreCell label="Cliente" value={fmt(profile.client_score)} />
+        <ScoreCell label="Qualidade" value={fmt(profile.quality_score)} />
+      </View>
 
-        {/* Atendimento ao cliente — alimentado pelas avaliações dos clientes */}
-        <View style={styles.espRow}>
-          <Text style={styles.espNome}>Atendimento ao cliente</Text>
-          <View style={styles.estrelas}>
-            {[1, 2, 3, 4, 5].map((n) => (
-              <Ionicons
-                key={n}
-                name={n <= Math.round(perfil.avaliacao_cliente.media) ? 'star' : 'star-outline'}
-                size={13}
-                color={
-                  n <= Math.round(perfil.avaliacao_cliente.media)
-                    ? colors.primary
-                    : colors.textMuted
-                }
-              />
+      {/* Especialidades */}
+      {profile.specialties && profile.specialties.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Especialidades</Text>
+          <View style={styles.chips}>
+            {profile.specialties.map((e, i) => (
+              <View key={`${e}-${i}`} style={styles.chip}>
+                <Text style={styles.chipText}>{e}</Text>
+              </View>
             ))}
           </View>
         </View>
-
-        {perfil.especialidades.map((e) => (
-          <View key={e.id} style={styles.espRow}>
-            <Text style={styles.espNome}>{e.especialidade?.nome ?? '—'}</Text>
-            <View style={styles.estrelas}>
-              {[1, 2, 3, 4, 5].map((n) => (
-                <Ionicons
-                  key={n}
-                  name={n <= e.nivel ? 'star' : 'star-outline'}
-                  size={13}
-                  color={n <= e.nivel ? colors.primary : colors.textMuted}
-                />
-              ))}
-            </View>
-          </View>
-        ))}
-      </View>
-
-      {/* Certificações */}
-      {perfil.certificacoes.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Certificações Reallliza</Text>
-          {perfil.certificacoes.map((c) => (
-            <View key={c.id} style={styles.certRow}>
-              <Ionicons name="school" size={14} color={colors.primary} />
-              <Text style={styles.certNome}>{c.curso_nome ?? 'Curso'}</Text>
-            </View>
-          ))}
-        </View>
       )}
+    </View>
+  );
+}
+
+function ScoreCell({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.scoreCell}>
+      <Text style={styles.scoreValue}>{value}</Text>
+      <Text style={styles.scoreLabel}>{label}</Text>
     </View>
   );
 }
@@ -232,10 +183,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
-  avatarImg: {
-    width: '100%',
-    height: '100%',
-  },
+  avatarImg: { width: '100%', height: '100%' },
   avatarOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -269,9 +217,23 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   nivelText: { ...typography.button, fontSize: 13 },
-  avalBox: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  avalText: { ...typography.body, color: colors.text, fontWeight: '700' },
-  avalSub: { ...typography.caption, color: colors.textMuted },
+  overallBox: { alignItems: 'flex-end' },
+  overallValue: { fontSize: 24, fontWeight: '800', color: colors.text },
+  overallLabel: { ...typography.caption, color: colors.textMuted },
+  scoresRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 14,
+  },
+  scoreCell: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  scoreValue: { fontSize: 18, fontWeight: '700', color: colors.text },
+  scoreLabel: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
   section: { marginTop: 14 },
   sectionLabel: {
     ...typography.caption,
@@ -280,14 +242,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 8,
   },
-  espRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: {
+    backgroundColor: colors.primary + '15',
+    borderRadius: 999,
+    paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  espNome: { ...typography.body, color: colors.text },
-  estrelas: { flexDirection: 'row', gap: 1 },
-  certRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
-  certNome: { ...typography.body, color: colors.text },
+  chipText: { ...typography.caption, color: colors.primary },
 });

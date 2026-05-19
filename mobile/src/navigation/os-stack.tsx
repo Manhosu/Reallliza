@@ -11,8 +11,6 @@ import { StepsScreen } from '../screens/StepsScreen';
 import { StepDetailScreen } from '../screens/StepDetailScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { VistoriaScreen } from '../screens/VistoriaScreen';
-import { EcossistemaScreen } from '../screens/EcossistemaScreen';
-import { EcossistemaOsDetailScreen } from '../screens/EcossistemaOsDetailScreen';
 import { HeaderBellButton } from '../components/HeaderBellButton';
 import { colors } from '../theme/colors';
 
@@ -26,8 +24,6 @@ export type OsStackParamList = {
   Camera: { serviceOrderId: string };
   Signature: { serviceOrderId: string };
   Vistoria: { ticketId?: string; ticketProtocol?: string; osId?: string };
-  Ecossistema: undefined;
-  EcossistemaOsDetail: { osId: string };
 };
 
 const Stack = createNativeStackNavigator<OsStackParamList>();
@@ -52,26 +48,15 @@ export function OsStack() {
       <Stack.Screen
         name="Home"
         component={HomeScreen}
-        options={({ navigation }) => ({
+        options={{
           title: 'Serviços',
           headerTitleStyle: {
             fontWeight: '700',
             fontSize: 20,
             color: colors.primary,
           },
-          headerRight: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('Ecossistema')}
-                style={{ paddingHorizontal: 8, paddingVertical: 4 }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="git-network-outline" size={22} color={colors.primary} />
-              </TouchableOpacity>
-              <HeaderBellButton />
-            </View>
-          ),
-        })}
+          headerRight: () => <HeaderBellButton />,
+        }}
       />
       <Stack.Screen
         name="OsDetail"
@@ -144,16 +129,6 @@ export function OsStack() {
         options={{
           title: 'Vistoria Tecnica',
         }}
-      />
-      <Stack.Screen
-        name="Ecossistema"
-        component={EcossistemaScreen}
-        options={{ title: 'Ordens de Serviço' }}
-      />
-      <Stack.Screen
-        name="EcossistemaOsDetail"
-        component={EcossistemaOsDetailScreen}
-        options={{ title: 'Detalhe da OS' }}
       />
     </Stack.Navigator>
   );

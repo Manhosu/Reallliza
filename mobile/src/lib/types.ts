@@ -110,6 +110,14 @@ export interface Profile {
   documents_urls: string[] | null;
   created_at: string;
   updated_at: string;
+  // Marco 6 — ecossistema operacional (vem da Execução)
+  level: 'bronze' | 'prata' | 'ouro' | null;
+  system_score: number | null;
+  client_score: number | null;
+  quality_score: number | null;
+  overall_score: number | null;
+  is_homologated: boolean | null;
+  professional_type: 'internal' | 'external' | null;
 }
 
 export interface Partner {

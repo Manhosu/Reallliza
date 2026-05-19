@@ -11,9 +11,6 @@ interface Performance {
   total_ratings: number;
   total_services_completed: number;
   avg_overall: number | null;
-  avg_quality: number | null;
-  avg_punctuality: number | null;
-  avg_communication: number | null;
   recent_reviews: Array<{
     comment: string | null;
     score: number | null;
@@ -76,12 +73,6 @@ export function PerformanceCard() {
         </View>
       </View>
 
-      <View style={styles.metricsGrid}>
-        <MetricCell label="Qualidade" score={data.avg_quality} />
-        <MetricCell label="Pontualidade" score={data.avg_punctuality} />
-        <MetricCell label="Atendimento" score={data.avg_communication} />
-      </View>
-
       {data.recent_reviews.length > 0 && (
         <View style={styles.reviews}>
           <Text style={styles.reviewsHeading}>Avaliações recentes</Text>
@@ -98,18 +89,6 @@ export function PerformanceCard() {
           ))}
         </View>
       )}
-    </View>
-  );
-}
-
-function MetricCell({ label, score }: { label: string; score: number | null }) {
-  return (
-    <View style={styles.metricCell}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>
-        {score != null ? score.toFixed(1) : '—'}
-      </Text>
-      <StarsRow score={score || 0} size={11} />
     </View>
   );
 }
