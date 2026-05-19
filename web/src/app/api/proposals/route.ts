@@ -349,7 +349,7 @@ export async function POST(request: NextRequest) {
           const { data: rawCandidates } = await supabase
             .from("profiles")
             .select(
-              "id, full_name, operating_region, specialties, updated_at"
+              "id, full_name, operating_region, specialties, updated_at, level"
             )
             .in("role", ["technician", "partner"])
             .eq("status", "active");
@@ -402,6 +402,7 @@ export async function POST(request: NextRequest) {
               geo_lng: loc?.lng ?? null,
               last_sign_in_at: loc?.ts ?? null,
               updated_at: (p.updated_at as string | null) ?? null,
+              level: (p.level as string | null) ?? null,
             };
           });
 

@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { recalculateTechnicianScore } from "@/lib/evaluation/recalculate";
 
 interface IncomingScore {
   checklist_item_id?: string | null;
@@ -145,6 +146,13 @@ export async function POST(request: NextRequest) {
         needs_rework: !!body.needs_rework,
       },
     });
+
+    // Recalcula o score/nível do profissional (fonte QUALIDADE mudou).
+    try {
+      await recalculateTechnicianScore(supabase, body.technician_id);
+    } catch (e) {
+      console.error("recalculateTechnicianScore error:", e);
+    }
 
     return jsonResponse(evaluation, 201);
   } catch (error) {

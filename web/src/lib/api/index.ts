@@ -53,6 +53,12 @@ export type {
   QualityScorePayload,
   CreateQualityEvaluationPayload,
 } from "./quality-evaluations";
+export { evaluationConfigApi, levelConfigApi } from "./evaluation";
+export type {
+  EvaluationWeights,
+  LevelConfig,
+  LevelConfigPayload,
+} from "./evaluation";
 export { messagesApi } from "./messages";
 export type { OsMessage, OsWithLastMessage } from "./messages";
 export type {

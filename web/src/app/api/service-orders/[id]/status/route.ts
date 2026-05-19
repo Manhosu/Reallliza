@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/api-helpers/audit";
 import { createNotification } from "@/lib/api-helpers/notifications";
 import { dispatchWebhook } from "@/lib/api-helpers/webhook-dispatcher";
 import { provisionSteps } from "../provision-steps/route";
+import { recalculateTechnicianScore } from "@/lib/evaluation/recalculate";
 
 /**
  * Valid status transitions state machine.
@@ -169,6 +170,22 @@ export async function PATCH(
       oldData: { status: currentStatus },
       newData: { status: newStatus },
     });
+
+    // Recalcula o score/nível do técnico quando a OS conclui ou é
+    // cancelada — a fonte SISTEMA depende desses desfechos.
+    if (
+      (newStatus === "completed" || newStatus === "cancelled") &&
+      order.technician_id
+    ) {
+      try {
+        await recalculateTechnicianScore(
+          supabase,
+          order.technician_id as string
+        );
+      } catch (e) {
+        console.error("recalculateTechnicianScore error:", e);
+      }
+    }
 
     const displayNumber = order.order_number || order.title;
 

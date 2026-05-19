@@ -6,6 +6,7 @@ import {
 } from "@/lib/api-helpers/api-key-auth";
 import { jsonResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { recalculateTechnicianScore } from "@/lib/evaluation/recalculate";
 
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -101,6 +102,13 @@ export async function POST(request: NextRequest) {
       entityId: data.id,
       newData: { technician_user_id: body.technician_user_id, ...dims },
     });
+
+    // Recalcula o score/nível do profissional (fonte CLIENTE mudou).
+    try {
+      await recalculateTechnicianScore(supabase, body.technician_user_id);
+    } catch (e) {
+      console.error("recalculateTechnicianScore error:", e);
+    }
 
     return jsonResponse(data);
   } catch (error) {

@@ -37,6 +37,7 @@ import {
   UserCheck,
   Award,
   ShieldCheck,
+  Trophy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserRole, type Notification } from "@/lib/types";
@@ -153,6 +154,12 @@ const allNavItems = [
     roles: [UserRole.ADMIN],
   },
   {
+    label: "Níveis e Avaliação",
+    href: "/niveis",
+    icon: Trophy,
+    roles: [UserRole.ADMIN],
+  },
+  {
     label: "Avaliações",
     href: "/avaliacoes",
     icon: Star,
@@ -205,6 +212,7 @@ const breadcrumbLabels: Record<string, string> = {
   regioes: "Regiões",
   especialidades: "Especialidades",
   qualidade: "Qualidade",
+  niveis: "Níveis e Avaliação",
   avaliacoes: "Avaliações",
   relatorios: "Relatórios",
   auditoria: "Auditoria",

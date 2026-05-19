@@ -31,6 +31,7 @@ export interface CandidateProfile {
   geo_lng: number | null;
   last_sign_in_at: string | null;
   updated_at: string | null;
+  level: string | null;
 }
 
 export interface ScoredCandidate {
@@ -40,6 +41,7 @@ export interface ScoredCandidate {
   rating: number;
   specialty: number;
   recency: number;
+  level: number;
   score: number;
   distance_km: number | null;
 }
@@ -148,6 +150,18 @@ function specialtyScore(c: CandidateProfile, serviceType?: string | null): numbe
   return match ? 1 : 0.5;
 }
 
+/** Score do nível: ouro > prata > bronze. Sem nível => bronze. */
+function levelScore(c: CandidateProfile): number {
+  switch ((c.level || "bronze").toLowerCase()) {
+    case "ouro":
+      return 1;
+    case "prata":
+      return 0.7;
+    default:
+      return 0.4;
+  }
+}
+
 export async function rankCandidates(
   input: RankInput
 ): Promise<ScoredCandidate[]> {
@@ -174,10 +188,11 @@ export async function rankCandidates(
     (c) => (c.specialties?.length || 0) > 0
   );
 
-  // Pesos base e redistribuição
+  // Pesos base e redistribuição. O nível (lvl) entra como fator fixo;
+  // quando ninguém tem specialty, esse peso vai para proximidade/rating.
   const W = anyHasSpecialty
-    ? { prox: 0.4, rate: 0.3, spec: 0.2, rec: 0.1 }
-    : { prox: 0.5, rate: 0.375, spec: 0, rec: 0.125 };
+    ? { prox: 0.35, rate: 0.25, spec: 0.15, rec: 0.05, lvl: 0.2 }
+    : { prox: 0.45, rate: 0.3, spec: 0, rec: 0.05, lvl: 0.2 };
 
   const scored: ScoredCandidate[] = candidates.map((c) => {
     const distanceKm = distances.get(c.id) ?? null;
@@ -186,12 +201,14 @@ export async function rankCandidates(
     const rating = Math.max(0, Math.min(1, ratingAbs / 5));
     const specialty = specialtyScore(c, serviceType);
     const recency = recencyScore(c);
+    const level = levelScore(c);
 
     const score =
       W.prox * proximity +
       W.rate * rating +
       W.spec * specialty +
-      W.rec * recency;
+      W.rec * recency +
+      W.lvl * level;
 
     return {
       id: c.id,
@@ -200,6 +217,7 @@ export async function rankCandidates(
       rating,
       specialty,
       recency,
+      level,
       score,
       distance_km: distanceKm,
     };
