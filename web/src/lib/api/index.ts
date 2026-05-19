@@ -59,6 +59,15 @@ export type {
   LevelConfig,
   LevelConfigPayload,
 } from "./evaluation";
+export { quotesApi } from "./quotes";
+export type {
+  Quote,
+  QuoteItem,
+  QuotePayment,
+  QuoteStatus,
+  CreateQuotePayload,
+  PayQuoteResult,
+} from "./quotes";
 export { messagesApi } from "./messages";
 export type { OsMessage, OsWithLastMessage } from "./messages";
 export type {

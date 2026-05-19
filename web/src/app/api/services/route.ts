@@ -17,7 +17,7 @@ function parsePrice(value: unknown): number {
  */
 export async function GET(request: NextRequest) {
   try {
-    await authenticateRequest(request);
+    const user = await authenticateRequest(request);
 
     const sp = request.nextUrl.searchParams;
     const includeInactive = sp.get("include_inactive") === "true";
@@ -45,6 +45,16 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error(`Failed to list services: ${error.message}`);
       throw new Error("Falha ao listar serviços");
+    }
+
+    // A loja parceira nunca vê o preço de repasse.
+    if (user.role === "partner") {
+      const safe = (data || []).map((s) => {
+        const row = { ...s } as Record<string, unknown>;
+        delete row.payout_price;
+        return row;
+      });
+      return jsonResponse(safe);
     }
 
     return jsonResponse(data || []);

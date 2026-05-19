@@ -38,6 +38,7 @@ import {
   Award,
   ShieldCheck,
   Trophy,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserRole, type Notification } from "@/lib/types";
@@ -68,6 +69,12 @@ const allNavItems = [
     href: "/os",
     icon: ClipboardList,
     roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.PARTNER],
+  },
+  {
+    label: "Orçamentos",
+    href: "/orcamentos",
+    icon: FileText,
+    roles: [UserRole.ADMIN, UserRole.PARTNER],
   },
   {
     label: "Propostas",
@@ -199,6 +206,7 @@ const breadcrumbLabels: Record<string, string> = {
   dashboard: "Dashboard",
   feed: "Feed",
   os: "Ordens de Serviço",
+  orcamentos: "Orçamentos",
   propostas: "Propostas",
   agenda: "Agenda",
   mapa: "Mapa",
