@@ -224,7 +224,9 @@ export async function POST(request: NextRequest) {
     // Verify service order exists
     const { data: serviceOrder, error: soError } = await supabase
       .from("service_orders")
-      .select("id, title, client_name, address_state")
+      .select(
+        "id, title, client_name, address_state, is_rework, parent_service_order_id"
+      )
       .eq("id", service_order_id)
       .single();
 
@@ -295,6 +297,31 @@ export async function POST(request: NextRequest) {
       ipAddress: request.headers.get("x-forwarded-for"),
       userAgent: request.headers.get("user-agent"),
     });
+
+    // Prioridade no retrabalho (Marco 6 / Bloco 3D): se a OS é um
+    // retorno técnico, o profissional que executou a OS original é
+    // notificado com prioridade — sem impedir o broadcast (exceções
+    // operacionais continuam possíveis).
+    if (serviceOrder.is_rework && serviceOrder.parent_service_order_id) {
+      try {
+        const { data: parentOs } = await supabase
+          .from("service_orders")
+          .select("technician_id")
+          .eq("id", serviceOrder.parent_service_order_id)
+          .maybeSingle();
+        if (parentOs?.technician_id) {
+          await createNotification(
+            parentOs.technician_id,
+            "Retorno técnico — você tem prioridade",
+            `A OS "${serviceOrder.title}" é um retorno de um serviço que você executou. Você tem prioridade para assumir.`,
+            "general",
+            { proposal_id: proposal.id, service_order_id, rework: true }
+          );
+        }
+      } catch {
+        // Notificação de prioridade não deve quebrar a operação.
+      }
+    }
 
     if (isBroadcast) {
       // Carrega coordenadas da OS para ranquear por proximidade. Reusa o

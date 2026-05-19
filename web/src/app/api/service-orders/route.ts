@@ -197,12 +197,19 @@ export async function POST(request: NextRequest) {
       "desconto",
       "vale_troca",
       "step_template_group_id",
+      // Retrabalho (Marco 6 / Bloco 3D)
+      "parent_service_order_id",
     ];
 
     for (const field of optionalFields) {
       if (body[field] !== undefined && body[field] !== null) {
         insertData[field] = body[field];
       }
+    }
+
+    // OS ligada a uma OS-pai é, por definição, um retrabalho.
+    if (body.parent_service_order_id) {
+      insertData.is_rework = true;
     }
 
     if (body.geo_lat !== undefined) insertData.geo_lat = body.geo_lat;
