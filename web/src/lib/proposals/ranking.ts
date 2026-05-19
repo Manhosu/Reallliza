@@ -219,7 +219,7 @@ export async function loadRatingsAverages(
 
   const { data, error } = await supabase
     .from("customer_ratings")
-    .select("technician_user_id, quality, punctuality, communication")
+    .select("technician_user_id, overall_score")
     .in("technician_user_id", userIds);
 
   if (error || !data) return map;
@@ -227,13 +227,12 @@ export async function loadRatingsAverages(
   const buckets = new Map<string, { sum: number; count: number }>();
   for (const r of data as Array<{
     technician_user_id: string;
-    quality: number;
-    punctuality: number;
-    communication: number;
+    overall_score: number | null;
   }>) {
-    const avg = (r.quality + r.punctuality + r.communication) / 3;
+    // overall_score já é a média das dimensões avaliadas (escala 1-5).
+    if (typeof r.overall_score !== "number") continue;
     const cur = buckets.get(r.technician_user_id) || { sum: 0, count: 0 };
-    cur.sum += avg;
+    cur.sum += r.overall_score;
     cur.count += 1;
     buckets.set(r.technician_user_id, cur);
   }

@@ -9,20 +9,47 @@ import { logAudit } from "@/lib/api-helpers/audit";
 
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
 
-function validateScore(value: unknown, field: string): number {
-  if (typeof value !== "number" || !Number.isInteger(value)) {
+// As 5 dimensões do José + as 3 legadas (aceitas por compatibilidade).
+const DIMENSIONS = [
+  "educacao",
+  "organizacao",
+  "limpeza",
+  "atendimento",
+  "satisfacao",
+  "quality",
+  "punctuality",
+  "communication",
+] as const;
+
+/** Valida uma dimensão opcional: ausente → undefined; presente → 1..5 ou erro. */
+function optionalScore(value: unknown, field: string): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > 5
+  ) {
     throw new ApiKeyError(400, `${field} must be an integer 1..5`);
-  }
-  if (value < 1 || value > 5) {
-    throw new ApiKeyError(400, `${field} must be between 1 and 5`);
   }
   return value;
 }
 
+/** Média das dimensões não-nulas de uma linha (escala 1-5). */
+function rowAverage(row: Record<string, unknown>): number | null {
+  const vals = DIMENSIONS.map((d) => row[d]).filter(
+    (v): v is number => typeof v === "number"
+  );
+  if (vals.length === 0) return null;
+  return vals.reduce((s, v) => s + v, 0) / vals.length;
+}
+
 /**
  * POST /api/external/ratings
- * Recebe avaliação do cliente sobre o serviço (vinda do Garantias após o
- * cliente preencher o form via WhatsApp). Idempotente por external_id.
+ * Recebe a avaliação do cliente (vinda do Garantias após o cliente
+ * preencher o form pós-OS). Idempotente por external_id. Aceita as 5
+ * dimensões (educação, organização, limpeza, atendimento, satisfação)
+ * — e ainda tolera as 3 legadas.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -36,9 +63,14 @@ export async function POST(request: NextRequest) {
       throw new ApiKeyError(400, "technician_user_id is required");
     }
 
-    const quality = validateScore(body.quality, "quality");
-    const punctuality = validateScore(body.punctuality, "punctuality");
-    const communication = validateScore(body.communication, "communication");
+    const dims: Record<string, number> = {};
+    for (const d of DIMENSIONS) {
+      const v = optionalScore(body[d], d);
+      if (v !== undefined) dims[d] = v;
+    }
+    if (Object.keys(dims).length === 0) {
+      throw new ApiKeyError(400, "Pelo menos uma dimensão de nota é obrigatória");
+    }
 
     const supabase = getAdminClient();
 
@@ -47,16 +79,14 @@ export async function POST(request: NextRequest) {
       ticket_id: body.ticket_id || null,
       service_order_id: body.enterprise_os_id || null,
       technician_user_id: body.technician_user_id,
-      quality,
-      punctuality,
-      communication,
       comment: body.comment || null,
+      ...dims,
     };
 
     const { data, error } = await supabase
       .from("customer_ratings")
       .upsert(row, { onConflict: "id" })
-      .select("id, technician_user_id, quality, punctuality, communication")
+      .select("id, technician_user_id, overall_score")
       .single();
 
     if (error || !data) {
@@ -69,12 +99,7 @@ export async function POST(request: NextRequest) {
       action: "customer_rating.synced_external",
       entityType: "customer_rating",
       entityId: data.id,
-      newData: {
-        technician_user_id: body.technician_user_id,
-        quality,
-        punctuality,
-        communication,
-      },
+      newData: { technician_user_id: body.technician_user_id, ...dims },
     });
 
     return jsonResponse(data);
@@ -92,9 +117,7 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/external/ratings?technician_user_id=...&limit=50
- * Lista avaliações do cliente, opcionalmente filtradas por técnico.
- * Retorna os comentários, scores, e nome do técnico (join com profiles).
- * Usado pelo painel /dashboard/avaliacoes do Garantias.
+ * Lista avaliações do cliente. Usado pelo painel do Garantias.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -119,6 +142,12 @@ export async function GET(request: NextRequest) {
         quality,
         punctuality,
         communication,
+        educacao,
+        organizacao,
+        limpeza,
+        atendimento,
+        satisfacao,
+        overall_score,
         comment,
         created_at,
         technician:profiles!customer_ratings_technician_user_id_fkey(id, full_name)
@@ -138,20 +167,22 @@ export async function GET(request: NextRequest) {
       return jsonResponse({ message: "Erro ao listar avaliações" }, 500);
     }
 
-    // Estatísticas agregadas
     const list = ratings || [];
-    const summary =
-      list.length > 0
-        ? {
-            count: list.length,
-            avg_quality:
-              list.reduce((s, r) => s + r.quality, 0) / list.length,
-            avg_punctuality:
-              list.reduce((s, r) => s + r.punctuality, 0) / list.length,
-            avg_communication:
-              list.reduce((s, r) => s + r.communication, 0) / list.length,
-          }
-        : { count: 0 };
+    const overalls = list
+      .map((r) =>
+        typeof r.overall_score === "number"
+          ? r.overall_score
+          : rowAverage(r as Record<string, unknown>)
+      )
+      .filter((v): v is number => typeof v === "number");
+
+    const summary = {
+      count: list.length,
+      avg_overall:
+        overalls.length > 0
+          ? overalls.reduce((s, v) => s + v, 0) / overalls.length
+          : 0,
+    };
 
     return jsonResponse({ ratings: list, summary });
   } catch (error) {
