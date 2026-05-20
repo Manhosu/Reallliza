@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { createNotification } from "@/lib/api-helpers/notifications";
 
 /**
  * GET /api/service-orders/[id]
@@ -250,6 +251,20 @@ export async function PUT(
       oldData: existing as Record<string, unknown>,
       newData: order as Record<string, unknown>,
     });
+
+    // Reatribuição → notifica o NOVO técnico (URGENT, aciona som Realliza).
+    const oldTech = existing.technician_id as string | null;
+    const newTech = (order as { technician_id: string | null }).technician_id;
+    if (newTech && newTech !== oldTech) {
+      createNotification(
+        newTech,
+        oldTech ? "OS reatribuída para você" : "Nova OS atribuída",
+        `OS #${(order as { order_number: number | null }).order_number ?? ""} — ${(order as { title: string }).title}`,
+        "os_assigned",
+        { service_order_id: id, order_number: (order as { order_number: number | null }).order_number },
+        { priority: "urgent" }
+      ).catch((err) => console.warn("os_assigned notify failed:", err));
+    }
 
     return jsonResponse(order);
   } catch (error) {

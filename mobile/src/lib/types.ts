@@ -274,6 +274,8 @@ export interface ToolCustody {
   created_at: string;
 }
 
+export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent';
+
 export interface Notification {
   id: string;
   user_id: string;
@@ -282,6 +284,7 @@ export interface Notification {
   message: string;
   data: Record<string, unknown> | null;
   read_at: string | null;
+  priority: NotificationPriority;
   created_at: string;
 }
 

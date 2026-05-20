@@ -314,8 +314,9 @@ export async function POST(request: NextRequest) {
             parentOs.technician_id,
             "Retorno técnico — você tem prioridade",
             `A OS "${serviceOrder.title}" é um retorno de um serviço que você executou. Você tem prioridade para assumir.`,
-            "general",
-            { proposal_id: proposal.id, service_order_id, rework: true }
+            "proposal_available",
+            { proposal_id: proposal.id, service_order_id, rework: true },
+            { priority: "urgent" }
           );
         }
       } catch {
@@ -437,13 +438,14 @@ export async function POST(request: NextRequest) {
               r.id,
               "Nova proposta disponível",
               `OS "${serviceOrder.title}" — primeiro a aceitar fica com o serviço.`,
-              "general",
+              "proposal_available",
               {
                 proposal_id: proposal.id,
                 service_order_id,
                 broadcast: true,
                 rank_score: Number(r.score.toFixed(3)),
-              }
+              },
+              { priority: "urgent" }
             ).catch(() => {});
           }
         } catch (err) {
@@ -456,11 +458,12 @@ export async function POST(request: NextRequest) {
           partner.user_id,
           "Nova proposta recebida",
           `Voce recebeu uma proposta para a OS "${serviceOrder.title}"`,
-          "general",
+          "proposal_available",
           {
             proposal_id: proposal.id,
             service_order_id,
-          }
+          },
+          { priority: "urgent" }
         );
       } catch {
         // Notification failure should not break the main operation

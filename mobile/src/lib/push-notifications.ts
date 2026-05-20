@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import { Platform, Vibration } from 'react-native';
 import { apiClient } from './api';
 
 // ============================================================
@@ -48,13 +48,26 @@ export async function registerForPushNotifications(): Promise<string | null> {
       return null;
     }
 
-    // Android: configure notification channel
+    // Android: configure notification channels
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Padrao',
-        importance: Notifications.AndroidImportance.MAX,
+        importance: Notifications.AndroidImportance.DEFAULT,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#EAB308',
+      });
+      // Canal de eventos operacionais críticos: nova proposta, OS atribuída,
+      // alterações urgentes, mensagem. Som customizado "Realliza".
+      await Notifications.setNotificationChannelAsync('realliza-urgent', {
+        name: 'Reallliza — Eventos Urgentes',
+        description:
+          'Alertas com som identitario para propostas, OS atribuidas, mensagens e mudancas criticas.',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 500, 200, 500, 200, 500],
+        lightColor: '#EAB308',
+        sound: 'realliza',
+        bypassDnd: false,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
     }
 
@@ -165,13 +178,32 @@ export function setupNotificationListeners(
       }
     });
 
-  // Handle notification received while app is in foreground (optional logging)
+  // Handle notification received while app is in foreground.
+  // iOS não dispara o som customizado automaticamente nem vibra quando
+  // o app está em foreground — disparamos Haptics aqui pra suprir.
   const receivedSubscription =
     Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification.request.content.data as NotificationData & {
+        priority?: 'low' | 'normal' | 'high' | 'urgent';
+      };
+      const isLoud = data?.priority === 'high' || data?.priority === 'urgent';
       console.log(
         '[PushNotifications] Notification received in foreground:',
         notification.request.content.title,
+        'priority=',
+        data?.priority,
       );
+      if (isLoud) {
+        // iOS não vibra automaticamente em foreground. Garante feedback
+        // tátil mesmo no app aberto.
+        try {
+          Vibration.vibrate(
+            data?.priority === 'urgent' ? [0, 500, 200, 500] : [0, 300, 150, 300],
+          );
+        } catch {
+          /* ignore */
+        }
+      }
     });
 
   return {

@@ -30,8 +30,24 @@ const NOTIFICATION_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   os_cancelled: 'close-circle-outline',
   schedule_reminder: 'alarm-outline',
   tool_custody: 'hammer-outline',
+  proposal_available: 'flash-outline',
+  message_received: 'chatbubble-ellipses-outline',
   system: 'information-circle-outline',
   general: 'megaphone-outline',
+};
+
+const PRIORITY_COLOR: Record<string, string> = {
+  urgent: '#EF4444',
+  high: '#F59E0B',
+  normal: 'transparent',
+  low: 'transparent',
+};
+
+const PRIORITY_LABEL: Record<string, string> = {
+  urgent: 'URGENTE',
+  high: 'IMPORTANTE',
+  normal: '',
+  low: '',
 };
 
 function formatNotificationDate(dateStr: string): string {
@@ -135,10 +151,18 @@ export function NotificationsScreen() {
   const renderNotification = ({ item }: { item: Notification }) => {
     const isUnread = !item.read_at;
     const iconName = NOTIFICATION_ICONS[item.type] || 'notifications-outline';
+    const priority = item.priority ?? 'normal';
+    const accent = PRIORITY_COLOR[priority];
+    const label = PRIORITY_LABEL[priority];
+    const isLoud = priority === 'urgent' || priority === 'high';
 
     return (
       <TouchableOpacity
-        style={[styles.card, isUnread && styles.cardUnread]}
+        style={[
+          styles.card,
+          isUnread && styles.cardUnread,
+          isLoud && { borderLeftWidth: 4, borderLeftColor: accent },
+        ]}
         onPress={() => {
           if (isUnread) markAsRead(item.id);
         }}
@@ -147,18 +171,33 @@ export function NotificationsScreen() {
         {/* Unread indicator dot */}
         {isUnread && <View style={styles.unreadDot} />}
 
-        <View style={styles.iconContainer}>
+        <View
+          style={[
+            styles.iconContainer,
+            isLoud && { backgroundColor: accent + '22' },
+          ]}
+        >
           <Ionicons
             name={iconName}
             size={22}
-            color={isUnread ? colors.primary : colors.textDark}
+            color={isLoud ? accent : isUnread ? colors.primary : colors.textDark}
           />
         </View>
 
         <View style={styles.contentContainer}>
-          <Text style={[styles.title, isUnread && styles.titleUnread]} numberOfLines={2}>
-            {item.title}
-          </Text>
+          <View style={styles.titleRow}>
+            <Text
+              style={[styles.title, isUnread && styles.titleUnread, { flex: 1 }]}
+              numberOfLines={2}
+            >
+              {item.title}
+            </Text>
+            {label ? (
+              <View style={[styles.priorityBadge, { backgroundColor: accent }]}>
+                <Text style={styles.priorityBadgeText}>{label}</Text>
+              </View>
+            ) : null}
+          </View>
           {item.message && (
             <Text style={styles.message} numberOfLines={2}>
               {item.message}
@@ -338,5 +377,22 @@ const styles = StyleSheet.create({
   loadingMore: {
     paddingVertical: 16,
     alignItems: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  priorityBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  priorityBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
 });

@@ -245,7 +245,7 @@ export async function POST(request: NextRequest) {
       newData: order as Record<string, unknown>,
     });
 
-    // Notify assigned technician
+    // Notify assigned technician — URGENT (aciona som "Realliza" + vibração).
     if (body.technician_id) {
       try {
         await createNotification(
@@ -253,7 +253,8 @@ export async function POST(request: NextRequest) {
           "Nova OS atribuida",
           `Voce foi atribuido a OS "${body.title}"`,
           "os_assigned",
-          { service_order_id: order.id }
+          { service_order_id: order.id, order_number: order.order_number },
+          { priority: "urgent" }
         );
       } catch {
         // Notification failure should not break the main operation

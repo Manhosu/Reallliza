@@ -1,20 +1,41 @@
 import { getAdminClient } from "./supabase-admin";
 
-type NotificationType =
+export type NotificationType =
   | "os_assigned"
   | "os_status_changed"
+  | "os_completed"
+  | "os_cancelled"
+  | "message_received"
+  | "proposal_available"
   | "schedule_reminder"
   | "tool_overdue"
+  | "new_ticket"
   | "general";
 
+export type NotificationPriority = "low" | "normal" | "high" | "urgent";
+
+interface CreateNotificationOptions {
+  priority?: NotificationPriority;
+}
+
+/**
+ * Cria uma notificação para o usuário (Execução).
+ *
+ * Persiste em `notifications` e dispara push Expo (fire-and-forget).
+ * O som customizado "realliza.wav" e channel `realliza-urgent` são usados
+ * em prioridades `high` ou `urgent` — coloca a notificação em destaque na
+ * gaveta do Android e toca o áudio identitário no foreground/background.
+ */
 export async function createNotification(
   userId: string,
   title: string,
   message: string,
   type: NotificationType,
-  data?: Record<string, unknown>
+  data?: Record<string, unknown>,
+  options?: CreateNotificationOptions
 ) {
   const supabase = getAdminClient();
+  const priority: NotificationPriority = options?.priority ?? "normal";
 
   const { data: notification, error } = await supabase
     .from("notifications")
@@ -23,6 +44,7 @@ export async function createNotification(
       title,
       message,
       type,
+      priority,
       data: data || null,
     })
     .select()
@@ -35,8 +57,8 @@ export async function createNotification(
     return null;
   }
 
-  // Fire-and-forget push notification
-  sendPushNotification(userId, title, message, data).catch((err) => {
+  // Fire-and-forget push notification — não bloqueia o caller.
+  sendPushNotification(userId, title, message, priority, data).catch((err) => {
     console.error(
       `Failed to send push: ${err instanceof Error ? err.message : String(err)}`
     );
@@ -49,6 +71,7 @@ async function sendPushNotification(
   userId: string,
   title: string,
   message: string,
+  priority: NotificationPriority,
   data?: Record<string, unknown>
 ) {
   const supabase = getAdminClient();
@@ -60,12 +83,19 @@ async function sendPushNotification(
 
   if (error || !devices || devices.length === 0) return;
 
-  const messages = devices.map((device) => ({
+  const isLoud = priority === "high" || priority === "urgent";
+  const sound: string | "default" = isLoud ? "realliza" : "default";
+  const channelId = isLoud ? "realliza-urgent" : "default";
+  const expoPriority = priority === "urgent" ? "high" : isLoud ? "high" : "default";
+
+  const payload = devices.map((device) => ({
     to: device.token,
     title,
     body: message,
-    data: data || {},
-    sound: "default" as const,
+    data: { ...(data || {}), priority },
+    sound,
+    channelId,
+    priority: expoPriority,
   }));
 
   await fetch("https://exp.host/--/api/v2/push/send", {
@@ -75,6 +105,6 @@ async function sendPushNotification(
       "Accept-Encoding": "gzip, deflate",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(messages),
+    body: JSON.stringify(payload),
   });
 }

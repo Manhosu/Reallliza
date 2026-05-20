@@ -189,6 +189,23 @@ export async function PATCH(
 
     const displayNumber = order.order_number || order.title;
 
+    // Mapeia severidade a partir do status alvo — cancelled é urgente
+    // (operação parou), completed merece destaque, mudanças intermediárias
+    // ficam em normal.
+    const statusPriority: "urgent" | "high" | "normal" =
+      newStatus === "cancelled"
+        ? "urgent"
+        : newStatus === "completed"
+          ? "high"
+          : "normal";
+
+    const statusType =
+      newStatus === "completed"
+        ? "os_completed"
+        : newStatus === "cancelled"
+          ? "os_cancelled"
+          : "os_status_changed";
+
     // Notify technician about status change
     if (order.technician_id && order.technician_id !== user.id) {
       try {
@@ -196,12 +213,13 @@ export async function PATCH(
           order.technician_id,
           `OS #${displayNumber} - Status alterado`,
           `Status alterado de ${currentStatus} para ${newStatus}`,
-          "os_status_changed",
+          statusType,
           {
             service_order_id: id,
             from_status: currentStatus,
             to_status: newStatus,
-          }
+          },
+          { priority: statusPriority }
         );
       } catch {
         // Notification failure should not break the main operation
@@ -222,12 +240,13 @@ export async function PATCH(
             partnerData.user_id,
             `OS #${displayNumber} - Status alterado`,
             `Status alterado de ${currentStatus} para ${newStatus}`,
-            "os_status_changed",
+            statusType,
             {
               service_order_id: id,
               from_status: currentStatus,
               to_status: newStatus,
-            }
+            },
+            { priority: statusPriority }
           );
         }
       } catch {

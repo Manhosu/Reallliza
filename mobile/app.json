@@ -68,6 +68,13 @@
         {
           "photosPermission": "O app precisa acessar a galeria para selecionar fotos."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#EAB308",
+          "sounds": ["./assets/sounds/realliza.wav"]
+        }
       ]
     ],
     "extra": {
