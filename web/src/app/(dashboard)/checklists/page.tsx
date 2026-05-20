@@ -30,8 +30,13 @@ import type {
   ChecklistTemplateItem,
 } from "@/lib/types";
 import { checklistTemplatesApi } from "@/lib/api";
+import { ApiError } from "@/lib/api/client";
+import { assertFreshSession } from "@/lib/api/session-guard";
 import { usePaginatedApi } from "@/hooks/use-api";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
+
+const DRAFT_KEY = "checklist-template-draft-v1";
 
 // ============================================================
 // Helpers
@@ -95,6 +100,7 @@ interface TemplateFormProps {
 }
 
 function TemplateForm({ template, onSave, onCancel }: TemplateFormProps) {
+  const router = useRouter();
   const [name, setName] = useState(template?.name ?? "");
   const [description, setDescription] = useState(
     template?.description ?? ""
@@ -112,8 +118,39 @@ function TemplateForm({ template, onSave, onCancel }: TemplateFormProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
 
   const isEditing = !!template;
+
+  // Restaura rascunho (só pra criação — edição já vem com dados do template).
+  useEffect(() => {
+    if (draftRestored || isEditing) {
+      setDraftRestored(true);
+      return;
+    }
+    setDraftRestored(true);
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as {
+        name?: string;
+        description?: string;
+        items?: { id: string; label: string; required: boolean; order: number }[];
+      };
+      if (d.name) setName(d.name);
+      if (d.description) setDescription(d.description);
+      if (Array.isArray(d.items) && d.items.length > 0) setItems(d.items);
+      toast.info("Rascunho do template restaurado", {
+        description: "Continue de onde parou e clique em Salvar.",
+        action: {
+          label: "Limpar",
+          onClick: () => localStorage.removeItem(DRAFT_KEY),
+        },
+      });
+    } catch {
+      /* rascunho corrompido — ignora */
+    }
+  }, [draftRestored, isEditing]);
 
   function generateId() {
     return `temp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -182,6 +219,30 @@ function TemplateForm({ template, onSave, onCancel }: TemplateFormProps) {
 
     setIsSaving(true);
 
+    // Salva rascunho ANTES de qualquer coisa, só para criação. Se a sessão
+    // tiver expirado ou der erro de rede, o usuário não perde o que digitou.
+    if (!isEditing) {
+      try {
+        localStorage.setItem(
+          DRAFT_KEY,
+          JSON.stringify({ name, description, items, savedAt: new Date().toISOString() })
+        );
+      } catch {
+        /* localStorage indisponível */
+      }
+    }
+
+    const sessionCheck = await assertFreshSession();
+    if (!sessionCheck.ok) {
+      setIsSaving(false);
+      toast.error("Sua sessão expirou. Faça login novamente.", {
+        description: "Seu rascunho foi salvo — ele aparece quando você voltar.",
+        duration: 8000,
+      });
+      router.push(`/login?redirectTo=${encodeURIComponent("/checklists")}`);
+      return;
+    }
+
     try {
       const payload = {
         name: name.trim(),
@@ -197,10 +258,19 @@ function TemplateForm({ template, onSave, onCancel }: TemplateFormProps) {
         await checklistTemplatesApi.update(template.id, payload);
       } else {
         await checklistTemplatesApi.create(payload);
+        try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
       }
 
       onSave();
     } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 401) {
+        toast.error("Sua sessão expirou. Faça login novamente.", {
+          description: "Seu rascunho foi salvo — ele aparece quando você voltar.",
+          duration: 8000,
+        });
+        router.push(`/login?redirectTo=${encodeURIComponent("/checklists")}`);
+        return;
+      }
       const message =
         err instanceof Error ? err.message : "Erro ao salvar template.";
       setError(message);
