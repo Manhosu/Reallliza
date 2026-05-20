@@ -11,6 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { servicesApi, quotesApi } from "@/lib/api";
 import type { Service } from "@/lib/api/services";
+import { ApiError } from "@/lib/api/client";
+import { assertFreshSession } from "@/lib/api/session-guard";
+
+const DRAFT_KEY = "orcamento-novo-draft-v1";
 
 function formatBRL(value: number): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -31,6 +35,7 @@ export default function NovoOrcamentoPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -46,6 +51,45 @@ export default function NovoOrcamentoPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // BUG-001: restaura rascunho do orçamento (sessão expirada não perde dados).
+  useEffect(() => {
+    if (draftRestored) return;
+    setDraftRestored(true);
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as {
+        clientName?: string;
+        clientPhone?: string;
+        clientEmail?: string;
+        addressStreet?: string;
+        addressCity?: string;
+        addressState?: string;
+        addressZip?: string;
+        notes?: string;
+        quantities?: Record<string, number>;
+      };
+      if (d.clientName) setClientName(d.clientName);
+      if (d.clientPhone) setClientPhone(d.clientPhone);
+      if (d.clientEmail) setClientEmail(d.clientEmail);
+      if (d.addressStreet) setAddressStreet(d.addressStreet);
+      if (d.addressCity) setAddressCity(d.addressCity);
+      if (d.addressState) setAddressState(d.addressState);
+      if (d.addressZip) setAddressZip(d.addressZip);
+      if (d.notes) setNotes(d.notes);
+      if (d.quantities) setQuantities(d.quantities);
+      toast.info("Rascunho restaurado", {
+        description: "Continue de onde parou e clique em Gerar orçamento.",
+        action: {
+          label: "Limpar",
+          onClick: () => localStorage.removeItem(DRAFT_KEY),
+        },
+      });
+    } catch {
+      /* rascunho corrompido — ignora */
+    }
+  }, [draftRestored]);
 
   function setQty(serviceId: string, qty: number) {
     setQuantities((prev) => {
@@ -81,6 +125,31 @@ export default function NovoOrcamentoPage() {
       return;
     }
     setSaving(true);
+
+    // BUG-001: salva rascunho antes do POST.
+    try {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          clientName, clientPhone, clientEmail,
+          addressStreet, addressCity, addressState, addressZip,
+          notes, quantities,
+          savedAt: new Date().toISOString(),
+        })
+      );
+    } catch { /* localStorage indisponível */ }
+
+    const sessionCheck = await assertFreshSession();
+    if (!sessionCheck.ok) {
+      setSaving(false);
+      toast.error("Sua sessão expirou. Faça login novamente.", {
+        description: "Seu rascunho foi salvo — ele aparece quando você voltar.",
+        duration: 8000,
+      });
+      router.push(`/login?redirectTo=${encodeURIComponent("/orcamentos/novo")}`);
+      return;
+    }
+
     try {
       const quote = await quotesApi.create({
         client_name: clientName.trim(),
@@ -97,8 +166,17 @@ export default function NovoOrcamentoPage() {
         })),
       });
       toast.success("Orçamento criado");
+      try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
       router.push(`/orcamentos/${quote.id}`);
     } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 401) {
+        toast.error("Sua sessão expirou. Faça login novamente.", {
+          description: "Seu rascunho foi salvo — ele aparece quando você voltar.",
+          duration: 8000,
+        });
+        router.push(`/login?redirectTo=${encodeURIComponent("/orcamentos/novo")}`);
+        return;
+      }
       setError(err instanceof Error ? err.message : "Erro ao criar orçamento");
     } finally {
       setSaving(false);

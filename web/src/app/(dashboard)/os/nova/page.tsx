@@ -27,8 +27,11 @@ import { cn } from "@/lib/utils";
 import { OsPriority, OS_PRIORITY_LABELS, UserRole, type Partner, type Profile } from "@/lib/types";
 import { serviceOrdersApi, partnersApi, usersApi, stepTemplatesApi } from "@/lib/api";
 import type { StepTemplateGroup } from "@/lib/api/step-templates";
-import { apiClient } from "@/lib/api/client";
+import { apiClient, ApiError } from "@/lib/api/client";
+import { assertFreshSession } from "@/lib/api/session-guard";
 import { useAuthStore } from "@/stores/auth-store";
+
+const DRAFT_KEY = "os-nova-draft-v1";
 
 const BR_STATES = [
   { value: "AC", label: "Acre" }, { value: "AL", label: "Alagoas" },
@@ -158,6 +161,36 @@ export default function NovaOsPage() {
 
   const [items, setItems] = useState<ItemRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [draftRestored, setDraftRestored] = useState(false);
+
+  // BUG-001: restaura rascunho salvo caso a sessão tenha expirado mid-form
+  // e o usuário tenha sido jogado pro login.
+  useEffect(() => {
+    if (draftRestored) return;
+    setDraftRestored(true);
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as {
+        form?: Partial<FormData>;
+        items?: ItemRow[];
+        payments?: PaymentRow[];
+        savedAt?: string;
+      };
+      if (draft.form) setForm((prev) => ({ ...prev, ...draft.form }));
+      if (Array.isArray(draft.items)) setItems(draft.items);
+      if (Array.isArray(draft.payments)) setPayments(draft.payments);
+      toast.info("Rascunho restaurado", {
+        description: "Continue de onde parou e clique em Criar OS.",
+        action: {
+          label: "Limpar",
+          onClick: () => localStorage.removeItem(DRAFT_KEY),
+        },
+      });
+    } catch {
+      // rascunho corrompido — ignora
+    }
+  }, [draftRestored]);
 
   useEffect(() => {
     let cancelled = false;
@@ -258,6 +291,29 @@ export default function NovaOsPage() {
       return;
     }
     setIsSubmitting(true);
+
+    // BUG-001: salva rascunho antes de qualquer coisa — se a sessão tiver
+    // morrido ou der erro de rede, o usuário não perde o que digitou.
+    try {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ form, items, payments, savedAt: new Date().toISOString() })
+      );
+    } catch {
+      /* localStorage cheio / desabilitado — segue sem rascunho */
+    }
+
+    const sessionCheck = await assertFreshSession();
+    if (!sessionCheck.ok) {
+      setIsSubmitting(false);
+      toast.error("Sua sessão expirou. Faça login novamente.", {
+        description: "Seu rascunho foi salvo — ele aparece quando você voltar.",
+        duration: 8000,
+      });
+      router.push(`/login?redirectTo=${encodeURIComponent("/os/nova")}`);
+      return;
+    }
+
     try {
       const payload: Record<string, unknown> = {
         title: form.title,
@@ -339,8 +395,19 @@ export default function NovaOsPage() {
         toast.success("OS criada com sucesso");
       }
 
+      // BUG-001: criação bem-sucedida — rascunho não é mais necessário.
+      try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+
       setTimeout(() => router.push(`/os/${orderId}`), 800);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        toast.error("Sua sessão expirou. Faça login novamente.", {
+          description: "Seu rascunho foi salvo — ele aparece quando você voltar.",
+          duration: 8000,
+        });
+        router.push(`/login?redirectTo=${encodeURIComponent("/os/nova")}`);
+        return;
+      }
       const message = err instanceof Error ? err.message : "Erro ao criar OS";
       toast.error(message);
     } finally {
