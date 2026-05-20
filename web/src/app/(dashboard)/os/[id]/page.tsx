@@ -39,6 +39,13 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { SelectNative } from "@/components/ui/select-native";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import {
   OsStatus,
@@ -242,6 +249,7 @@ function ChecklistSection({
 }) {
   const [isCreating, setIsCreating] = useState(false);
   const [isCompleting, setIsCompleting] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const {
     data: checklists,
@@ -365,6 +373,7 @@ function ChecklistSection({
   }
 
   return (
+    <>
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2">
@@ -377,11 +386,7 @@ function ChecklistSection({
             size="sm"
             disabled={isCreating}
             isLoading={isCreating}
-            onClick={() => {
-              if (templates.length > 0) {
-                handleCreateChecklist(templates[0].id);
-              }
-            }}
+            onClick={() => setPickerOpen(true)}
           >
             Adicionar
           </Button>
@@ -491,6 +496,55 @@ function ChecklistSection({
         })}
       </CardContent>
     </Card>
+
+    <Dialog open={pickerOpen} onClose={() => setPickerOpen(false)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Selecionar template de checklist</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2 py-2">
+          {templates.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Nenhum template ativo. Cadastre em Configurações.
+            </p>
+          ) : (
+            templates.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                disabled={isCreating}
+                onClick={async () => {
+                  await handleCreateChecklist(template.id);
+                  setPickerOpen(false);
+                }}
+                className="w-full text-left rounded-xl border bg-card hover:bg-accent transition-colors px-4 py-3 disabled:opacity-50"
+              >
+                <p className="font-medium">{template.name}</p>
+                {template.description && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {template.description}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground mt-1">
+                  {template.items.length}{" "}
+                  {template.items.length === 1 ? "item" : "itens"}
+                </p>
+              </button>
+            ))
+          )}
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setPickerOpen(false)}
+            disabled={isCreating}
+          >
+            Cancelar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

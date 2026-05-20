@@ -73,4 +73,8 @@ export const serviceOrdersApi = {
       `/service-orders/${id}/timeline`
     );
   },
+
+  delete(id: string) {
+    return apiClient.delete<{ ok: true }>(`/service-orders/${id}`);
+  },
 };

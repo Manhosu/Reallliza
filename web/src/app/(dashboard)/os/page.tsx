@@ -35,6 +35,7 @@ import {
   type ServiceOrder,
 } from "@/lib/types";
 import { serviceOrdersApi } from "@/lib/api";
+import { ApiError } from "@/lib/api/client";
 import { usePaginatedApi } from "@/hooks/use-api";
 import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "sonner";
@@ -192,6 +193,31 @@ export default function OsListingPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [debouncedSearch, statusFilter, priorityFilter, setCurrentPage]);
+
+  async function handleDelete(orderId: string, orderTitle: string) {
+    if (
+      !confirm(
+        `Apagar a OS "${orderTitle}"? Esta ação não pode ser desfeita.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await serviceOrdersApi.delete(orderId);
+      toast.success("OS excluída");
+      mutate();
+      setActionMenuId(null);
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 403) {
+        toast.error("Sem permissão pra apagar essa OS.");
+      } else if (err instanceof ApiError && err.status === 404) {
+        toast.error("OS não encontrada (já foi excluída?).");
+        mutate();
+      } else {
+        toast.error(err instanceof Error ? err.message : "Falha ao excluir OS");
+      }
+    }
+  }
 
   const totalItems = meta?.total ?? 0;
   const totalPages = meta?.total_pages ?? 1;
@@ -532,7 +558,7 @@ export default function OsListingPage() {
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setActionMenuId(null);
+                                        handleDelete(order.id, order.title);
                                       }}
                                       className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
                                     >

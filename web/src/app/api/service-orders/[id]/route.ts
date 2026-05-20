@@ -256,3 +256,88 @@ export async function PUT(
     return errorResponse(error);
   }
 }
+
+/**
+ * DELETE /api/service-orders/[id]
+ * Apaga uma OS e seus filhos (executions, history, messages, items, payments).
+ * Admin/manager apaga qualquer OS; partner só apaga as próprias.
+ */
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await authenticateRequest(_request);
+    checkRole(user, ["admin", "manager", "partner"]);
+
+    const { id } = await params;
+    const supabase = getAdminClient();
+
+    const { data: order, error: fetchErr } = await supabase
+      .from("service_orders")
+      .select("id, partner_id, created_by, title, status")
+      .eq("id", id)
+      .single();
+
+    if (fetchErr || !order) {
+      throw new AuthError(404, "OS não encontrada");
+    }
+
+    // Partner só apaga OS da loja dele (ou criada por ele)
+    if (user.role === "partner") {
+      const { data: p } = await supabase
+        .from("partners")
+        .select("id")
+        .eq("user_id", user.id)
+        .single();
+      const ownsByPartner = !!p?.id && order.partner_id === p.id;
+      const ownsByCreator = order.created_by === user.id;
+      if (!ownsByPartner && !ownsByCreator) {
+        throw new AuthError(403, "Você só pode apagar OS da sua loja.");
+      }
+    }
+
+    // Apaga filhos. Erros silenciosos em tabelas que possam não existir
+    // em todos os ambientes.
+    await supabase.from("os_step_executions").delete().eq("service_order_id", id);
+    await supabase.from("os_status_history").delete().eq("service_order_id", id);
+    await supabase.from("os_messages").delete().eq("service_order_id", id);
+    await supabase
+      .from("service_order_items")
+      .delete()
+      .eq("service_order_id", id)
+      .then(
+        () => {},
+        () => {}
+      );
+    await supabase
+      .from("service_order_payments")
+      .delete()
+      .eq("service_order_id", id)
+      .then(
+        () => {},
+        () => {}
+      );
+
+    const { error: delErr } = await supabase
+      .from("service_orders")
+      .delete()
+      .eq("id", id);
+    if (delErr) {
+      console.error(`Failed to delete service order ${id}: ${delErr.message}`);
+      throw new Error("Falha ao excluir OS");
+    }
+
+    logAudit({
+      userId: user.id,
+      action: "service_order.deleted",
+      entityType: "service_order",
+      entityId: id,
+      oldData: order as Record<string, unknown>,
+    });
+
+    return jsonResponse({ ok: true });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
