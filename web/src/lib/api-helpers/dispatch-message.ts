@@ -24,15 +24,21 @@ interface MessageDispatchInput {
 export async function dispatchTechMessageToGarantias(
   input: MessageDispatchInput
 ): Promise<void> {
+  // O callback do Garantias lê `body.data.message` — payload precisa do
+  // wrapper `data` (consistente com como status_changed, completed etc.
+  // são serializados).
   await dispatchWebhook(input.service_order_id, "service_order.message_received", {
-    message: {
-      id: input.message_id,
-      sender_role: input.sender_role,
-      sender_name: input.sender_name,
-      content: input.content,
-      attachment_url: input.attachment_url ?? null,
-      attachment_type: input.attachment_type ?? null,
-      created_at: input.created_at,
+    data: {
+      message: {
+        id: input.message_id,
+        sender_user_id: null,
+        sender_role: input.sender_role,
+        sender_name: input.sender_name,
+        content: input.content,
+        attachment_url: input.attachment_url ?? null,
+        attachment_type: input.attachment_type ?? null,
+        created_at: input.created_at,
+      },
     },
   });
 }
