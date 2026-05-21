@@ -57,12 +57,16 @@ export async function createNotification(
     return null;
   }
 
-  // Fire-and-forget push notification — não bloqueia o caller.
-  sendPushNotification(userId, title, message, priority, data).catch((err) => {
+  // Await pra garantir que o POST ao Expo aconteça antes da Lambda
+  // terminar (Vercel mata Promises pendentes no return). Custa ~100-200ms
+  // mas é o que segura a notificação chegando ao mobile.
+  try {
+    await sendPushNotification(userId, title, message, priority, data);
+  } catch (err) {
     console.error(
       `Failed to send push: ${err instanceof Error ? err.message : String(err)}`
     );
-  });
+  }
 
   return notification;
 }

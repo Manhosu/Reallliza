@@ -167,43 +167,51 @@ export async function POST(
       },
     });
 
-    // Webhook reverso Execução → Garantias (fire-and-forget).
+    // Webhook reverso Execução → Garantias. Na Vercel, o runtime
+    // pode encerrar a Lambda no return e perder Promises não-aguardadas;
+    // awaitamos pra garantir que pelo menos o `webhook_events` é gravado
+    // (entrega ao Garantias tem retry cron de 5min se falhar).
     if (order.external_callback_url) {
-      dispatchTechMessageToGarantias({
-        service_order_id: order.id,
-        message_id: msg.id,
-        sender_role: senderRole,
-        sender_name: msg.sender_name,
-        content: msg.content,
-        attachment_url: msg.attachment_url,
-        attachment_type: msg.attachment_type,
-        created_at: msg.created_at,
-      }).catch((err) => {
+      try {
+        await dispatchTechMessageToGarantias({
+          service_order_id: order.id,
+          message_id: msg.id,
+          sender_role: senderRole,
+          sender_name: msg.sender_name,
+          content: msg.content,
+          attachment_url: msg.attachment_url,
+          attachment_type: msg.attachment_type,
+          created_at: msg.created_at,
+        });
+      } catch (err) {
         console.error("dispatchTechMessageToGarantias failed:", err);
-      });
+      }
     }
 
     // Notifica o "outro lado" da conversa na Execução (com push + priority).
+    // Awaitamos pra garantir o INSERT em `notifications` antes do return.
     const recipientId =
       user.id === order.technician_id
         ? order.created_by // técnico mandou → operador/admin que criou recebe
         : order.technician_id; // operador/parceiro mandou → técnico recebe
 
     if (recipientId && recipientId !== user.id) {
-      createNotification(
-        recipientId,
-        `Nova mensagem na OS #${order.order_number ?? ""}`.trim(),
-        content.slice(0, 120),
-        "message_received",
-        {
-          service_order_id: order.id,
-          message_id: msg.id,
-          sender_role: senderRole,
-        },
-        { priority: "high" }
-      ).catch((err) => {
+      try {
+        await createNotification(
+          recipientId,
+          `Nova mensagem na OS #${order.order_number ?? ""}`.trim(),
+          content.slice(0, 120),
+          "message_received",
+          {
+            service_order_id: order.id,
+            message_id: msg.id,
+            sender_role: senderRole,
+          },
+          { priority: "high" }
+        );
+      } catch (err) {
         console.warn("Notification dispatch failed:", err);
-      });
+      }
     }
 
     return jsonResponse(msg, 201);
