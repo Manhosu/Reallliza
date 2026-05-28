@@ -89,10 +89,13 @@ export function OsDetailScreen() {
     total: number | string;
   };
 
+  type StepLite = { id: string; status: 'pending' | 'in_progress' | 'completed' | 'skipped' };
+
   const [order, setOrder] = useState<(ServiceOrder & { items?: OsItem[] }) | null>(null);
   const [items, setItems] = useState<OsItem[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
+  const [steps, setSteps] = useState<StepLite[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -106,15 +109,17 @@ export function OsDetailScreen() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [orderData, checklistData, photoData] = await Promise.all([
+      const [orderData, checklistData, photoData, stepData] = await Promise.all([
         apiClient.get<ServiceOrder & { items?: OsItem[] }>(`/service-orders/${id}`),
         apiClient.get<Checklist[]>(`/service-orders/${id}/checklists`),
         apiClient.get<Photo[]>(`/service-orders/${id}/photos`),
+        apiClient.get<StepLite[]>(`/service-orders/${id}/steps`).catch(() => [] as StepLite[]),
       ]);
       setOrder(orderData);
       setItems(orderData.items || []);
       setChecklists(checklistData);
       setPhotos(photoData);
+      setSteps(stepData);
       setIsFromCache(false);
 
       // Cache the full detail for offline use
@@ -122,6 +127,7 @@ export function OsDetailScreen() {
         order: orderData,
         checklists: checklistData,
         photos: photoData,
+        steps: stepData,
       });
     } catch (error) {
       console.error('Error fetching OS detail:', error);
@@ -133,12 +139,14 @@ export function OsDetailScreen() {
             order: ServiceOrder & { items?: OsItem[] };
             checklists: Checklist[];
             photos: Photo[];
+            steps?: StepLite[];
           } | null;
           if (cached) {
             setOrder(cached.order);
             setItems(cached.order?.items || []);
             setChecklists(cached.checklists ?? []);
             setPhotos(cached.photos ?? []);
+            setSteps(cached.steps ?? []);
             setIsFromCache(true);
             return;
           }
@@ -209,23 +217,34 @@ export function OsDetailScreen() {
           ? (error as { message: string }).message
           : 'Não foi possível registrar a chegada.';
 
-      // Se o erro for de distância, oferecer force_override
-      if (typeof message === 'string' && message.includes('m do local')) {
-        Alert.alert(
-          'Fora do raio de chegada',
-          `${message}\n\nDeseja confirmar mesmo assim?`,
-          [
-            { text: 'Cancelar', style: 'cancel' },
-            {
-              text: 'Confirmar mesmo assim',
-              style: 'destructive',
-              onPress: () => doMarkArrived(lat, lng, true),
-            },
-          ],
-        );
-      } else {
-        Alert.alert('Erro', message);
+      // Mapeia erros comuns em mensagens amigáveis + sempre oferece override
+      const msg = typeof message === 'string' ? message : '';
+      let titulo = 'Não foi possível registrar chegada';
+      let descricao = msg;
+
+      if (msg.includes('m do local')) {
+        titulo = 'Fora do raio de chegada';
+        descricao = msg;
+      } else if (!lat || !lng) {
+        titulo = 'Sem GPS disponível';
+        descricao = 'Não conseguimos obter sua localização. Verifique se o GPS está ligado e a permissão concedida.';
+      } else if (msg.toLowerCase().includes('coordenada') || msg.toLowerCase().includes('endereço')) {
+        titulo = 'OS sem endereço georreferenciado';
+        descricao = 'Esta OS não tem coordenadas no cadastro. Você pode confirmar a chegada manualmente.';
       }
+
+      Alert.alert(
+        titulo,
+        `${descricao}\n\nDeseja confirmar a chegada mesmo assim?`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Confirmar mesmo assim',
+            style: 'destructive',
+            onPress: () => doMarkArrived(lat, lng, true),
+          },
+        ],
+      );
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -273,6 +292,31 @@ export function OsDetailScreen() {
   };
 
   const handleStatusAction = (newStatus: OsStatus, label: string) => {
+    // Gate para finalização: exige todas as etapas concluídas e ao menos 1 foto.
+    if (newStatus === OsStatus.COMPLETED) {
+      const totalSteps = steps.length;
+      const doneSteps = steps.filter((s) => s.status === 'completed' || s.status === 'skipped').length;
+      const pendentes = totalSteps - doneSteps;
+      const totalFotos = photos.length;
+
+      if (totalSteps > 0 && pendentes > 0) {
+        Alert.alert(
+          'Etapas pendentes',
+          `Você precisa concluir todas as etapas antes de finalizar (${doneSteps}/${totalSteps} concluídas).`,
+          [{ text: 'OK' }],
+        );
+        return;
+      }
+      if (totalFotos < 1) {
+        Alert.alert(
+          'Fotos obrigatórias',
+          'Envie pelo menos 1 foto antes de finalizar a OS.',
+          [{ text: 'OK' }],
+        );
+        return;
+      }
+    }
+
     Alert.alert(
       'Confirmar',
       `Deseja ${label.toLowerCase()}?`,

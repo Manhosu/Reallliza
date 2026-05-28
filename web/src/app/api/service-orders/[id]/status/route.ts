@@ -101,6 +101,20 @@ export async function PATCH(
           "Nao e possivel finalizar a OS sem evidencias fotograficas. Envie pelo menos 1 foto antes de finalizar."
         );
       }
+
+      // Bloqueia conclusão se houver etapas pendentes (defesa em profundidade).
+      const { count: pendingCount } = await supabase
+        .from("os_step_executions")
+        .select("id", { count: "exact", head: true })
+        .eq("service_order_id", id)
+        .not("status", "in", "(completed,skipped)");
+
+      if (pendingCount && pendingCount > 0) {
+        throw new AuthError(
+          400,
+          `Existem ${pendingCount} etapa(s) pendente(s). Conclua todas as etapas obrigatórias antes de finalizar a OS.`
+        );
+      }
     }
 
     // Update the order

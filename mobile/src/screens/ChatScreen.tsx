@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, RouteProp } from '@react-navigation/native';
@@ -148,7 +149,9 @@ export function ChatScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 25}
+        keyboardVerticalOffset={
+          Platform.OS === 'ios' ? 90 : (StatusBar.currentHeight ?? 24) + 20
+        }
       >
         {isLoading ? (
           <View style={styles.center}>
@@ -302,7 +305,9 @@ const styles = StyleSheet.create({
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 10,
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'android' ? 14 : 10,
     gap: 8,
     borderTopWidth: 1,
     borderTopColor: colors.border,

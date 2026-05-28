@@ -107,6 +107,7 @@ export interface Profile {
   address: string | null;
   operating_region: string | null;
   specialties: string[] | null;
+  specialty_ratings: Array<{ name: string; stars: number }> | null;
   documents_urls: string[] | null;
   created_at: string;
   updated_at: string;

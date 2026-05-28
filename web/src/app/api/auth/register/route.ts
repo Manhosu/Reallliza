@@ -10,7 +10,25 @@ export async function POST(request: NextRequest) {
     checkRole(user, ["admin"]);
 
     const body = await request.json();
-    const { email, password, full_name, role, phone } = body;
+    const {
+      email,
+      password,
+      full_name,
+      role,
+      phone,
+      cpf,
+      address,
+      specialty_ratings,
+    } = body as {
+      email: string;
+      password: string;
+      full_name: string;
+      role: string;
+      phone?: string;
+      cpf?: string;
+      address?: string;
+      specialty_ratings?: Array<{ name: string; stars: number }>;
+    };
 
     if (!email || !password || !full_name || !role) {
       throw new AuthError(400, "Email, password, full_name, and role are required");
@@ -27,6 +45,16 @@ export async function POST(request: NextRequest) {
         `Role must be one of: ${validRoles.join(", ")}`
       );
     }
+
+    // Normaliza specialty_ratings: descarta itens inválidos, força stars 1-5
+    const ratings = Array.isArray(specialty_ratings)
+      ? specialty_ratings
+          .filter((r) => r && typeof r.name === "string" && r.name.trim())
+          .map((r) => ({
+            name: r.name.trim(),
+            stars: Math.max(1, Math.min(5, Math.round(Number(r.stars) || 0))),
+          }))
+      : [];
 
     const supabase = getAdminClient();
 
@@ -66,6 +94,13 @@ export async function POST(request: NextRequest) {
       status: "active",
     };
     if (phone) profileData.phone = phone;
+    if (cpf) profileData.cpf = cpf;
+    if (address) profileData.address = address;
+    if (ratings.length > 0) {
+      profileData.specialty_ratings = ratings;
+      // Mantém o array `specialties` espelhado pra compat retro (busca por texto)
+      profileData.specialties = ratings.map((r) => r.name);
+    }
 
     const { error: profileError } = await supabase
       .from("profiles")

@@ -43,6 +43,7 @@ const ALLOWED_FIELDS = [
   "rg",
   "address",
   "specialties",
+  "specialty_ratings",
 ];
 
 export async function PATCH(request: NextRequest) {

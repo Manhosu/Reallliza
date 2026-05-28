@@ -16,6 +16,7 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  Star,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -133,6 +134,17 @@ export default function UsuariosPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState<string | null>(null);
 
+  // Lista canônica de especialidades (alinhada com o pedido da Jessica:
+  // Rodapé, Painel, Forro, Piso colado, Piso clicado, Atendimento ao cliente).
+  const SPECIALTY_OPTIONS = [
+    "Rodapé",
+    "Painel",
+    "Forro",
+    "Piso colado",
+    "Piso clicado",
+    "Atendimento ao cliente",
+  ] as const;
+
   // Create form state
   const [createForm, setCreateForm] = useState({
     full_name: "",
@@ -140,6 +152,9 @@ export default function UsuariosPage() {
     phone: "",
     role: UserRole.TECHNICIAN as string,
     password: "",
+    cpf: "",
+    address: "",
+    specialty_ratings: [] as Array<{ name: string; stars: number }>,
   });
 
   // Edit form state
@@ -208,16 +223,53 @@ export default function UsuariosPage() {
         phone: createForm.phone || null,
         role: createForm.role,
         password: createForm.password,
+        cpf: createForm.cpf || null,
+        address: createForm.address || null,
+        specialty_ratings: createForm.specialty_ratings,
       });
       toast.success("Usuário criado com sucesso!");
       setShowCreateModal(false);
-      setCreateForm({ full_name: "", email: "", phone: "", role: UserRole.TECHNICIAN, password: "" });
+      setCreateForm({
+        full_name: "",
+        email: "",
+        phone: "",
+        role: UserRole.TECHNICIAN,
+        password: "",
+        cpf: "",
+        address: "",
+        specialty_ratings: [],
+      });
       mutate();
     } catch (err: any) {
       toast.error(err?.message || "Erro ao criar usuário");
     } finally {
       setIsCreating(false);
     }
+  };
+
+  // Helpers do multi-select de especialidades
+  const toggleSpecialty = (name: string) => {
+    setCreateForm((prev) => {
+      const exists = prev.specialty_ratings.find((r) => r.name === name);
+      if (exists) {
+        return {
+          ...prev,
+          specialty_ratings: prev.specialty_ratings.filter((r) => r.name !== name),
+        };
+      }
+      return {
+        ...prev,
+        specialty_ratings: [...prev.specialty_ratings, { name, stars: 3 }],
+      };
+    });
+  };
+  const setSpecialtyStars = (name: string, stars: number) => {
+    setCreateForm((prev) => ({
+      ...prev,
+      specialty_ratings: prev.specialty_ratings.map((r) =>
+        r.name === name ? { ...r, stars } : r
+      ),
+    }));
   };
 
   const handleOpenEdit = (user: Profile) => {
@@ -601,6 +653,24 @@ export default function UsuariosPage() {
                 onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
               />
               <Input
+                label="CPF"
+                placeholder="000.000.000-00"
+                value={createForm.cpf}
+                onChange={(e) => setCreateForm({ ...createForm, cpf: e.target.value })}
+              />
+              <div className="space-y-2">
+                <label className="text-sm font-medium leading-none text-foreground/80">
+                  Endereço
+                </label>
+                <textarea
+                  placeholder="Rua, número, bairro, cidade — UF"
+                  value={createForm.address}
+                  onChange={(e) => setCreateForm({ ...createForm, address: e.target.value })}
+                  rows={2}
+                  className="flex w-full rounded-xl border border-input bg-background px-4 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary transition-all resize-none"
+                />
+              </div>
+              <Input
                 label="Senha *"
                 type="password"
                 placeholder="Mínimo 6 caracteres"
@@ -618,6 +688,57 @@ export default function UsuariosPage() {
                   </option>
                 ))}
               </SelectNative>
+
+              {/* Especialidades com estrelas */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium leading-none text-foreground/80">
+                  Especialidades
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Marque as áreas de atuação e ajuste as estrelas (1-5) para indicar o nível de domínio.
+                </p>
+                <div className="space-y-2 rounded-xl border bg-muted/30 p-3">
+                  {SPECIALTY_OPTIONS.map((name) => {
+                    const current = createForm.specialty_ratings.find((r) => r.name === name);
+                    const checked = !!current;
+                    return (
+                      <div key={name} className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 flex-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleSpecialty(name)}
+                            className="h-4 w-4 rounded border-input accent-primary"
+                          />
+                          <span className="text-sm">{name}</span>
+                        </label>
+                        {checked && (
+                          <div className="flex items-center gap-0.5">
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <button
+                                key={n}
+                                type="button"
+                                onClick={() => setSpecialtyStars(name, n)}
+                                className="p-0.5"
+                                title={`${n} estrela${n > 1 ? "s" : ""}`}
+                              >
+                                <Star
+                                  className={cn(
+                                    "h-4 w-4 transition-colors",
+                                    n <= (current?.stars ?? 0)
+                                      ? "fill-yellow-500 text-yellow-500"
+                                      : "text-muted-foreground/40"
+                                  )}
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <Button variant="outline" onClick={() => setShowCreateModal(false)}>

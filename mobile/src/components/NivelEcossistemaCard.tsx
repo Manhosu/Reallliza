@@ -127,26 +127,62 @@ export function NivelEcossistemaCard() {
         </View>
       </View>
 
-      {/* Os 3 scores */}
-      <View style={styles.scoresRow}>
-        <ScoreCell label="Sistema" value={fmt(profile.system_score)} />
-        <ScoreCell label="Cliente" value={fmt(profile.client_score)} />
-        <ScoreCell label="Qualidade" value={fmt(profile.quality_score)} />
-      </View>
-
-      {/* Especialidades */}
-      {profile.specialties && profile.specialties.length > 0 && (
+      {/* Desempenho — estrelas por especialidade (fallback: 3 scores antigos) */}
+      {profile.specialty_ratings && profile.specialty_ratings.length > 0 ? (
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Especialidades</Text>
-          <View style={styles.chips}>
-            {profile.specialties.map((e, i) => (
-              <View key={`${e}-${i}`} style={styles.chip}>
-                <Text style={styles.chipText}>{e}</Text>
-              </View>
+          <Text style={styles.sectionLabel}>Desempenho</Text>
+          <View style={styles.specialtyList}>
+            {profile.specialty_ratings.map((r, i) => (
+              <SpecialtyStarsRow key={`${r.name}-${i}`} name={r.name} stars={r.stars} />
             ))}
           </View>
         </View>
+      ) : (
+        <View style={styles.scoresRow}>
+          <ScoreCell label="Sistema" value={fmt(profile.system_score)} />
+          <ScoreCell label="Cliente" value={fmt(profile.client_score)} />
+          <ScoreCell label="Qualidade" value={fmt(profile.quality_score)} />
+        </View>
       )}
+
+      {/* Lista de especialidades em chips — só mostra se NÃO houver estrelas
+          (com estrelas, o nome já aparece na lista acima e duplicaria). */}
+      {(!profile.specialty_ratings || profile.specialty_ratings.length === 0) &&
+        profile.specialties &&
+        profile.specialties.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Especialidades</Text>
+            <View style={styles.chips}>
+              {profile.specialties.map((e, i) => (
+                <View key={`${e}-${i}`} style={styles.chip}>
+                  <Text style={styles.chipText}>{e}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+    </View>
+  );
+}
+
+function SpecialtyStarsRow({ name, stars }: { name: string; stars: number }) {
+  const clamped = Math.max(0, Math.min(5, Math.round(stars || 0)));
+  return (
+    <View style={styles.specialtyRow}>
+      <Text style={styles.specialtyName} numberOfLines={1}>
+        {name}
+      </Text>
+      <View style={styles.starsRow}>
+        {[1, 2, 3, 4, 5].map((n) => (
+          <Ionicons
+            key={n}
+            name={n <= clamped ? 'star' : 'star-outline'}
+            size={16}
+            color={n <= clamped ? '#FFD600' : colors.textMuted}
+            style={{ marginLeft: 2 }}
+          />
+        ))}
+      </View>
     </View>
   );
 }
@@ -250,4 +286,21 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   chipText: { ...typography.caption, color: colors.primary },
+  specialtyList: { gap: 8 },
+  specialtyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  specialtyName: {
+    ...typography.bodySm,
+    color: colors.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  starsRow: { flexDirection: 'row', alignItems: 'center' },
 });
