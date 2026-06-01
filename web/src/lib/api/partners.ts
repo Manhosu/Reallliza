@@ -15,7 +15,10 @@ export interface ListPartnersParams {
 export type CreatePartnerPayload = Omit<
   Partner,
   "id" | "user_id" | "is_active" | "created_at" | "updated_at"
->;
+> & {
+  /** Senha de acesso quando o parceiro ainda não tem conta. */
+  password?: string;
+};
 
 export type UpdatePartnerPayload = Partial<CreatePartnerPayload>;
 

@@ -94,6 +94,7 @@ export async function POST(request: NextRequest) {
       notes,
       address,
       user_id,
+      password,
     } = body;
 
     if (!company_name || !contact_name) {
@@ -160,19 +161,82 @@ export async function POST(request: NextRequest) {
         typeof address === "string" ? { full_address: address } : address;
     }
 
-    // Handle user_id: if not provided, try to find partner user by contact_email
+    // Handle user_id: if not provided, try to find partner user by contact_email,
+    // or create one automatically when password is supplied.
     if (user_id) {
       insertData.user_id = user_id;
     } else if (contact_email) {
       const { data: userProfile } = await supabase
         .from("profiles")
-        .select("id")
+        .select("id, role")
         .eq("email", contact_email)
-        .eq("role", "partner")
         .single();
 
       if (userProfile) {
+        if (userProfile.role !== "partner") {
+          return jsonResponse(
+            {
+              message: `Já existe um usuário com este e-mail, mas o perfil é '${userProfile.role}'. Use um e-mail diferente ou ajuste o perfil do usuário.`,
+            },
+            400
+          );
+        }
         insertData.user_id = userProfile.id;
+      } else {
+        // Não existe usuário ainda — cria um automaticamente se a senha veio no payload.
+        if (!password || typeof password !== "string" || password.length < 6) {
+          return jsonResponse(
+            {
+              message:
+                "Informe uma senha (mínimo 6 caracteres) para criar a conta de acesso do parceiro.",
+            },
+            400
+          );
+        }
+
+        const { data: created, error: createErr } =
+          await supabase.auth.admin.createUser({
+            email: contact_email,
+            password,
+            email_confirm: true,
+            user_metadata: {
+              full_name: contact_name,
+              role: "partner",
+            },
+          });
+
+        if (createErr || !created?.user) {
+          return jsonResponse(
+            {
+              message: `Não foi possível criar a conta de acesso: ${
+                createErr?.message ?? "erro desconhecido"
+              }`,
+            },
+            400
+          );
+        }
+
+        // Upsert do profile com role=partner (o trigger pode criar com role default).
+        const profilePayload: Record<string, unknown> = {
+          id: created.user.id,
+          email: contact_email,
+          full_name: contact_name,
+          role: "partner",
+          status: "active",
+        };
+        if (contact_phone) profilePayload.phone = contact_phone;
+
+        const { error: profileErr } = await supabase
+          .from("profiles")
+          .upsert(profilePayload, { onConflict: "id" });
+
+        if (profileErr) {
+          console.error(
+            `Failed to upsert partner profile for ${contact_email}: ${profileErr.message}`
+          );
+        }
+
+        insertData.user_id = created.user.id;
       }
     }
 
@@ -181,7 +245,7 @@ export async function POST(request: NextRequest) {
       return jsonResponse(
         {
           message:
-            "A partner user must be associated. Provide user_id or use an email that matches a partner user.",
+            "Informe um e-mail de contato para criar (ou associar) o usuário do parceiro.",
         },
         400
       );

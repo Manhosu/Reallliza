@@ -122,6 +122,7 @@ export default function ParceirosPage() {
     contact_phone: "",
     address: "",
     notes: "",
+    password: "",
   });
 
   // Edit form
@@ -178,6 +179,14 @@ export default function ParceirosPage() {
       toast.error("Razão social e nome do contato são obrigatórios");
       return;
     }
+    if (!createForm.contact_email.trim()) {
+      toast.error("E-mail do contato é obrigatório (vira o login do parceiro)");
+      return;
+    }
+    if (!createForm.password || createForm.password.length < 6) {
+      toast.error("Defina uma senha de acesso com pelo menos 6 caracteres");
+      return;
+    }
 
     setIsCreating(true);
     try {
@@ -186,14 +195,15 @@ export default function ParceirosPage() {
         trading_name: createForm.trading_name || null,
         cnpj: createForm.cnpj || null,
         contact_name: createForm.contact_name,
-        contact_email: createForm.contact_email || null,
+        contact_email: createForm.contact_email,
         contact_phone: createForm.contact_phone || null,
         address: createForm.address || null,
         notes: createForm.notes || null,
+        password: createForm.password,
       });
       toast.success("Parceiro criado com sucesso!");
       setShowCreateModal(false);
-      setCreateForm({ company_name: "", trading_name: "", cnpj: "", contact_name: "", contact_email: "", contact_phone: "", address: "", notes: "" });
+      setCreateForm({ company_name: "", trading_name: "", cnpj: "", contact_name: "", contact_email: "", contact_phone: "", address: "", notes: "", password: "" });
       mutate();
     } catch (err: any) {
       toast.error(err?.message || "Erro ao criar parceiro");
@@ -526,12 +536,22 @@ export default function ParceirosPage() {
                 onChange={(e) => setCreateForm({ ...createForm, contact_name: e.target.value })}
               />
               <Input
-                label="E-mail Contato"
+                label="E-mail Contato *"
                 type="email"
                 placeholder="contato@empresa.com"
                 value={createForm.contact_email}
                 onChange={(e) => setCreateForm({ ...createForm, contact_email: e.target.value })}
               />
+              <Input
+                label="Senha de Acesso *"
+                type="password"
+                placeholder="Mínimo 6 caracteres"
+                value={createForm.password}
+                onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground -mt-2">
+                Esta senha será usada pelo parceiro para acessar o sistema com o e-mail acima.
+              </p>
               <Input
                 label="Telefone Contato"
                 placeholder="(11) 99999-9999"
