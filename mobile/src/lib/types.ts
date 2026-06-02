@@ -108,6 +108,24 @@ export interface Profile {
   operating_region: string | null;
   specialties: string[] | null;
   specialty_ratings: Array<{ name: string; stars: number }> | null;
+  /** Versão enriquecida vinda do /api/profile/me (join com specialties). */
+  specialty_ratings_enriched: Array<{
+    specialty_id: string;
+    name: string;
+    stars: number;
+    os_count: number;
+  }> | null;
+  stats: {
+    os_completed: number;
+    os_in_progress: number;
+    os_cancelled: number;
+    punctuality_pct: number | null;
+    avg_completion_days: number | null;
+  } | null;
+  client_relationship: {
+    ratings_count: number;
+    rating_avg: number | null;
+  } | null;
   documents_urls: string[] | null;
   created_at: string;
   updated_at: string;

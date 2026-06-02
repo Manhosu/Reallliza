@@ -16,7 +16,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../stores/auth-store';
 import { apiClient } from '../lib/api';
 import { USER_ROLE_LABELS } from '../lib/types';
-import { PerformanceCard } from '../components/PerformanceCard';
 import { NivelEcossistemaCard } from '../components/NivelEcossistemaCard';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -126,11 +125,10 @@ export function ProfileScreen() {
         )}
       </View>
 
-      {/* Perfil no ecossistema — nível Bronze/Prata/Ouro, especialidades, certificações */}
+      {/* Perfil completo (rev 01/06): nível + scores + especialidades +
+          relacionamento + estatísticas. As estatísticas que ficavam no
+          PerformanceCard antigo agora estão consolidadas aqui. */}
       <NivelEcossistemaCard />
-
-      {/* Desempenho */}
-      <PerformanceCard />
 
       {/* Info Section */}
       <View style={styles.section}>

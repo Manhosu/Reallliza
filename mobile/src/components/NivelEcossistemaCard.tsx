@@ -7,6 +7,7 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -21,11 +22,23 @@ const NIVEL_INFO: Record<string, { label: string; cor: string }> = {
   ouro: { label: 'Ouro', cor: '#FFD600' },
 };
 
+const SCORE_LABEL = (score: number | null | undefined): string => {
+  if (typeof score !== 'number') return '';
+  if (score >= 90) return 'Excelente';
+  if (score >= 75) return 'Muito bom';
+  if (score >= 60) return 'Bom';
+  if (score >= 40) return 'Regular';
+  return 'Em formação';
+};
+
 /**
- * Card do perfil profissional no ecossistema (Marco 6): foto, nível
- * Bronze/Prata/Ouro, score geral e os 3 scores (Sistema, Cliente,
- * Qualidade) + especialidades. Dados vêm da Reallliza Execução
- * (perfil do usuário logado).
+ * Card do perfil profissional no ecossistema (rev 01/06/2026).
+ *
+ * Conforme referência visual enviada pela Jessica: cabeçalho com foto+nível+
+ * score geral, 3 cards de Avaliações Gerais (Sistema/Cliente/Qualidade),
+ * lista de Especialidades com nota decimal, Relacionamento com cliente,
+ * Estatísticas (5 métricas) — Dados pessoais e Alterar senha ficam no
+ * ProfileScreen (este componente termina antes).
  */
 export function NivelEcossistemaCard() {
   const { profile, fetchProfile } = useAuthStore();
@@ -34,8 +47,14 @@ export function NivelEcossistemaCard() {
   if (!profile) return null;
 
   const nivel = NIVEL_INFO[profile.level ?? 'bronze'] ?? NIVEL_INFO.bronze;
-  const fmt = (v: number | null | undefined) =>
+  const overall = profile.overall_score;
+  const overallLabel = SCORE_LABEL(overall);
+  const fmtInt = (v: number | null | undefined) =>
     typeof v === 'number' ? String(Math.round(v)) : '—';
+  const fmtDec = (v: number | null | undefined, fixed = 1) =>
+    typeof v === 'number'
+      ? v.toFixed(fixed).replace('.', ',')
+      : '—';
 
   async function capturarFoto(origem: 'camera' | 'galeria') {
     try {
@@ -83,10 +102,16 @@ export function NivelEcossistemaCard() {
     ]);
   }
 
+  // specialty_ratings_enriched (novo, com nota decimal e ordem) tem
+  // preferência sobre specialty_ratings (legado, sem ordem).
+  const specs = profile.specialty_ratings_enriched ?? null;
+  const specsLegacy = profile.specialty_ratings ?? null;
+  const hasSpecs = (specs && specs.length > 0) || (specsLegacy && specsLegacy.length > 0);
+
   return (
     <View style={styles.card}>
-      {/* Foto de perfil */}
-      <View style={styles.avatarWrap}>
+      {/* ============ Header ============ */}
+      <View style={styles.headerRow}>
         <TouchableOpacity
           onPress={escolherFoto}
           disabled={uploadingFoto}
@@ -99,99 +124,279 @@ export function NivelEcossistemaCard() {
                 style={styles.avatarImg}
               />
             ) : (
-              <Ionicons name="person" size={34} color={colors.textMuted} />
+              <Ionicons name="person" size={30} color={colors.textMuted} />
             )}
             {uploadingFoto && (
               <View style={styles.avatarOverlay}>
                 <ActivityIndicator color={colors.primary} />
               </View>
             )}
-          </View>
-          <View style={styles.camBadge}>
-            <Ionicons name="camera" size={13} color={colors.black} />
+            <View style={styles.camBadge}>
+              <Ionicons name="camera" size={11} color={colors.black} />
+            </View>
           </View>
         </TouchableOpacity>
-      </View>
 
-      {/* Nível + score geral */}
-      <View style={styles.nivelRow}>
-        <View style={[styles.nivelBadge, { backgroundColor: nivel.cor + '22' }]}>
-          <Ionicons name="ribbon" size={18} color={nivel.cor} />
-          <Text style={[styles.nivelText, { color: nivel.cor }]}>
-            Nível {nivel.label}
+        <View style={styles.headerInfo}>
+          <Text style={styles.headerName} numberOfLines={1}>
+            {profile.full_name}
           </Text>
-        </View>
-        <View style={styles.overallBox}>
-          <Text style={styles.overallValue}>{fmt(profile.overall_score)}</Text>
-          <Text style={styles.overallLabel}>score geral</Text>
-        </View>
-      </View>
-
-      {/* Desempenho — estrelas por especialidade (fallback: 3 scores antigos) */}
-      {profile.specialty_ratings && profile.specialty_ratings.length > 0 ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Desempenho</Text>
-          <View style={styles.specialtyList}>
-            {profile.specialty_ratings.map((r, i) => (
-              <SpecialtyStarsRow key={`${r.name}-${i}`} name={r.name} stars={r.stars} />
-            ))}
+          <Text style={styles.headerEmail} numberOfLines={1}>
+            {profile.email}
+          </Text>
+          <View style={[styles.nivelBadge, { backgroundColor: nivel.cor + '22' }]}>
+            <Ionicons name="ribbon" size={14} color={nivel.cor} />
+            <Text style={[styles.nivelText, { color: nivel.cor }]}>
+              Nível {nivel.label}
+            </Text>
           </View>
         </View>
-      ) : (
-        <View style={styles.scoresRow}>
-          <ScoreCell label="Sistema" value={fmt(profile.system_score)} />
-          <ScoreCell label="Cliente" value={fmt(profile.client_score)} />
-          <ScoreCell label="Qualidade" value={fmt(profile.quality_score)} />
+
+        <View style={styles.overallBox}>
+          <Text style={styles.overallLabel}>Score Geral</Text>
+          <Text style={styles.overallValue}>{fmtInt(overall)}</Text>
+          {overallLabel && (
+            <View style={styles.overallChip}>
+              <Text style={styles.overallChipText}>{overallLabel}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* ============ Avaliações Gerais ============ */}
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Avaliações Gerais</Text>
+        <View style={styles.evalRow}>
+          <EvalCard
+            icon="desktop-outline"
+            tint={colors.info}
+            label="Sistema"
+            value={fmtInt(profile.system_score)}
+            sub={SCORE_LABEL(profile.system_score)}
+          />
+          <EvalCard
+            icon="people-outline"
+            tint="#10B981"
+            label="Cliente"
+            value={fmtDec(
+              profile.client_score !== null && profile.client_score !== undefined
+                ? profile.client_score / 20
+                : null
+            )}
+            sub={
+              profile.client_relationship?.ratings_count
+                ? `${profile.client_relationship.ratings_count} avaliações`
+                : 'Aguardando'
+            }
+            star
+          />
+          <EvalCard
+            icon="shield-checkmark-outline"
+            tint="#F59E0B"
+            label="Qualidade"
+            value={fmtDec(
+              profile.quality_score !== null && profile.quality_score !== undefined
+                ? profile.quality_score / 20
+                : null
+            )}
+            sub="Avaliação Reallliza"
+            star
+          />
+        </View>
+      </View>
+
+      {/* ============ Especialidades ============ */}
+      {hasSpecs && (
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Especialidades</Text>
+          <View style={styles.specialtyList}>
+            {specs && specs.length > 0
+              ? specs.map((r) => (
+                  <SpecialtyStarsRow
+                    key={r.specialty_id}
+                    name={r.name}
+                    stars={r.stars}
+                  />
+                ))
+              : (specsLegacy ?? []).map((r, i) => (
+                  <SpecialtyStarsRow
+                    key={`${r.name}-${i}`}
+                    name={r.name}
+                    stars={r.stars}
+                  />
+                ))}
+          </View>
         </View>
       )}
 
-      {/* Lista de especialidades em chips — só mostra se NÃO houver estrelas
-          (com estrelas, o nome já aparece na lista acima e duplicaria). */}
-      {(!profile.specialty_ratings || profile.specialty_ratings.length === 0) &&
-        profile.specialties &&
-        profile.specialties.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Especialidades</Text>
-            <View style={styles.chips}>
-              {profile.specialties.map((e, i) => (
-                <View key={`${e}-${i}`} style={styles.chip}>
-                  <Text style={styles.chipText}>{e}</Text>
-                </View>
-              ))}
+      {/* ============ Relacionamento com cliente ============ */}
+      {profile.client_relationship && profile.client_relationship.ratings_count > 0 && (
+        <View style={styles.section}>
+          <View style={styles.relationshipCard}>
+            <Ionicons name="heart-outline" size={22} color="#10B981" />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.relationshipTitle}>
+                Relacionamento com o cliente
+              </Text>
+              <Text style={styles.relationshipSubtitle}>
+                Avaliado pelos clientes
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <StarsRow stars={profile.client_relationship.rating_avg ?? 0} size={14} />
+              <Text style={styles.relationshipCount}>
+                {profile.client_relationship.ratings_count} avaliações
+              </Text>
             </View>
           </View>
-        )}
+        </View>
+      )}
+
+      {/* ============ Estatísticas ============ */}
+      {profile.stats && (
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Estatísticas</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.statsRow}
+          >
+            <StatCard
+              icon="checkmark-circle-outline"
+              tint="#10B981"
+              value={String(profile.stats.os_completed)}
+              label="OS Concluídas"
+            />
+            <StatCard
+              icon="time-outline"
+              tint={colors.info}
+              value={String(profile.stats.os_in_progress)}
+              label="Em Andamento"
+            />
+            <StatCard
+              icon="close-circle-outline"
+              tint="#EF4444"
+              value={String(profile.stats.os_cancelled)}
+              label="Canceladas"
+            />
+            <StatCard
+              icon="speedometer-outline"
+              tint="#A855F7"
+              value={
+                profile.stats.punctuality_pct !== null
+                  ? `${profile.stats.punctuality_pct}%`
+                  : '—'
+              }
+              label="Pontualidade"
+            />
+            <StatCard
+              icon="hourglass-outline"
+              tint="#F59E0B"
+              value={
+                profile.stats.avg_completion_days !== null
+                  ? `${fmtDec(profile.stats.avg_completion_days)} dias`
+                  : '—'
+              }
+              label="Tempo Médio"
+            />
+          </ScrollView>
+        </View>
+      )}
     </View>
   );
 }
 
 function SpecialtyStarsRow({ name, stars }: { name: string; stars: number }) {
-  const clamped = Math.max(0, Math.min(5, Math.round(stars || 0)));
+  const clamped = Math.max(0, Math.min(5, stars));
   return (
     <View style={styles.specialtyRow}>
       <Text style={styles.specialtyName} numberOfLines={1}>
         {name}
       </Text>
-      <View style={styles.starsRow}>
-        {[1, 2, 3, 4, 5].map((n) => (
-          <Ionicons
-            key={n}
-            name={n <= clamped ? 'star' : 'star-outline'}
-            size={16}
-            color={n <= clamped ? '#FFD600' : colors.textMuted}
-            style={{ marginLeft: 2 }}
-          />
-        ))}
+      <View style={styles.specialtyRight}>
+        <StarsRow stars={clamped} size={14} />
+        <Text style={styles.specialtyValue}>
+          {clamped.toFixed(1).replace('.', ',')}
+        </Text>
       </View>
     </View>
   );
 }
 
-function ScoreCell({ label, value }: { label: string; value: string }) {
+function StarsRow({ stars, size = 14 }: { stars: number; size?: number }) {
+  const safe = Math.max(0, Math.min(5, stars));
   return (
-    <View style={styles.scoreCell}>
-      <Text style={styles.scoreValue}>{value}</Text>
-      <Text style={styles.scoreLabel}>{label}</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      {[1, 2, 3, 4, 5].map((n) => {
+        const half = n - 0.5;
+        let name: 'star' | 'star-half' | 'star-outline';
+        if (safe >= n) name = 'star';
+        else if (safe >= half) name = 'star-half';
+        else name = 'star-outline';
+        return (
+          <Ionicons
+            key={n}
+            name={name}
+            size={size}
+            color={name === 'star-outline' ? colors.textMuted : '#FBBF24'}
+            style={{ marginLeft: 1 }}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+function EvalCard({
+  icon,
+  tint,
+  label,
+  value,
+  sub,
+  star,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  tint: string;
+  label: string;
+  value: string;
+  sub?: string;
+  star?: boolean;
+}) {
+  return (
+    <View style={[styles.evalCard, { borderColor: tint + '40' }]}>
+      <View style={[styles.evalIconWrap, { backgroundColor: tint + '15' }]}>
+        <Ionicons name={icon} size={18} color={tint} />
+      </View>
+      <Text style={styles.evalLabel}>{label}</Text>
+      <View style={styles.evalValueRow}>
+        <Text style={[styles.evalValue, { color: tint }]}>{value}</Text>
+        {star && value !== '—' && (
+          <Ionicons name="star" size={14} color="#FBBF24" style={{ marginLeft: 4 }} />
+        )}
+      </View>
+      {sub && <Text style={styles.evalSub}>{sub}</Text>}
+    </View>
+  );
+}
+
+function StatCard({
+  icon,
+  tint,
+  value,
+  label,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  tint: string;
+  value: string;
+  label: string;
+}) {
+  return (
+    <View style={styles.statCard}>
+      <View style={[styles.statIconWrap, { backgroundColor: tint + '15' }]}>
+        <Ionicons name={icon} size={20} color={tint} />
+      </View>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
@@ -204,14 +409,15 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 12,
   },
-  avatarWrap: {
+  headerRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 14,
+    gap: 12,
   },
   avatarCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: colors.background,
     borderWidth: 2,
     borderColor: colors.primary,
@@ -228,49 +434,57 @@ const styles = StyleSheet.create({
   },
   camBadge: {
     position: 'absolute',
-    right: 0,
-    bottom: 0,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    right: -2,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: colors.card,
   },
-  nivelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  headerInfo: { flex: 1, minWidth: 0 },
+  headerName: { ...typography.bodyBold, color: colors.text },
+  headerEmail: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: 1,
+    marginBottom: 6,
   },
   nivelBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 999,
+    alignSelf: 'flex-start',
   },
-  nivelText: { ...typography.button, fontSize: 13 },
+  nivelText: { ...typography.button, fontSize: 11 },
   overallBox: { alignItems: 'flex-end' },
-  overallValue: { fontSize: 24, fontWeight: '800', color: colors.text },
-  overallLabel: { ...typography.caption, color: colors.textMuted },
-  scoresRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 14,
+  overallLabel: { ...typography.caption, color: colors.textMuted, fontSize: 10 },
+  overallValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.primary,
+    marginTop: 2,
   },
-  scoreCell: {
-    flex: 1,
-    backgroundColor: colors.background,
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
+  overallChip: {
+    backgroundColor: '#10B98122',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginTop: 2,
   },
-  scoreValue: { fontSize: 18, fontWeight: '700', color: colors.text },
-  scoreLabel: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
-  section: { marginTop: 14 },
+  overallChipText: {
+    ...typography.caption,
+    color: '#10B981',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  section: { marginTop: 16 },
   sectionLabel: {
     ...typography.caption,
     color: colors.textMuted,
@@ -278,15 +492,36 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 8,
   },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: {
-    backgroundColor: colors.primary + '15',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+  evalRow: { flexDirection: 'row', gap: 8 },
+  evalCard: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
   },
-  chipText: { ...typography.caption, color: colors.primary },
-  specialtyList: { gap: 8 },
+  evalIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  evalLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+  },
+  evalValueRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  evalValue: { fontSize: 18, fontWeight: '800' },
+  evalSub: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 10,
+    marginTop: 2,
+  },
+  specialtyList: { gap: 6 },
   specialtyRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -302,5 +537,54 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
-  starsRow: { flexDirection: 'row', alignItems: 'center' },
+  specialtyRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  specialtyValue: {
+    ...typography.bodySmBold,
+    color: colors.info,
+    minWidth: 28,
+    textAlign: 'right',
+  },
+  relationshipCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 12,
+  },
+  relationshipTitle: { ...typography.bodySmBold, color: colors.text },
+  relationshipSubtitle: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  relationshipCount: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 10,
+    marginTop: 2,
+  },
+  statsRow: { gap: 8, paddingRight: 16 },
+  statCard: {
+    width: 110,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'flex-start',
+  },
+  statIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statValue: { fontSize: 18, fontWeight: '700', color: colors.text },
+  statLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+    marginTop: 2,
+  },
 });
