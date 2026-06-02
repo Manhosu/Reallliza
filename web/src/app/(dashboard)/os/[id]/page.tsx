@@ -1227,17 +1227,8 @@ export default function OsDetailPage() {
     }
   };
 
-  if (orderLoading) {
-    return <DetailSkeleton />;
-  }
-
-  if (orderError || !order) {
-    return <NotFoundState />;
-  }
-
-  const nextStatuses = NEXT_STATUS_MAP[order.status] || [];
-
   // Carrega especialidades pro select do retrabalho quando o dialog abre.
+  // PRECISA ficar antes dos early returns abaixo (regra dos hooks do React).
   useEffect(() => {
     if (!showReworkDialog || reworkSpecialties.length > 0) return;
     import("@/lib/api").then(({ specialtiesApi }) =>
@@ -1251,6 +1242,16 @@ export default function OsDetailPage() {
         .catch(() => setReworkSpecialties([]))
     );
   }, [showReworkDialog, reworkSpecialties.length]);
+
+  if (orderLoading) {
+    return <DetailSkeleton />;
+  }
+
+  if (orderError || !order) {
+    return <NotFoundState />;
+  }
+
+  const nextStatuses = NEXT_STATUS_MAP[order.status] || [];
 
   const handleCreateRework = async () => {
     if (!reworkReason.trim()) {
