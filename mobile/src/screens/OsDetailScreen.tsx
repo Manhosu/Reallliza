@@ -342,6 +342,28 @@ export function OsDetailScreen() {
     );
   };
 
+  // "Iniciar Deslocamento" — após confirmar, atualiza status E abre rota
+  // no Google Maps. Bug reportado pela Jessica em 01/06: antes o mapa abria,
+  // agora não abria mais. Voltamos a abrir explicitamente aqui.
+  const handleStartDisplacement = () => {
+    Alert.alert(
+      'Iniciar Deslocamento',
+      'Vamos atualizar a OS para "Em Andamento" e abrir a rota no Google Maps.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Iniciar',
+          onPress: async () => {
+            await updateStatus(OsStatus.IN_PROGRESS);
+            // Abrir mapa logo depois — não esperamos refetch porque o openMaps
+            // só depende do endereço/coordenadas (já carregadas).
+            openMaps();
+          },
+        },
+      ],
+    );
+  };
+
   const openMaps = () => {
     if (!order) return;
     const address = [
@@ -648,9 +670,7 @@ export function OsDetailScreen() {
             {order.status === OsStatus.ASSIGNED && (
               <TouchableOpacity
                 style={[styles.actionButton, styles.actionButtonPrimary]}
-                onPress={() =>
-                  handleStatusAction(OsStatus.IN_PROGRESS, 'Iniciar Deslocamento')
-                }
+                onPress={handleStartDisplacement}
               >
                 <Ionicons name="car-outline" size={20} color={colors.black} />
                 <Text style={styles.actionButtonPrimaryText}>
@@ -671,36 +691,87 @@ export function OsDetailScreen() {
               </TouchableOpacity>
             )}
 
-            {order.status === OsStatus.IN_PROGRESS && (
-              <>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.actionButtonWarning]}
-                  onPress={() =>
-                    handleStatusAction(OsStatus.PAUSED, 'Pausar Servico')
-                  }
-                >
-                  <Ionicons name="pause-outline" size={20} color={colors.black} />
-                  <Text style={styles.actionButtonPrimaryText}>
-                    Pausar Servico
-                  </Text>
-                </TouchableOpacity>
+            {/* GATE SEQUENCIAL — IN_PROGRESS:
+                1. Cheguei no Local (acima)
+                2. Etapas (navega pra Steps) — só após chegar
+                3. Capturar Assinatura — só após TODAS as etapas concluídas
+                4. Finalizar Serviço — só após assinatura capturada
+                Pausar fica disponível durante todo o IN_PROGRESS. */}
+            {order.status === OsStatus.IN_PROGRESS && order.arrived_at && (() => {
+              const totalSteps = steps.length;
+              const doneSteps = steps.filter(
+                (s) => s.status === 'completed' || s.status === 'skipped'
+              ).length;
+              const allStepsDone = totalSteps > 0 && doneSteps >= totalSteps;
+              const hasSignature = photos.some((p) => p.type === 'signature');
 
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.actionButtonSuccess]}
-                  onPress={() =>
-                    handleStatusAction(OsStatus.COMPLETED, 'Finalizar Servico')
-                  }
-                >
-                  <Ionicons
-                    name="checkmark-circle-outline"
-                    size={20}
-                    color={colors.black}
-                  />
-                  <Text style={styles.actionButtonPrimaryText}>
-                    Finalizar Servico
-                  </Text>
-                </TouchableOpacity>
-              </>
+              return (
+                <>
+                  {!allStepsDone && (
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.actionButtonInfo]}
+                      onPress={() =>
+                        navigation.navigate('Steps', { serviceOrderId: id })
+                      }
+                    >
+                      <Ionicons name="list-outline" size={20} color={colors.white} />
+                      <Text
+                        style={[styles.actionButtonPrimaryText, { color: colors.white }]}
+                      >
+                        Executar Etapas ({doneSteps}/{totalSteps || '?'})
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {allStepsDone && !hasSignature && (
+                    <TouchableOpacity
+                      style={[styles.actionButton, { backgroundColor: colors.info }]}
+                      onPress={() =>
+                        navigation.navigate('Signature', { serviceOrderId: id })
+                      }
+                    >
+                      <Ionicons name="pencil-outline" size={20} color={colors.white} />
+                      <Text
+                        style={[styles.actionButtonPrimaryText, { color: colors.white }]}
+                      >
+                        Capturar Assinatura
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {allStepsDone && hasSignature && (
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.actionButtonSuccess]}
+                      onPress={() =>
+                        handleStatusAction(OsStatus.COMPLETED, 'Finalizar Servico')
+                      }
+                    >
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={20}
+                        color={colors.black}
+                      />
+                      <Text style={styles.actionButtonPrimaryText}>
+                        Finalizar Servico
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              );
+            })()}
+
+            {order.status === OsStatus.IN_PROGRESS && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.actionButtonWarning]}
+                onPress={() =>
+                  handleStatusAction(OsStatus.PAUSED, 'Pausar Servico')
+                }
+              >
+                <Ionicons name="pause-outline" size={20} color={colors.black} />
+                <Text style={styles.actionButtonPrimaryText}>
+                  Pausar Servico
+                </Text>
+              </TouchableOpacity>
             )}
 
             {order.status === OsStatus.PAUSED && (
@@ -717,9 +788,9 @@ export function OsDetailScreen() {
               </TouchableOpacity>
             )}
 
-            {/* Signature capture button - available during and after service */}
-            {(order.status === OsStatus.IN_PROGRESS ||
-              order.status === OsStatus.COMPLETED) && (
+            {/* Em COMPLETED, manter possibilidade de re-capturar assinatura
+                caso precise (uso técnico raro, mas mantém compat). */}
+            {order.status === OsStatus.COMPLETED && (
               <TouchableOpacity
                 style={[styles.actionButton, { backgroundColor: colors.info }]}
                 onPress={() =>

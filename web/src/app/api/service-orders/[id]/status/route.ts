@@ -115,6 +115,21 @@ export async function PATCH(
           `Existem ${pendingCount} etapa(s) pendente(s). Conclua todas as etapas obrigatórias antes de finalizar a OS.`
         );
       }
+
+      // Bloqueia conclusão sem assinatura — passo obrigatório do gate sequencial
+      // (Deslocamento → Cheguei → Etapas → Assinatura → Finalizar).
+      const { count: signatureCount } = await supabase
+        .from("photos")
+        .select("id", { count: "exact", head: true })
+        .eq("service_order_id", id)
+        .eq("type", "signature");
+
+      if (!signatureCount || signatureCount < 1) {
+        throw new AuthError(
+          400,
+          "Capture a assinatura do cliente antes de finalizar a OS."
+        );
+      }
     }
 
     // Update the order
