@@ -8,6 +8,8 @@ export { notificationsApi } from "./notifications";
 export { dashboardApi } from "./dashboard";
 export { checklistTemplatesApi, checklistsApi } from "./checklists";
 export { photosApi } from "./photos";
+export { osProjectsApi } from "./os-projects";
+export type { OsProject } from "./os-projects";
 export { reportsApi } from "./reports";
 export { auditApi } from "./audit";
 export { feedApi } from "./feed";

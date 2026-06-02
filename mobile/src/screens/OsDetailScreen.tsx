@@ -90,12 +90,20 @@ export function OsDetailScreen() {
   };
 
   type StepLite = { id: string; status: 'pending' | 'in_progress' | 'completed' | 'skipped' };
+  type OsProject = {
+    id: string;
+    file_url: string;
+    file_name: string | null;
+    mime_type: string;
+    size_bytes: number | null;
+  };
 
   const [order, setOrder] = useState<(ServiceOrder & { items?: OsItem[] }) | null>(null);
   const [items, setItems] = useState<OsItem[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [steps, setSteps] = useState<StepLite[]>([]);
+  const [projects, setProjects] = useState<OsProject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -109,17 +117,21 @@ export function OsDetailScreen() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [orderData, checklistData, photoData, stepData] = await Promise.all([
+      const [orderData, checklistData, photoData, stepData, projectsData] = await Promise.all([
         apiClient.get<ServiceOrder & { items?: OsItem[] }>(`/service-orders/${id}`),
         apiClient.get<Checklist[]>(`/service-orders/${id}/checklists`),
         apiClient.get<Photo[]>(`/service-orders/${id}/photos`),
         apiClient.get<StepLite[]>(`/service-orders/${id}/steps`).catch(() => [] as StepLite[]),
+        apiClient
+          .get<OsProject[]>(`/os-projects?service_order_id=${id}`)
+          .catch(() => [] as OsProject[]),
       ]);
       setOrder(orderData);
       setItems(orderData.items || []);
       setChecklists(checklistData);
       setPhotos(photoData);
       setSteps(stepData);
+      setProjects(projectsData);
       setIsFromCache(false);
 
       // Cache the full detail for offline use
@@ -881,55 +893,51 @@ export function OsDetailScreen() {
         )}
       </TouchableOpacity>
 
-      {/* Photos Section */}
-      <TouchableOpacity
-        style={styles.sectionCard}
-        onPress={() =>
-          navigation.navigate('Camera', {
-            serviceOrderId: id,
-          })
-        }
-        activeOpacity={0.7}
-      >
+      {/* Projetos Section — anexos do admin (PDF/imagem), técnico só visualiza */}
+      <View style={styles.sectionCard}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionHeaderLeft}>
-            <Ionicons
-              name="camera-outline"
-              size={22}
-              color={colors.primary}
-            />
-            <Text style={styles.sectionTitle}>Imagens do Local</Text>
+            <Ionicons name="document-text-outline" size={22} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Projetos</Text>
           </View>
-          <Ionicons
-            name="chevron-forward"
-            size={20}
-            color={colors.textDark}
-          />
         </View>
 
-        {photos.length > 0 ? (
-          <View style={styles.photoGrid}>
-            {photos.slice(0, 4).map(photo => (
-              <View key={photo.id} style={styles.photoThumbnail}>
-                <Image
-                  source={{ uri: photo.thumbnail_url || photo.url }}
-                  style={styles.photoImage}
-                  resizeMode="cover"
-                />
-              </View>
-            ))}
-            {photos.length > 4 && (
-              <View style={styles.photoMore}>
-                <Text style={styles.photoMoreText}>
-                  +{photos.length - 4}
-                </Text>
-              </View>
-            )}
-          </View>
+        {projects.length === 0 ? (
+          <Text style={styles.noDataText}>
+            Nenhum projeto anexado pelo administrador.
+          </Text>
         ) : (
-          <Text style={styles.noDataText}>Imagens do local enviadas pela empresa como referência</Text>
+          <View>
+            {projects.map((p) => {
+              const isPdf = p.mime_type === 'application/pdf';
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  style={styles.projectRow}
+                  activeOpacity={0.7}
+                  onPress={() => Linking.openURL(p.file_url)}
+                >
+                  <Ionicons
+                    name={isPdf ? 'document-text' : 'image'}
+                    size={20}
+                    color={colors.primary}
+                  />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.projectName} numberOfLines={1}>
+                      {p.file_name ?? 'Arquivo'}
+                    </Text>
+                    <Text style={styles.projectMeta}>
+                      {isPdf ? 'PDF' : 'Imagem'}
+                      {p.size_bytes ? ` · ${Math.round(p.size_bytes / 1024)} KB` : ''}
+                    </Text>
+                  </View>
+                  <Ionicons name="open-outline" size={18} color={colors.textDark} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         )}
-      </TouchableOpacity>
+      </View>
 
       {/* Map Section */}
       <TouchableOpacity
@@ -1198,6 +1206,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginTop: 8,
     gap: 8,
+  },
+  projectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  projectName: {
+    ...typography.bodySm,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  projectMeta: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: 2,
   },
   photoThumbnail: {
     width: 60,

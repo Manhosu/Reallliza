@@ -66,6 +66,8 @@ import {
   checklistsApi,
   checklistTemplatesApi,
   photosApi,
+  osProjectsApi,
+  type OsProject,
   usersApi,
   partnersApi,
   apiClient,
@@ -549,6 +551,137 @@ function ChecklistSection({
 }
 
 // ============================================================
+// Projetos Section Component (PDF + imagem, só admin upload)
+// ============================================================
+
+function ProjetosSection({ serviceOrderId }: { serviceOrderId: string }) {
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    data: projects,
+    isLoading,
+    mutate,
+  } = useApi<OsProject[]>(
+    () => osProjectsApi.list(serviceOrderId),
+    [serviceOrderId]
+  );
+
+  const handleUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setIsUploading(true);
+      try {
+        await osProjectsApi.upload(file, serviceOrderId);
+        mutate();
+        toast.success("Projeto anexado");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Erro ao anexar projeto");
+      } finally {
+        setIsUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    },
+    [serviceOrderId, mutate]
+  );
+
+  const handleDelete = async (id: string) => {
+    setIsDeleting(id);
+    try {
+      await osProjectsApi.delete(id);
+      mutate();
+      toast.success("Projeto removido");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao remover");
+    } finally {
+      setIsDeleting(null);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="flex items-center gap-2">
+          <FileText className="h-5 w-5 text-primary" />
+          Projetos
+          {projects && projects.length > 0 && (
+            <Badge variant="gray" size="sm">
+              {projects.length}
+            </Badge>
+          )}
+        </CardTitle>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={isUploading}
+          isLoading={isUploading}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Upload className="h-4 w-4" />
+          Anexar
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,application/pdf"
+          className="hidden"
+          onChange={handleUpload}
+        />
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Carregando…</p>
+        ) : !projects || projects.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nenhum projeto anexado. Envie um PDF ou imagem clicando em
+            <strong> Anexar</strong>. O técnico vai visualizar no app.
+          </p>
+        ) : (
+          <ul className="divide-y rounded-xl border">
+            {projects.map((p) => {
+              const isPdf = p.mime_type === "application/pdf";
+              return (
+                <li key={p.id} className="flex items-center gap-3 p-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <a
+                      href={p.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block truncate text-sm font-medium hover:underline"
+                    >
+                      {p.file_name ?? "Arquivo"}
+                    </a>
+                    <p className="text-xs text-muted-foreground">
+                      {isPdf ? "PDF" : "Imagem"} ·{" "}
+                      {p.size_bytes
+                        ? `${(p.size_bytes / 1024).toFixed(0)} KB`
+                        : "—"}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={isDeleting === p.id}
+                    onClick={() => handleDelete(p.id)}
+                  >
+                    Remover
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================================
 // Photos Section Component
 // ============================================================
 
@@ -665,7 +798,7 @@ function PhotosSection({
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2">
           <Camera className="h-5 w-5 text-primary" />
-          Imagens do Local da OS
+          Fotos da Execução
           {photoCounts && photoCounts.total > 0 && (
             <Badge variant="gray" size="sm">
               {photoCounts.total}
@@ -1732,7 +1865,12 @@ export default function OsDetailPage() {
             <ChecklistSection serviceOrderId={id} />
           </motion.div>
 
-          {/* Photos Section */}
+          {/* Projetos Section (PDF/imagem do admin) */}
+          <motion.div variants={itemVariants}>
+            <ProjetosSection serviceOrderId={id} />
+          </motion.div>
+
+          {/* Photos Section (fotos da execução, técnico tira) */}
           <motion.div variants={itemVariants}>
             <PhotosSection serviceOrderId={id} />
           </motion.div>
