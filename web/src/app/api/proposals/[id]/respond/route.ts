@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { createScheduleFromOs } from "@/lib/api-helpers/schedules";
 
 /**
  * POST /api/proposals/[id]/respond
@@ -178,6 +179,25 @@ export async function POST(
           changed_by: user.id,
           notes: `Proposta broadcast aceita por ${user.full_name || user.email}`,
         });
+
+        // Bloco 7 (01/06) — proposta aceita também cria agenda automática
+        // pro técnico que aceitou. Conflito não aborta (a aceitação já foi
+        // gravada), só loga — agenda nesse caso fica pra ajuste manual.
+        try {
+          const result = await createScheduleFromOs(
+            supabase,
+            proposal.service_order_id,
+            user.id,
+            "proposal_accepted"
+          );
+          if (result.outcome === "conflict") {
+            console.warn(
+              `proposal-accepted: schedule conflict for tech ${user.id}: ${result.conflict_message}`
+            );
+          }
+        } catch (err) {
+          console.warn("auto-schedule on proposal accept failed:", err);
+        }
       }
     }
 

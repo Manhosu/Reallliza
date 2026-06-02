@@ -4,6 +4,7 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { createNotification } from "@/lib/api-helpers/notifications";
+import { createScheduleFromOs } from "@/lib/api-helpers/schedules";
 
 /**
  * GET /api/service-orders/[id]
@@ -268,6 +269,28 @@ export async function PUT(
         );
       } catch (err) {
         console.warn("os_assigned notify failed:", err);
+      }
+
+      // Cria automaticamente o evento na agenda do técnico
+      // (Bloco 7 — pedido da Jessica 01/06). Se houver conflito de horário,
+      // devolvemos 409 e o admin escolhe outro horário/técnico.
+      try {
+        const result = await createScheduleFromOs(
+          supabase,
+          id,
+          newTech,
+          "os_assignment"
+        );
+        if (result.outcome === "conflict") {
+          throw new AuthError(
+            409,
+            result.conflict_message ??
+              "Conflito de agenda para este técnico no horário escolhido."
+          );
+        }
+      } catch (err) {
+        if (err instanceof AuthError) throw err;
+        console.warn("auto-schedule on assignment failed:", err);
       }
     }
 
