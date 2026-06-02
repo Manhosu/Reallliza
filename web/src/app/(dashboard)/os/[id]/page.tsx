@@ -1027,6 +1027,13 @@ export default function OsDetailPage() {
   const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [showReworkDialog, setShowReworkDialog] = useState(false);
+  const [reworkSpecialtyId, setReworkSpecialtyId] = useState<string>("");
+  const [reworkReason, setReworkReason] = useState("");
+  const [isCreatingRework, setIsCreatingRework] = useState(false);
+  const [reworkSpecialties, setReworkSpecialties] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
@@ -1230,6 +1237,60 @@ export default function OsDetailPage() {
 
   const nextStatuses = NEXT_STATUS_MAP[order.status] || [];
 
+  // Carrega especialidades pro select do retrabalho quando o dialog abre.
+  useEffect(() => {
+    if (!showReworkDialog || reworkSpecialties.length > 0) return;
+    import("@/lib/api").then(({ specialtiesApi }) =>
+      specialtiesApi
+        .list()
+        .then((list) =>
+          setReworkSpecialties(
+            list.filter((s) => s.is_active).map((s) => ({ id: s.id, name: s.name }))
+          )
+        )
+        .catch(() => setReworkSpecialties([]))
+    );
+  }, [showReworkDialog, reworkSpecialties.length]);
+
+  const handleCreateRework = async () => {
+    if (!reworkReason.trim()) {
+      toast.error("Informe o motivo do retrabalho");
+      return;
+    }
+    setIsCreatingRework(true);
+    try {
+      const res = await fetch(`/api/service-orders/${id}/rework`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${await (
+            await import("@/lib/api/client")
+          ).getAccessToken()}`,
+        },
+        body: JSON.stringify({
+          specialty_id: reworkSpecialtyId || undefined,
+          reason: reworkReason.trim(),
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        throw new Error(body?.message ?? "Erro ao gerar retrabalho");
+      }
+      toast.success("Retrabalho gerado");
+      setShowReworkDialog(false);
+      setReworkSpecialtyId("");
+      setReworkReason("");
+      // Vai pra OS filha recém-criada
+      if (body?.id) {
+        window.location.href = `/os/${body.id}`;
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao gerar retrabalho");
+    } finally {
+      setIsCreatingRework(false);
+    }
+  };
+
   const containerVariants = {
     hidden: { opacity: 0 },
     show: {
@@ -1352,6 +1413,20 @@ export default function OsDetailPage() {
               Aprovar OS
             </Button>
           )}
+
+          {/* Gerar Retrabalho — admin, OS completed/invoiced */}
+          {(order.status === OsStatus.COMPLETED ||
+            order.status === OsStatus.INVOICED) &&
+            user?.role === UserRole.ADMIN &&
+            !order.is_rework && (
+              <Button
+                variant="outline"
+                onClick={() => setShowReworkDialog(true)}
+                className="border-orange-300 text-orange-700 hover:bg-orange-50"
+              >
+                Gerar Retrabalho
+              </Button>
+            )}
 
           {!isPartner && order.status !== OsStatus.COMPLETED && order.status !== OsStatus.CANCELLED && order.status !== OsStatus.REJECTED && (
             <>
@@ -2050,6 +2125,69 @@ export default function OsDetailPage() {
           </motion.div>
         </div>
       </div>
+      {/* ============ Rework Dialog ============ */}
+      {showReworkDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="mx-4 w-full max-w-md rounded-2xl border bg-card p-6 shadow-xl">
+            <h2 className="text-lg font-semibold">Gerar Retrabalho</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Cria uma nova OS vinculada a esta original e penaliza o
+              desempenho do técnico na especialidade selecionada.
+            </p>
+            <div className="space-y-4 mt-4">
+              <div>
+                <label className="text-sm font-medium">
+                  Especialidade (opcional)
+                </label>
+                <select
+                  value={reworkSpecialtyId}
+                  onChange={(e) => setReworkSpecialtyId(e.target.value)}
+                  className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">— Nenhuma específica —</option>
+                  {reworkSpecialties.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Se selecionar, só a nota dessa especialidade do técnico
+                  é penalizada.
+                </p>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Motivo *</label>
+                <textarea
+                  value={reworkReason}
+                  onChange={(e) => setReworkReason(e.target.value)}
+                  rows={4}
+                  placeholder="Descreva o problema que gerou retrabalho..."
+                  className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowReworkDialog(false)}
+                disabled={isCreatingRework}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCreateRework}
+                disabled={isCreatingRework || !reworkReason.trim()}
+                isLoading={isCreatingRework}
+                className="bg-orange-600 text-white hover:bg-orange-700"
+              >
+                Gerar Retrabalho
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ============ Delete Confirmation Modal ============ */}
       {showDeleteConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">

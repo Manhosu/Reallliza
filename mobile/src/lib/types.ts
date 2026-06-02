@@ -174,6 +174,10 @@ export interface ServiceOrder {
   tracking_token: string | null;
   metadata: Record<string, unknown> | null;
   external_metadata: Record<string, unknown> | null;
+  parent_service_order_id: string | null;
+  is_rework: boolean | null;
+  rework_specialty_id: string | null;
+  rework_reason: string | null;
   created_at: string;
   updated_at: string;
 }

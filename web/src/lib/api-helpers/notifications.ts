@@ -5,6 +5,7 @@ export type NotificationType =
   | "os_status_changed"
   | "os_completed"
   | "os_cancelled"
+  | "os_rework"
   | "message_received"
   | "proposal_available"
   | "schedule_reminder"

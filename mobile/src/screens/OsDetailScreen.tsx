@@ -462,6 +462,36 @@ export function OsDetailScreen() {
         />
       }
     >
+      {/* Rework banner — quando esta OS é um retrabalho */}
+      {order.is_rework && (
+        <View
+          style={{
+            backgroundColor: '#7C2D12',
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: 8,
+            borderRadius: 8,
+            marginBottom: 12,
+            marginHorizontal: 16,
+            marginTop: 16,
+          }}
+        >
+          <Ionicons name="warning" size={18} color="#FBBF24" />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#FBBF24', fontWeight: '700', fontSize: 13 }}>
+              OS de retrabalho
+            </Text>
+            {order.rework_reason && (
+              <Text style={{ color: '#FCD34D', fontSize: 12, marginTop: 4 }}>
+                Motivo: {order.rework_reason}
+              </Text>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* Offline cache banner */}
       {isFromCache && (
         <View style={{
