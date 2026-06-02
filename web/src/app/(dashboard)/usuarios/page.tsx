@@ -34,7 +34,8 @@ import {
   USER_STATUS_LABELS,
   type Profile,
 } from "@/lib/types";
-import { usersApi, apiClient } from "@/lib/api";
+import { usersApi, apiClient, specialtiesApi } from "@/lib/api";
+import type { Specialty } from "@/lib/api/specialties";
 import { usePaginatedApi } from "@/hooks/use-api";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -134,16 +135,8 @@ export default function UsuariosPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState<string | null>(null);
 
-  // Lista canônica de especialidades (alinhada com o pedido da Jessica:
-  // Rodapé, Painel, Forro, Piso colado, Piso clicado, Atendimento ao cliente).
-  const SPECIALTY_OPTIONS = [
-    "Rodapé",
-    "Painel",
-    "Forro",
-    "Piso colado",
-    "Piso clicado",
-    "Atendimento ao cliente",
-  ] as const;
+  // Especialidades carregadas dinamicamente do CMS (admin gerencia em /especialidades).
+  const [specialtyOptions, setSpecialtyOptions] = useState<Specialty[]>([]);
 
   // Create form state
   const [createForm, setCreateForm] = useState({
@@ -154,7 +147,7 @@ export default function UsuariosPage() {
     password: "",
     cpf: "",
     address: "",
-    specialty_ratings: [] as Array<{ name: string; stars: number }>,
+    specialty_ratings: [] as Array<{ specialty_id: string; name: string; stars: number }>,
   });
 
   // Edit form state
@@ -170,6 +163,14 @@ export default function UsuariosPage() {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 400);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Carrega especialidades (apenas ativas) pro multi-select do cadastro.
+  useEffect(() => {
+    specialtiesApi
+      .list()
+      .then((data) => setSpecialtyOptions(data.filter((s) => s.is_active)))
+      .catch(() => setSpecialtyOptions([]));
+  }, []);
 
   const fetcher = useCallback(
     (page: number, limit: number) => {
@@ -247,27 +248,33 @@ export default function UsuariosPage() {
     }
   };
 
-  // Helpers do multi-select de especialidades
-  const toggleSpecialty = (name: string) => {
+  // Helpers do multi-select de especialidades (chave por specialty_id agora,
+  // pra resistir a renomeações no CMS).
+  const toggleSpecialty = (spec: Specialty) => {
     setCreateForm((prev) => {
-      const exists = prev.specialty_ratings.find((r) => r.name === name);
+      const exists = prev.specialty_ratings.find((r) => r.specialty_id === spec.id);
       if (exists) {
         return {
           ...prev,
-          specialty_ratings: prev.specialty_ratings.filter((r) => r.name !== name),
+          specialty_ratings: prev.specialty_ratings.filter(
+            (r) => r.specialty_id !== spec.id
+          ),
         };
       }
       return {
         ...prev,
-        specialty_ratings: [...prev.specialty_ratings, { name, stars: 3 }],
+        specialty_ratings: [
+          ...prev.specialty_ratings,
+          { specialty_id: spec.id, name: spec.name, stars: 3 },
+        ],
       };
     });
   };
-  const setSpecialtyStars = (name: string, stars: number) => {
+  const setSpecialtyStars = (specialtyId: string, stars: number) => {
     setCreateForm((prev) => ({
       ...prev,
       specialty_ratings: prev.specialty_ratings.map((r) =>
-        r.name === name ? { ...r, stars } : r
+        r.specialty_id === specialtyId ? { ...r, stars } : r
       ),
     }));
   };
@@ -698,19 +705,28 @@ export default function UsuariosPage() {
                   Marque as áreas de atuação e ajuste as estrelas (1-5) para indicar o nível de domínio.
                 </p>
                 <div className="space-y-2 rounded-xl border bg-muted/30 p-3">
-                  {SPECIALTY_OPTIONS.map((name) => {
-                    const current = createForm.specialty_ratings.find((r) => r.name === name);
+                  {specialtyOptions.length === 0 && (
+                    <p className="text-xs text-muted-foreground italic">
+                      Nenhuma especialidade ativa cadastrada. Crie em
+                      {" "}
+                      <a href="/especialidades" className="underline">Especialidades</a>.
+                    </p>
+                  )}
+                  {specialtyOptions.map((spec) => {
+                    const current = createForm.specialty_ratings.find(
+                      (r) => r.specialty_id === spec.id
+                    );
                     const checked = !!current;
                     return (
-                      <div key={name} className="flex items-center gap-3">
+                      <div key={spec.id} className="flex items-center gap-3">
                         <label className="flex items-center gap-2 flex-1 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={checked}
-                            onChange={() => toggleSpecialty(name)}
+                            onChange={() => toggleSpecialty(spec)}
                             className="h-4 w-4 rounded border-input accent-primary"
                           />
-                          <span className="text-sm">{name}</span>
+                          <span className="text-sm">{spec.name}</span>
                         </label>
                         {checked && (
                           <div className="flex items-center gap-0.5">
@@ -718,7 +734,7 @@ export default function UsuariosPage() {
                               <button
                                 key={n}
                                 type="button"
-                                onClick={() => setSpecialtyStars(name, n)}
+                                onClick={() => setSpecialtyStars(spec.id, n)}
                                 className="p-0.5"
                                 title={`${n} estrela${n > 1 ? "s" : ""}`}
                               >
