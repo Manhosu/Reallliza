@@ -34,7 +34,10 @@ export async function GET(
       throw new AuthError(404, `Checklist with ID ${id} not found`);
     }
 
-    return jsonResponse(checklist);
+    return jsonResponse({
+      ...checklist,
+      items: (checklist as { data?: unknown[] }).data ?? [],
+    });
   } catch (error) {
     return errorResponse(error);
   }

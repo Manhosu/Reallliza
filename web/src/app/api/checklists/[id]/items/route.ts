@@ -89,7 +89,10 @@ export async function PUT(
       newData: { items },
     });
 
-    return jsonResponse(checklist);
+    return jsonResponse({
+      ...checklist,
+      items: (checklist as { data?: unknown[] }).data ?? [],
+    });
   } catch (error) {
     return errorResponse(error);
   }

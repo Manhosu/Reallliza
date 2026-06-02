@@ -35,7 +35,14 @@ export async function GET(
       throw new Error("Failed to fetch checklists");
     }
 
-    return jsonResponse(data || []);
+    // Alias `data` (coluna jsonb no DB) → `items` (que web admin e mobile esperam).
+    // Mantemos `data` no retorno também pra compat retro de outros consumidores.
+    const mapped = (data || []).map((cl: Record<string, unknown>) => ({
+      ...cl,
+      items: (cl.data ?? []) as unknown[],
+    }));
+
+    return jsonResponse(mapped);
   } catch (error) {
     return errorResponse(error);
   }

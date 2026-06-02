@@ -123,7 +123,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return jsonResponse(checklist, 201);
+    // Alias `data` → `items` na resposta pro consumidor já conseguir renderizar.
+    return jsonResponse(
+      { ...checklist, items: (checklist as { data?: unknown[] }).data ?? [] },
+      201
+    );
   } catch (error) {
     return errorResponse(error);
   }

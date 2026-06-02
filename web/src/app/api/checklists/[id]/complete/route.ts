@@ -130,7 +130,10 @@ export async function PATCH(
       },
     });
 
-    return jsonResponse(updated);
+    return jsonResponse({
+      ...updated,
+      items: (updated as { data?: unknown[] }).data ?? [],
+    });
   } catch (error) {
     return errorResponse(error);
   }

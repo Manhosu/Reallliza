@@ -51,7 +51,13 @@ export async function GET(
       throw new Error("Failed to fetch checklists for service order");
     }
 
-    return jsonResponse(checklists || []);
+    // Alias `data` (coluna jsonb) → `items` (esperado pelos consumidores).
+    const mapped = (checklists || []).map((cl: Record<string, unknown>) => ({
+      ...cl,
+      items: (cl.data ?? []) as unknown[],
+    }));
+
+    return jsonResponse(mapped);
   } catch (error) {
     return errorResponse(error);
   }
