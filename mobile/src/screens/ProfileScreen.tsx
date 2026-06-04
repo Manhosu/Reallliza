@@ -40,7 +40,7 @@ export function ProfileScreen() {
       Alert.alert('Sucesso', 'Telefone atualizado com sucesso.');
     } catch (error) {
       console.error('Error updating phone:', error);
-      Alert.alert('Erro', 'Nao foi possivel atualizar o telefone.');
+      Alert.alert('Erro', 'Não foi possível atualizar o telefone.');
     } finally {
       setIsSaving(false);
     }
@@ -73,7 +73,7 @@ export function ProfileScreen() {
       Alert.alert('Sucesso', 'Senha alterada com sucesso.');
     } catch (error) {
       console.error('Error changing password:', error);
-      Alert.alert('Erro', 'Nao foi possivel alterar a senha. Verifique a senha atual.');
+      Alert.alert('Erro', 'Não foi possível alterar a senha. Verifique a senha atual.');
     } finally {
       setIsChangingPassword(false);
     }
@@ -132,7 +132,7 @@ export function ProfileScreen() {
 
       {/* Info Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Informacoes Pessoais</Text>
+        <Text style={styles.sectionTitle}>Informações Pessoais</Text>
 
         <View style={styles.infoCard}>
           {/* Phone */}
@@ -152,7 +152,7 @@ export function ProfileScreen() {
                   />
                 ) : (
                   <Text style={styles.infoValue}>
-                    {profile?.phone || 'Nao informado'}
+                    {profile?.phone || 'Não informado'}
                   </Text>
                 )}
               </View>
@@ -209,7 +209,7 @@ export function ProfileScreen() {
               <View>
                 <Text style={styles.infoLabel}>CPF</Text>
                 <Text style={styles.infoValue}>
-                  {profile?.cpf || 'Nao informado'}
+                  {profile?.cpf || 'Não informado'}
                 </Text>
               </View>
             </View>
@@ -226,9 +226,9 @@ export function ProfileScreen() {
                 color={colors.textMuted}
               />
               <View>
-                <Text style={styles.infoLabel}>Endereco</Text>
+                <Text style={styles.infoLabel}>Endereço</Text>
                 <Text style={styles.infoValue}>
-                  {profile?.address || 'Nao informado'}
+                  {profile?.address || 'Não informado'}
                 </Text>
               </View>
             </View>
@@ -259,7 +259,7 @@ export function ProfileScreen() {
 
       {/* Change Password Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Seguranca</Text>
+        <Text style={styles.sectionTitle}>Segurança</Text>
         <View style={styles.infoCard}>
           <TouchableOpacity
             style={styles.menuItem}

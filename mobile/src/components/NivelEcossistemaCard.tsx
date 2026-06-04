@@ -31,6 +31,12 @@ const SCORE_LABEL = (score: number | null | undefined): string => {
   return 'Em formação';
 };
 
+const ROLE_LABEL: Record<string, string> = {
+  admin: 'Administrador',
+  technician: 'Técnico Instalador',
+  partner: 'Parceiro',
+};
+
 /**
  * Card do perfil profissional no ecossistema (rev 01/06/2026).
  *
@@ -144,6 +150,11 @@ export function NivelEcossistemaCard() {
           <Text style={styles.headerEmail} numberOfLines={1}>
             {profile.email}
           </Text>
+          {ROLE_LABEL[profile.role] && (
+            <Text style={styles.headerRole} numberOfLines={1}>
+              {ROLE_LABEL[profile.role]}
+            </Text>
+          )}
           <View style={[styles.nivelBadge, { backgroundColor: nivel.cor + '22' }]}>
             <Ionicons name="ribbon" size={14} color={nivel.cor} />
             <Text style={[styles.nivelText, { color: nivel.cor }]}>
@@ -451,6 +462,12 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textMuted,
     marginTop: 1,
+  },
+  headerRole: {
+    ...typography.caption,
+    color: colors.primary,
+    fontWeight: '600',
+    marginTop: 2,
     marginBottom: 6,
   },
   nivelBadge: {

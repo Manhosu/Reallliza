@@ -14,6 +14,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 const TOLERANCE_MINUTES = 15;
 const ABANDON_PENALTY = 10;
+const REWORK_PENALTY = 3; // -3 pontos por retrabalho registrado
+const REWORK_PENALTY_MAX = 30; // teto: -30 pontos no Score Sistema
 const BRAZIL_OFFSET = "-03:00";
 
 export interface SystemScoreResult {
@@ -22,6 +24,7 @@ export interface SystemScoreResult {
   onTimeStartRate: number; // 0-1
   onTimeFinishRate: number; // 0-1
   abandonedCount: number;
+  reworkCount: number;
 }
 
 interface OrderRow {
@@ -103,10 +106,24 @@ export async function computeSystemScore(
 
   const abandonedCount = abandoned || 0;
 
+  // Retrabalhos confirmados: cada OS com is_rework=true atribuída a este
+  // técnico (parent OS) penaliza o Sistema em REWORK_PENALTY pontos.
+  const { count: reworks } = await supabase
+    .from("service_orders")
+    .select("id", { count: "exact", head: true })
+    .eq("technician_id", technicianId)
+    .eq("is_rework", true);
+
+  const reworkCount = reworks || 0;
+  const reworkPenalty = Math.min(
+    reworkCount * REWORK_PENALTY,
+    REWORK_PENALTY_MAX
+  );
+
   const base = 100 * (0.5 * onTimeStartRate + 0.5 * onTimeFinishRate);
   const score = Math.max(
     0,
-    Math.min(100, base - abandonedCount * ABANDON_PENALTY)
+    Math.min(100, base - abandonedCount * ABANDON_PENALTY - reworkPenalty)
   );
 
   return {
@@ -115,5 +132,6 @@ export async function computeSystemScore(
     onTimeStartRate: round2(onTimeStartRate),
     onTimeFinishRate: round2(onTimeFinishRate),
     abandonedCount,
+    reworkCount,
   };
 }

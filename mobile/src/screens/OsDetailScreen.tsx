@@ -167,7 +167,7 @@ export function OsDetailScreen() {
         }
       }
 
-      Alert.alert('Erro', 'Nao foi possivel carregar os dados da OS.');
+      Alert.alert('Erro', 'Não foi possível carregar os dados da OS.');
     }
   }, [id]);
 
@@ -207,7 +207,7 @@ export function OsDetailScreen() {
       await fetchData();
     } catch (error: unknown) {
       console.error('Error updating status:', error);
-      let message = 'Nao foi possivel atualizar o status.';
+      let message = 'Não foi possível atualizar o status.';
       if (error && typeof error === 'object' && 'message' in error) {
         message = (error as { message: string }).message;
       }
@@ -551,7 +551,7 @@ export function OsDetailScreen() {
           <TouchableOpacity style={styles.infoRow} onPress={openMaps}>
             <Ionicons name="location-outline" size={18} color={colors.primary} />
             <Text style={[styles.addressText, { color: colors.primary }]}>
-              {formatAddress() || 'Endereco nao informado'}
+              {formatAddress() || 'Endereço não informado'}
             </Text>
           </TouchableOpacity>
 
@@ -619,7 +619,7 @@ export function OsDetailScreen() {
           >
             <Ionicons name="clipboard" size={18} color="#000" />
             <Text style={{ color: '#000', fontWeight: '700', fontSize: 14 }}>
-              Iniciar Vistoria Tecnica
+              Iniciar Vistoria Técnica
             </Text>
           </TouchableOpacity>
         </View>
@@ -687,7 +687,7 @@ export function OsDetailScreen() {
 
       {/* Action Buttons */}
       <View style={styles.actionsCard}>
-        <Text style={styles.sectionTitle}>Acoes</Text>
+        <Text style={styles.sectionTitle}>Ações</Text>
 
         {isUpdatingStatus ? (
           <ActivityIndicator
@@ -773,7 +773,7 @@ export function OsDetailScreen() {
                     <TouchableOpacity
                       style={[styles.actionButton, styles.actionButtonSuccess]}
                       onPress={() =>
-                        handleStatusAction(OsStatus.COMPLETED, 'Finalizar Servico')
+                        handleStatusAction(OsStatus.COMPLETED, 'Finalizar Serviço')
                       }
                     >
                       <Ionicons
@@ -782,7 +782,7 @@ export function OsDetailScreen() {
                         color={colors.black}
                       />
                       <Text style={styles.actionButtonPrimaryText}>
-                        Finalizar Servico
+                        Finalizar Serviço
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -794,12 +794,12 @@ export function OsDetailScreen() {
               <TouchableOpacity
                 style={[styles.actionButton, styles.actionButtonWarning]}
                 onPress={() =>
-                  handleStatusAction(OsStatus.PAUSED, 'Pausar Servico')
+                  handleStatusAction(OsStatus.PAUSED, 'Pausar Serviço')
                 }
               >
                 <Ionicons name="pause-outline" size={20} color={colors.black} />
                 <Text style={styles.actionButtonPrimaryText}>
-                  Pausar Servico
+                  Pausar Serviço
                 </Text>
               </TouchableOpacity>
             )}
@@ -808,12 +808,12 @@ export function OsDetailScreen() {
               <TouchableOpacity
                 style={[styles.actionButton, styles.actionButtonPrimary]}
                 onPress={() =>
-                  handleStatusAction(OsStatus.IN_PROGRESS, 'Retomar Servico')
+                  handleStatusAction(OsStatus.IN_PROGRESS, 'Retomar Serviço')
                 }
               >
                 <Ionicons name="play-outline" size={20} color={colors.black} />
                 <Text style={styles.actionButtonPrimaryText}>
-                  Retomar Servico
+                  Retomar Serviço
                 </Text>
               </TouchableOpacity>
             )}
@@ -837,7 +837,7 @@ export function OsDetailScreen() {
             {(order.status === OsStatus.PENDING ||
               order.status === OsStatus.CANCELLED) && (
               <Text style={styles.noActionsText}>
-                Nenhuma acao disponivel para este status.
+                Nenhuma ação disponível para este status.
               </Text>
             )}
           </View>
