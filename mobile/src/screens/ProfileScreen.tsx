@@ -15,7 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../stores/auth-store';
 import { apiClient } from '../lib/api';
-import { USER_ROLE_LABELS } from '../lib/types';
 import { NivelEcossistemaCard } from '../components/NivelEcossistemaCard';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -90,15 +89,6 @@ export function ProfileScreen() {
     ]);
   };
 
-  const initials = profile?.full_name
-    ? profile.full_name
-        .split(' ')
-        .map(n => n[0])
-        .slice(0, 2)
-        .join('')
-        .toUpperCase()
-    : '??';
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
     <KeyboardAvoidingView
@@ -106,40 +96,60 @@ export function ProfileScreen() {
       style={{ flex: 1 }}
     >
     <ScrollView style={styles.container}>
-      {/* Avatar Section */}
-      <View style={styles.avatarSection}>
-        <View style={styles.avatarCircle}>
-          <Text style={styles.avatarText}>{initials}</Text>
-        </View>
-        <Text style={styles.userName}>
-          {profile?.full_name || 'Carregando...'}
-        </Text>
-        <Text style={styles.userEmail}>{profile?.email || ''}</Text>
-        {profile?.role && (
-          <View style={styles.roleBadge}>
-            <Ionicons name="shield-outline" size={14} color={colors.primary} />
-            <Text style={styles.roleText}>
-              {USER_ROLE_LABELS[profile.role]}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* Perfil completo (rev 01/06): nível + scores + especialidades +
-          relacionamento + estatísticas. As estatísticas que ficavam no
-          PerformanceCard antigo agora estão consolidadas aqui. */}
+      {/* Perfil (rev 02/06/2026): foto centralizada + nivel +
+          Especialidades + Atendimento ao cliente + Estatisticas. */}
       <NivelEcossistemaCard />
 
-      {/* Info Section */}
+      {/* Dados pessoais */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Informações Pessoais</Text>
+        <Text style={styles.sectionTitle}>Dados pessoais</Text>
 
         <View style={styles.infoCard}>
-          {/* Phone */}
+          {/* Nome completo */}
+          <View style={styles.infoRow}>
+            <View style={styles.infoLeft}>
+              <Ionicons name="person-outline" size={20} color={colors.textMuted} />
+              <View style={styles.infoTextWrap}>
+                <Text style={styles.infoLabel}>Nome completo</Text>
+                <Text style={styles.infoValue} numberOfLines={2}>
+                  {profile?.full_name || 'Não informado'}
+                </Text>
+              </View>
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={colors.textDark}
+            />
+          </View>
+
+          <View style={styles.infoDivider} />
+
+          {/* E-mail */}
+          <View style={styles.infoRow}>
+            <View style={styles.infoLeft}>
+              <Ionicons name="mail-outline" size={20} color={colors.textMuted} />
+              <View style={styles.infoTextWrap}>
+                <Text style={styles.infoLabel}>E-mail</Text>
+                <Text style={styles.infoValue} numberOfLines={1}>
+                  {profile?.email || 'Não informado'}
+                </Text>
+              </View>
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={colors.textDark}
+            />
+          </View>
+
+          <View style={styles.infoDivider} />
+
+          {/* Telefone (editável) */}
           <View style={styles.infoRow}>
             <View style={styles.infoLeft}>
               <Ionicons name="call-outline" size={20} color={colors.textMuted} />
-              <View>
+              <View style={styles.infoTextWrap}>
                 <Text style={styles.infoLabel}>Telefone</Text>
                 {isEditing ? (
                   <TextInput
@@ -206,18 +216,23 @@ export function ProfileScreen() {
                 size={20}
                 color={colors.textMuted}
               />
-              <View>
+              <View style={styles.infoTextWrap}>
                 <Text style={styles.infoLabel}>CPF</Text>
                 <Text style={styles.infoValue}>
                   {profile?.cpf || 'Não informado'}
                 </Text>
               </View>
             </View>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={colors.textDark}
+            />
           </View>
 
           <View style={styles.infoDivider} />
 
-          {/* Address */}
+          {/* Endereço */}
           <View style={styles.infoRow}>
             <View style={styles.infoLeft}>
               <Ionicons
@@ -225,35 +240,19 @@ export function ProfileScreen() {
                 size={20}
                 color={colors.textMuted}
               />
-              <View>
+              <View style={styles.infoTextWrap}>
                 <Text style={styles.infoLabel}>Endereço</Text>
-                <Text style={styles.infoValue}>
+                <Text style={styles.infoValue} numberOfLines={2}>
                   {profile?.address || 'Não informado'}
                 </Text>
               </View>
             </View>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={colors.textDark}
+            />
           </View>
-
-          {profile?.specialties && profile.specialties.length > 0 && (
-            <>
-              <View style={styles.infoDivider} />
-              <View style={styles.infoRow}>
-                <View style={styles.infoLeft}>
-                  <Ionicons
-                    name="construct-outline"
-                    size={20}
-                    color={colors.textMuted}
-                  />
-                  <View>
-                    <Text style={styles.infoLabel}>Especialidades</Text>
-                    <Text style={styles.infoValue}>
-                      {profile.specialties.join(', ')}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            </>
-          )}
         </View>
       </View>
 
@@ -360,50 +359,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  avatarSection: {
-    alignItems: 'center',
-    paddingVertical: 32,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  avatarCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.primary + '20',
-    borderWidth: 3,
-    borderColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  avatarText: {
-    ...typography.h2,
-    color: colors.primary,
-  },
-  userName: {
-    ...typography.h3,
-    color: colors.text,
-  },
-  userEmail: {
-    ...typography.bodySm,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  roleBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-    backgroundColor: colors.primary + '15',
-  },
-  roleText: {
-    ...typography.captionBold,
-    color: colors.primary,
-  },
   section: {
     paddingHorizontal: 16,
     paddingTop: 20,
@@ -432,6 +387,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     flex: 1,
+  },
+  infoTextWrap: {
+    flex: 1,
+    minWidth: 0,
   },
   infoLabel: {
     ...typography.caption,
