@@ -4,6 +4,7 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { createNotification } from "@/lib/api-helpers/notifications";
+import { createScheduleFromOs } from "@/lib/api-helpers/schedules";
 
 /**
  * GET /api/service-orders
@@ -258,6 +259,28 @@ export async function POST(request: NextRequest) {
         );
       } catch {
         // Notification failure should not break the main operation
+      }
+    }
+
+    // Cria agendamento automatico no calendario do tecnico quando a OS ja
+    // nasce com tecnico atribuido + data agendada. Espelha o comportamento
+    // do PUT /service-orders/[id] (que so dispara em troca de tecnico).
+    if (order.technician_id) {
+      try {
+        const result = await createScheduleFromOs(
+          supabase,
+          order.id,
+          order.technician_id,
+          "os_assignment"
+        );
+        if (result.outcome === "conflict") {
+          console.warn(
+            `OS ${order.id} criada — schedule pulado por conflito de horario do tecnico: ${result.conflict_message ?? ""}`
+          );
+        }
+      } catch (err) {
+        // Falha do schedule nao deve abortar a criacao da OS.
+        console.error("createScheduleFromOs failed on POST:", err);
       }
     }
 

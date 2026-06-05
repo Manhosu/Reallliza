@@ -22,8 +22,21 @@ const NIVEL_INFO: Record<string, { label: string; cor: string }> = {
   ouro: { label: 'OURO', cor: '#FFD600' },
 };
 
-// Ícone visual por especialidade (Ionicons). Resolução por nome
-// normalizado (lowercase, sem acento) — pega o primeiro match.
+const SCORE_LABEL = (score: number | null | undefined): string => {
+  if (typeof score !== 'number') return '';
+  if (score >= 90) return 'Excelente';
+  if (score >= 75) return 'Muito bom';
+  if (score >= 60) return 'Bom';
+  if (score >= 40) return 'Regular';
+  return 'Em formação';
+};
+
+const ROLE_LABEL: Record<string, string> = {
+  admin: 'Administrador',
+  technician: 'Técnico Instalador',
+  partner: 'Parceiro',
+};
+
 function iconForSpecialty(name: string): keyof typeof Ionicons.glyphMap {
   const n = name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   if (n.includes('rodape')) return 'remove-outline';
@@ -37,18 +50,18 @@ function iconForSpecialty(name: string): keyof typeof Ionicons.glyphMap {
 }
 
 /**
- * Card do perfil profissional (rev 02/06/2026 — layout aprovado pela Jessica).
+ * Card do perfil profissional (rev 05/06/2026 — v4 com Score Geral + Avaliações
+ * Gerais de volta + card Relacionamento separado, conforme print final da Jessica).
  *
  * Estrutura:
- *  - Header centralizado: foto grande + nome + badge nível com troféu +
- *    "Nível do técnico" + subtítulo explicativo.
- *  - Lista de Especialidades com ícone visual + estrelas + nota decimal.
- *    "Atendimento ao cliente" sempre como último item, destacado em azul
- *    com sub "Avaliado pelos clientes" — fonte: client_relationship.
- *  - Estatísticas horizontais (OS concluídas/andamento/canceladas/
- *    pontualidade/tempo médio) — mantidas como funcionalidade.
- *
- * Dados pessoais e Alterar Senha ficam no ProfileScreen.
+ *  - Header HORIZONTAL: foto à esquerda · nome+email+badges (Técnico Instalador +
+ *    BRONZE/PRATA/OURO + "Nível do técnico") · Score Geral grande + chip à direita.
+ *  - Subtítulo full-width: "Baseado na avaliação do sistema, dos clientes e da
+ *    Reallliza na execução das OS."
+ *  - Avaliações Gerais (3 cards: Sistema 0-100 · Cliente estrelas+N · Qualidade estrelas).
+ *  - Especialidades (ícone + estrelas + nota).
+ *  - Relacionamento com o cliente (card único, só se ratings_count > 0).
+ *  - Estatísticas (5 cards horizontais).
  */
 export function NivelEcossistemaCard() {
   const { profile, fetchProfile } = useAuthStore();
@@ -57,6 +70,10 @@ export function NivelEcossistemaCard() {
   if (!profile) return null;
 
   const nivel = NIVEL_INFO[profile.level ?? 'bronze'] ?? NIVEL_INFO.bronze;
+  const overall = profile.overall_score;
+  const overallLabel = SCORE_LABEL(overall);
+  const fmtInt = (v: number | null | undefined) =>
+    typeof v === 'number' ? String(Math.round(v)) : '—';
   const fmtDec = (v: number | null | undefined, fixed = 1) =>
     typeof v === 'number' ? v.toFixed(fixed).replace('.', ',') : '—';
 
@@ -106,17 +123,15 @@ export function NivelEcossistemaCard() {
     ]);
   }
 
-  // specialty_ratings_enriched (novo) tem preferência sobre legado.
-  // Remove "Atendimento ao cliente" da lista regular — ele é renderizado
-  // separadamente no fim com dados de client_relationship.
-  const specsRaw = profile.specialty_ratings_enriched
-    ?? profile.specialty_ratings?.map((r) => ({
+  const specs =
+    profile.specialty_ratings_enriched ??
+    profile.specialty_ratings?.map((r) => ({
       specialty_id: r.name,
       name: r.name,
       stars: r.stars,
-    }))
-    ?? [];
-  const specs = specsRaw.filter(
+    })) ??
+    [];
+  const specsFiltered = specs.filter(
     (r) => !r.name.toLowerCase().includes('atendimento ao cliente')
   );
 
@@ -125,51 +140,131 @@ export function NivelEcossistemaCard() {
 
   return (
     <View>
-      {/* ============ Header centralizado ============ */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={escolherFoto}
-          disabled={uploadingFoto}
-          activeOpacity={0.8}
-        >
-          <View style={styles.avatarBig}>
-            {profile.avatar_url ? (
-              <Image
-                source={{ uri: profile.avatar_url }}
-                style={styles.avatarImg}
-              />
-            ) : (
-              <Ionicons name="person" size={48} color={colors.textMuted} />
-            )}
-            {uploadingFoto && (
-              <View style={styles.avatarOverlay}>
-                <ActivityIndicator color={colors.primary} />
+      {/* ============ Header horizontal ============ */}
+      <View style={styles.headerWrap}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            onPress={escolherFoto}
+            disabled={uploadingFoto}
+            activeOpacity={0.8}
+          >
+            <View style={styles.avatar}>
+              {profile.avatar_url ? (
+                <Image
+                  source={{ uri: profile.avatar_url }}
+                  style={styles.avatarImg}
+                />
+              ) : (
+                <Ionicons name="person" size={36} color={colors.textMuted} />
+              )}
+              {uploadingFoto && (
+                <View style={styles.avatarOverlay}>
+                  <ActivityIndicator color={colors.primary} />
+                </View>
+              )}
+              <View style={styles.camBadge}>
+                <Ionicons name="camera" size={11} color={colors.black} />
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.headerInfo}>
+            <Text style={styles.name} numberOfLines={1}>
+              {profile.full_name}
+            </Text>
+            <Text style={styles.email} numberOfLines={1}>
+              {profile.email}
+            </Text>
+            {ROLE_LABEL[profile.role] && (
+              <View style={styles.roleBadge}>
+                <Ionicons
+                  name="shield-outline"
+                  size={12}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.roleText}>{ROLE_LABEL[profile.role]}</Text>
               </View>
             )}
-            <View style={styles.camBadge}>
-              <Ionicons name="camera" size={14} color={colors.black} />
+            <View
+              style={[styles.nivelBadge, { backgroundColor: nivel.cor + '22' }]}
+            >
+              <Ionicons name="medal" size={14} color={nivel.cor} />
+              <Text style={[styles.nivelText, { color: nivel.cor }]}>
+                {nivel.label}
+              </Text>
             </View>
+            <Text style={styles.nivelSub}>Nível do técnico</Text>
           </View>
-        </TouchableOpacity>
 
-        <Text style={styles.name} numberOfLines={1}>
-          {profile.full_name}
-        </Text>
-
-        <View style={[styles.nivelBadge, { backgroundColor: nivel.cor + '1F' }]}>
-          <Ionicons name="medal" size={18} color={nivel.cor} />
-          <Text style={[styles.nivelLabel, { color: nivel.cor }]}>
-            {nivel.label}
-          </Text>
+          <View style={styles.scoreBox}>
+            <Text style={styles.scoreLabel}>Score Geral</Text>
+            <Text style={styles.scoreValue}>{fmtInt(overall)}</Text>
+            {overallLabel && (
+              <View style={styles.scoreChip}>
+                <Text style={styles.scoreChipText}>{overallLabel}</Text>
+              </View>
+            )}
+          </View>
         </View>
-        <Text style={styles.nivelSub}>Nível do técnico</Text>
-        <Text style={styles.nivelDesc}>
-          Baseado na avaliação técnica e na avaliação dos clientes.
+
+        <Text style={styles.headerDesc}>
+          Baseado na avaliação do sistema, dos clientes e da Reallliza na
+          execução das OS.
         </Text>
       </View>
 
+      {/* ============ Avaliações Gerais ============ */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Avaliações Gerais</Text>
+          <Ionicons
+            name="information-circle-outline"
+            size={18}
+            color={colors.textMuted}
+          />
+        </View>
+        <View style={styles.evalRow}>
+          <EvalCard
+            icon="desktop-outline"
+            tint={colors.info}
+            label="Sistema"
+            value={fmtInt(profile.system_score)}
+            sub={SCORE_LABEL(profile.system_score)}
+          />
+          <EvalCard
+            icon="people-outline"
+            tint="#10B981"
+            label="Cliente"
+            value={fmtDec(
+              profile.client_score !== null && profile.client_score !== undefined
+                ? profile.client_score / 20
+                : null
+            )}
+            sub={
+              profile.client_relationship?.ratings_count
+                ? `${profile.client_relationship.ratings_count} avaliações`
+                : 'Aguardando'
+            }
+            star
+          />
+          <EvalCard
+            icon="shield-checkmark-outline"
+            tint="#F59E0B"
+            label="Qualidade"
+            value={fmtDec(
+              profile.quality_score !== null &&
+                profile.quality_score !== undefined
+                ? profile.quality_score / 20
+                : null
+            )}
+            sub="Avaliação Reallliza"
+            star
+          />
+        </View>
+      </View>
+
       {/* ============ Especialidades ============ */}
-      {(specs.length > 0 || hasClientRel) && (
+      {specsFiltered.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Especialidades</Text>
@@ -179,30 +274,43 @@ export function NivelEcossistemaCard() {
               color={colors.textMuted}
             />
           </View>
-
           <View style={styles.card}>
-            {specs.map((r, i) => (
+            {specsFiltered.map((r, i) => (
               <React.Fragment key={r.specialty_id}>
                 <SpecialtyRow
                   icon={iconForSpecialty(r.name)}
                   name={r.name}
                   stars={r.stars}
                 />
-                {(i < specs.length - 1 || hasClientRel) && (
+                {i < specsFiltered.length - 1 && (
                   <View style={styles.rowDivider} />
                 )}
               </React.Fragment>
             ))}
+          </View>
+        </View>
+      )}
 
-            {hasClientRel && (
-              <SpecialtyRow
-                icon="people"
-                name="Atendimento ao cliente"
-                sub="Avaliado pelos clientes"
-                stars={clientRel!.rating_avg ?? 0}
-                highlight
-              />
-            )}
+      {/* ============ Relacionamento com o cliente ============ */}
+      {hasClientRel && (
+        <View style={styles.section}>
+          <View style={styles.relCard}>
+            <View style={[styles.relIconWrap, { backgroundColor: '#10B98122' }]}>
+              <Ionicons name="people" size={20} color="#10B981" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.relTitle}>Relacionamento com o cliente</Text>
+              <Text style={styles.relSub}>Avaliado pelos clientes</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <StarsRow stars={clientRel!.rating_avg ?? 0} size={14} />
+              <Text style={styles.relCount}>
+                {clientRel!.ratings_count} avaliações recebidas
+              </Text>
+              <Text style={styles.relValue}>
+                {fmtDec(clientRel!.rating_avg)}
+              </Text>
+            </View>
           </View>
         </View>
       )}
@@ -267,41 +375,23 @@ function SpecialtyRow({
   icon,
   name,
   stars,
-  sub,
-  highlight,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   name: string;
   stars: number;
-  sub?: string;
-  highlight?: boolean;
 }) {
   const clamped = Math.max(0, Math.min(5, stars));
-  const tint = highlight ? colors.info : colors.textMuted;
   return (
-    <View style={[styles.specRow, highlight && styles.specRowHighlight]}>
-      <View
-        style={[
-          styles.specIconWrap,
-          { backgroundColor: tint + (highlight ? '22' : '15') },
-        ]}
-      >
-        <Ionicons name={icon} size={18} color={tint} />
+    <View style={styles.specRow}>
+      <View style={styles.specIconWrap}>
+        <Ionicons name={icon} size={18} color={colors.textMuted} />
       </View>
-      <View style={{ flex: 1 }}>
-        <Text
-          style={[styles.specName, highlight && { color: colors.info }]}
-          numberOfLines={1}
-        >
-          {name}
-        </Text>
-        {sub && <Text style={styles.specSub}>{sub}</Text>}
-      </View>
+      <Text style={styles.specName} numberOfLines={1}>
+        {name}
+      </Text>
       <View style={styles.specRight}>
         <StarsRow stars={clamped} size={14} />
-        <Text
-          style={[styles.specValue, highlight && { color: colors.info }]}
-        >
+        <Text style={styles.specValue}>
           {clamped.toFixed(1).replace('.', ',')}
         </Text>
       </View>
@@ -333,6 +423,47 @@ function StarsRow({ stars, size = 14 }: { stars: number; size?: number }) {
   );
 }
 
+function EvalCard({
+  icon,
+  tint,
+  label,
+  value,
+  sub,
+  star,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  tint: string;
+  label: string;
+  value: string;
+  sub?: string;
+  star?: boolean;
+}) {
+  return (
+    <View style={[styles.evalCard, { borderColor: tint + '40' }]}>
+      <View style={[styles.evalIconWrap, { backgroundColor: tint + '15' }]}>
+        <Ionicons name={icon} size={18} color={tint} />
+      </View>
+      <Text style={styles.evalLabel}>{label}</Text>
+      <View style={styles.evalValueRow}>
+        <Text style={[styles.evalValue, { color: tint }]}>{value}</Text>
+        {star && value !== '—' && (
+          <Ionicons
+            name="star"
+            size={14}
+            color="#FBBF24"
+            style={{ marginLeft: 4 }}
+          />
+        )}
+      </View>
+      {sub && (
+        <View style={[styles.evalChip, { backgroundColor: '#10B98122' }]}>
+          <Text style={[styles.evalChipText, { color: '#10B981' }]}>{sub}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 function StatCard({
   icon,
   tint,
@@ -356,24 +487,31 @@ function StatCard({
 }
 
 const styles = StyleSheet.create({
-  /* ============ Header centralizado ============ */
-  header: {
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 20,
+  /* ============ Header ============ */
+  headerWrap: {
+    backgroundColor: colors.card,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
   },
-  avatarBig: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: colors.background,
     borderWidth: 2,
     borderColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
-    marginBottom: 14,
   },
   avatarImg: { width: '100%', height: '100%' },
   avatarOverlay: {
@@ -386,48 +524,92 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: -2,
     bottom: -2,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: colors.background,
+    borderColor: colors.card,
   },
-  name: {
-    ...typography.h3,
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 10,
+  headerInfo: { flex: 1, minWidth: 0 },
+  name: { ...typography.bodyBold, color: colors.text },
+  email: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  roleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: colors.background,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+  },
+  roleText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    fontSize: 11,
   },
   nivelBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 999,
+    alignSelf: 'flex-start',
+    marginTop: 6,
   },
-  nivelLabel: {
+  nivelText: {
     ...typography.button,
+    fontSize: 13,
     fontWeight: '800',
-    letterSpacing: 1.5,
-    fontSize: 14,
+    letterSpacing: 1.2,
   },
   nivelSub: {
     ...typography.caption,
     color: colors.textMuted,
-    marginTop: 6,
-    fontSize: 12,
+    fontSize: 10,
+    marginTop: 2,
   },
-  nivelDesc: {
+  scoreBox: { alignItems: 'flex-end' },
+  scoreLabel: {
     ...typography.caption,
     color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: 6,
-    fontSize: 11,
+    fontSize: 10,
+  },
+  scoreValue: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: colors.info,
+    marginTop: 2,
+  },
+  scoreChip: {
+    backgroundColor: '#10B98122',
+    borderRadius: 999,
     paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginTop: 4,
+  },
+  scoreChipText: {
+    ...typography.caption,
+    color: '#10B981',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  headerDesc: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+    marginTop: 12,
+    lineHeight: 16,
   },
 
   /* ============ Section base ============ */
@@ -454,7 +636,44 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  /* ============ Especialidades — linha ============ */
+  /* ============ Avaliações Gerais ============ */
+  evalRow: { flexDirection: 'row', gap: 8 },
+  evalCard: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+  },
+  evalIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  evalLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+  },
+  evalValueRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  evalValue: { fontSize: 18, fontWeight: '800' },
+  evalChip: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginTop: 6,
+  },
+  evalChipText: {
+    ...typography.caption,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+
+  /* ============ Especialidades ============ */
   specRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -462,27 +681,19 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 12,
   },
-  specRowHighlight: {
-    backgroundColor: colors.info + '0F',
-  },
   specIconWrap: {
     width: 36,
     height: 36,
     borderRadius: 8,
+    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  specName: { ...typography.bodySm, color: colors.text },
-  specSub: {
-    ...typography.caption,
-    color: colors.textMuted,
-    fontSize: 11,
-    marginTop: 1,
-  },
+  specName: { ...typography.bodySm, color: colors.text, flex: 1 },
   specRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   specValue: {
     ...typography.bodySmBold,
-    color: colors.text,
+    color: colors.info,
     minWidth: 28,
     textAlign: 'right',
   },
@@ -490,6 +701,43 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: colors.border,
     marginLeft: 62,
+  },
+
+  /* ============ Relacionamento ============ */
+  relCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    gap: 12,
+  },
+  relIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  relTitle: { ...typography.bodySmBold, color: colors.text },
+  relSub: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  relCount: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontSize: 10,
+    marginTop: 2,
+  },
+  relValue: {
+    ...typography.bodySmBold,
+    color: colors.info,
+    marginTop: 1,
   },
 
   /* ============ Estatísticas ============ */
