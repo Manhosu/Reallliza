@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { formatDateBR as formatDate } from "@/lib/utils/format-date";
 import {
   Plus,
   Search,
@@ -77,12 +78,6 @@ const KANBAN_COLUMNS = [
 // ============================================================
 // Helpers
 // ============================================================
-
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "-";
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
 
 function formatCurrency(val: number | null): string {
   if (val == null) return "-";

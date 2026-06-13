@@ -40,12 +40,20 @@ const PHOTO_TYPES: { key: PhotoType; label: string; icon: keyof typeof Ionicons.
 export function CameraScreen() {
   const route = useRoute<CameraRoute>();
   const navigation = useNavigation();
-  const { serviceOrderId } = route.params;
+  const { serviceOrderId, stepKey, stepTitle } = route.params;
+
+  // Quando vem do fluxo de uma etapa específica, a tela vira "fotos da
+  // etapa" — sem botão Galeria (Jessica 10/06: evidência tem que ser
+  // tirada na hora), com pré-seleção de tipo "Durante" e descrição
+  // prefixada `[STEP_KEY]`. Sem stepKey, é o modo livre da OS.
+  const isStepBound = !!stepKey;
 
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
-  const [selectedType, setSelectedType] = useState<PhotoType>(PhotoType.BEFORE);
+  const [selectedType, setSelectedType] = useState<PhotoType>(
+    isStepBound ? PhotoType.DURING : PhotoType.BEFORE
+  );
   const [showModal, setShowModal] = useState(false);
   const [capturedUri, setCapturedUri] = useState<string | null>(null);
   const [description, setDescription] = useState('');
@@ -64,7 +72,14 @@ export function CameraScreen() {
       const data = await apiClient.get<Photo[]>(
         `/service-orders/${serviceOrderId}/photos`,
       );
-      setPhotos(data);
+      // Em modo etapa, mostra só fotos cuja descrição começa com [STEP_KEY] —
+      // assim a Jessica vê só as fotos daquela etapa, não o pool todo da OS.
+      const filtered = isStepBound
+        ? data.filter((p) =>
+            (p.description || '').startsWith(`[${stepKey}]`)
+          )
+        : data;
+      setPhotos(filtered);
     } catch (error) {
       console.error('Error fetching photos:', error);
     } finally {
@@ -171,8 +186,14 @@ export function CameraScreen() {
         type: selectedType,
       };
 
-      if (description.trim()) {
-        fields.description = description.trim();
+      // Em modo etapa, força prefixo `[STEP_KEY] ...` na descrição (formato
+      // que o backend usa pra associar a foto ao step_executions na conta de
+      // photos_count e nos thumbnails da StepsScreen).
+      const trimmedDescription = description.trim();
+      if (isStepBound) {
+        fields.description = `[${stepKey}] ${trimmedDescription || stepTitle || ''}`.trim();
+      } else if (trimmedDescription) {
+        fields.description = trimmedDescription;
       }
 
       if (location) {
@@ -321,10 +342,25 @@ export function CameraScreen() {
         </View>
       )}
 
+      {/* Header da etapa vinculada (Jessica: foto tem que ser registrada
+          no momento, sem galeria) */}
+      {isStepBound && (
+        <View style={styles.stepBanner}>
+          <Ionicons name="construct-outline" size={16} color={colors.primary} />
+          <Text style={styles.stepBannerText} numberOfLines={1}>
+            Fotos da etapa: {stepTitle ?? stepKey}
+          </Text>
+        </View>
+      )}
+
       {/* Action Buttons */}
       <View style={styles.actionsRow}>
         <TouchableOpacity
-          style={styles.captureButton}
+          style={[
+            styles.captureButton,
+            // Sem botão galeria → captura ocupa a linha inteira
+            isStepBound && styles.captureButtonWide,
+          ]}
           onPress={takePhoto}
           activeOpacity={0.8}
         >
@@ -332,14 +368,16 @@ export function CameraScreen() {
           <Text style={styles.captureButtonText}>Tirar Foto</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.galleryButton}
-          onPress={pickFromGallery}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="images-outline" size={24} color={colors.primary} />
-          <Text style={styles.galleryButtonText}>Galeria</Text>
-        </TouchableOpacity>
+        {!isStepBound && (
+          <TouchableOpacity
+            style={styles.galleryButton}
+            onPress={pickFromGallery}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="images-outline" size={24} color={colors.primary} />
+            <Text style={styles.galleryButtonText}>Galeria</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Photos List */}
@@ -518,6 +556,24 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
+  stepBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: colors.primary + '15',
+    borderWidth: 1,
+    borderColor: colors.primary + '40',
+  },
+  stepBannerText: {
+    ...typography.bodySmBold,
+    color: colors.primary,
+    flex: 1,
+  },
   captureButton: {
     flex: 1,
     flexDirection: 'row',
@@ -527,6 +583,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     paddingVertical: 14,
     borderRadius: 12,
+  },
+  captureButtonWide: {
+    flex: 0,
+    width: '100%',
   },
   captureButtonText: {
     ...typography.button,

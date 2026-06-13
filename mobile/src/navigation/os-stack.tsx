@@ -21,7 +21,7 @@ export type OsStackParamList = {
   StepDetail: { serviceOrderId: string; stepId: string };
   Chat: { serviceOrderId: string };
   Checklist: { serviceOrderId: string };
-  Camera: { serviceOrderId: string };
+  Camera: { serviceOrderId: string; stepKey?: string; stepTitle?: string };
   Signature: { serviceOrderId: string };
   Vistoria: { ticketId?: string; ticketProtocol?: string; osId?: string };
 };

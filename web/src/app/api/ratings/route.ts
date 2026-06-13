@@ -148,8 +148,13 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error(`Failed to create rating: ${error.message}`);
-      throw new Error("Failed to create rating");
+      console.error(`Failed to create rating: ${error.message}`, error);
+      // Propaga a mensagem real do banco pro front (Jessica 11/06: até
+      // agora a UI só mostrava "Erro ao criar avaliação" genérico).
+      throw new AuthError(
+        error.code === "23505" ? 409 : 500,
+        `Falha ao criar avaliação: ${error.message}`
+      );
     }
 
     // Audit log

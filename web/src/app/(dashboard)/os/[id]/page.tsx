@@ -4,6 +4,10 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
+  formatDateBR as formatDate,
+  formatDateTimeBR as formatDateTime,
+} from "@/lib/utils/format-date";
+import {
   ArrowLeft,
   Edit,
   Trash2,
@@ -145,28 +149,6 @@ const PHOTO_TYPE_BADGE_VARIANT: Record<PhotoType, string> = {
 // ============================================================
 // Helpers
 // ============================================================
-
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "-";
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-}
-
-function formatDateTime(dateStr: string | null): string {
-  if (!dateStr) return "-";
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function formatCurrency(val: number | null): string {
   if (val == null) return "-";

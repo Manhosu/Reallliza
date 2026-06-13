@@ -150,12 +150,14 @@ export default function UsuariosPage() {
     specialty_ratings: [] as Array<{ specialty_id: string; name: string; stars: number }>,
   });
 
-  // Edit form state
+  // Edit form state — Bug 7 (Jessica 11/06): a edição agora permite
+  // mexer nas especialidades de um técnico já cadastrado.
   const [editForm, setEditForm] = useState({
     full_name: "",
     phone: "",
     role: "" as string,
     status: "" as string,
+    specialty_ratings: [] as Array<{ specialty_id: string; name: string; stars: number }>,
   });
 
   // Debounce search input
@@ -281,11 +283,31 @@ export default function UsuariosPage() {
 
   const handleOpenEdit = (user: Profile) => {
     setEditingUser(user);
+    // Hidrata especialidades existentes no formato {specialty_id, name, stars}.
+    const rawRatings = (
+      user as unknown as {
+        specialty_ratings?: Array<{
+          specialty_id?: string;
+          name?: string;
+          stars?: number;
+        }>;
+      }
+    ).specialty_ratings;
+    const ratings = Array.isArray(rawRatings)
+      ? rawRatings
+          .map((r) => ({
+            specialty_id: r.specialty_id ?? "",
+            name: r.name ?? "",
+            stars: typeof r.stars === "number" ? r.stars : 3,
+          }))
+          .filter((r) => r.specialty_id)
+      : [];
     setEditForm({
       full_name: user.full_name,
       phone: user.phone || "",
       role: user.role,
       status: user.status,
+      specialty_ratings: ratings,
     });
     setActionMenuId(null);
   };
@@ -304,6 +326,13 @@ export default function UsuariosPage() {
         phone: editForm.phone || null,
         role: editForm.role as UserRole,
         status: editForm.status as UserStatus,
+        // Manda só pra técnicos — outros perfis ignoram. A rota PUT normaliza
+        // e sincroniza technician_specialty_scores.
+        ...(editForm.role === UserRole.TECHNICIAN
+          ? { specialty_ratings: editForm.specialty_ratings }
+          : {}),
+      } as Parameters<typeof usersApi.update>[1] & {
+        specialty_ratings?: Array<{ specialty_id: string; name: string; stars: number }>;
       });
       toast.success("Usuário atualizado com sucesso!");
       setEditingUser(null);
@@ -313,6 +342,40 @@ export default function UsuariosPage() {
     } finally {
       setIsUpdating(false);
     }
+  };
+
+  // Helpers do multi-select de especialidades no MODAL DE EDIÇÃO.
+  // Reusam mesma estrutura do createForm mas sobre editForm.
+  const toggleEditSpecialty = (spec: Specialty) => {
+    setEditForm((prev) => {
+      const exists = prev.specialty_ratings.find(
+        (r) => r.specialty_id === spec.id
+      );
+      if (exists) {
+        return {
+          ...prev,
+          specialty_ratings: prev.specialty_ratings.filter(
+            (r) => r.specialty_id !== spec.id
+          ),
+        };
+      }
+      return {
+        ...prev,
+        specialty_ratings: [
+          ...prev.specialty_ratings,
+          { specialty_id: spec.id, name: spec.name, stars: 3 },
+        ],
+      };
+    });
+  };
+
+  const setEditSpecialtyStars = (id: string, stars: number) => {
+    setEditForm((prev) => ({
+      ...prev,
+      specialty_ratings: prev.specialty_ratings.map((r) =>
+        r.specialty_id === id ? { ...r, stars } : r
+      ),
+    }));
   };
 
   const handleToggleStatus = async (user: Profile) => {
@@ -811,6 +874,72 @@ export default function UsuariosPage() {
                   </option>
                 ))}
               </SelectNative>
+
+              {/* Especialidades — só pra técnicos.
+                  Jessica 11/06: precisa poder acrescentar/remover depois do cadastro. */}
+              {editForm.role === UserRole.TECHNICIAN && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium leading-none text-foreground/80">
+                    Especialidades
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Marque as áreas de atuação e ajuste as estrelas (1-5).
+                    Especialidades removidas perdem o histórico de pontuação inicial,
+                    mas avaliações de OS já executadas permanecem.
+                  </p>
+                  <div className="space-y-2 rounded-xl border bg-muted/30 p-3 max-h-64 overflow-y-auto">
+                    {specialtyOptions.length === 0 && (
+                      <p className="text-xs text-muted-foreground italic">
+                        Nenhuma especialidade ativa cadastrada. Crie em{" "}
+                        <a href="/especialidades" className="underline">Especialidades</a>.
+                      </p>
+                    )}
+                    {specialtyOptions.map((spec) => {
+                      const current = editForm.specialty_ratings.find(
+                        (r) => r.specialty_id === spec.id
+                      );
+                      const checked = !!current;
+                      return (
+                        <div key={spec.id} className="flex items-center gap-3">
+                          <label className="flex items-center gap-2 flex-1 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleEditSpecialty(spec)}
+                              className="h-4 w-4 rounded border-input accent-primary"
+                            />
+                            <span className="text-sm">{spec.name}</span>
+                          </label>
+                          {checked && (
+                            <div className="flex items-center gap-0.5">
+                              {[1, 2, 3, 4, 5].map((n) => (
+                                <button
+                                  key={n}
+                                  type="button"
+                                  onClick={() =>
+                                    setEditSpecialtyStars(spec.id, n)
+                                  }
+                                  className="p-0.5"
+                                  title={`${n} estrela${n > 1 ? "s" : ""}`}
+                                >
+                                  <Star
+                                    className={cn(
+                                      "h-4 w-4 transition-colors",
+                                      n <= (current?.stars ?? 0)
+                                        ? "fill-yellow-500 text-yellow-500"
+                                        : "text-muted-foreground/40"
+                                    )}
+                                  />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <Button variant="outline" onClick={() => setEditingUser(null)}>

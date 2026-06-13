@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   TextInput,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -105,6 +106,7 @@ export function StepsScreen() {
 
   const [steps, setSteps] = useState<StepWithTemplate[]>([]);
   const [photosByStep, setPhotosByStep] = useState<Record<string, number>>({});
+  const [thumbsByStep, setThumbsByStep] = useState<Record<string, Photo[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
@@ -142,14 +144,24 @@ export function StepsScreen() {
       });
       setSteps(enriched);
 
-      // Conta fotos por step (categoriza por description ou metadata)
+      // Conta fotos por step E acumula até 4 thumbs por etapa.
+      // Categorização pelo prefixo `[STEP_KEY]` na descrição (gravado pelo
+      // CameraScreen quando navegamos com stepKey + pelo StepDetailScreen).
       const counts: Record<string, number> = {};
-      enriched.forEach((s) => (counts[s.step_key] = 0));
+      const thumbs: Record<string, Photo[]> = {};
+      enriched.forEach((s) => {
+        counts[s.step_key] = 0;
+        thumbs[s.step_key] = [];
+      });
       photoData.forEach((p) => {
         const key = (p.description || '').match(/^\[(.*?)\]/)?.[1];
-        if (key && counts[key] !== undefined) counts[key]++;
+        if (key && counts[key] !== undefined) {
+          counts[key]++;
+          if (thumbs[key].length < 4) thumbs[key].push(p);
+        }
       });
       setPhotosByStep(counts);
+      setThumbsByStep(thumbs);
 
       // Hidrata notes
       const initialNotes: Record<string, string> = {};
@@ -246,7 +258,13 @@ export function StepsScreen() {
   };
 
   const handleAddPhotos = (step: StepWithTemplate) => {
-    navigation.navigate('Camera', { serviceOrderId });
+    // Vincula a foto à etapa via stepKey: a foto entra como
+    // "[STEP_KEY] ..." e o contador da etapa enxerga automaticamente.
+    navigation.navigate('Camera', {
+      serviceOrderId,
+      stepKey: step.step_key,
+      stepTitle: step.template?.name || step.step_key,
+    });
   };
 
   const handleSignature = () => {
@@ -396,6 +414,31 @@ export function StepsScreen() {
                       <View style={styles.reqRow}>
                         <Ionicons name="ellipse-outline" size={14} color={colors.textDark} />
                         <Text style={styles.reqText}>Assinatura do cliente</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* Thumbs das fotos vinculadas à etapa
+                    (Jessica 10/06 áudio 14:55: precisa mostrar as fotos,
+                     não só o contador). */}
+                {(thumbsByStep[step.step_key]?.length ?? 0) > 0 && (
+                  <View style={styles.thumbsRow}>
+                    {thumbsByStep[step.step_key].map((p) => (
+                      <Image
+                        key={p.id}
+                        source={{ uri: p.thumbnail_url || p.url }}
+                        style={styles.thumb}
+                      />
+                    ))}
+                    {(photosByStep[step.step_key] ?? 0) >
+                      (thumbsByStep[step.step_key]?.length ?? 0) && (
+                      <View style={styles.thumbMore}>
+                        <Text style={styles.thumbMoreText}>
+                          +
+                          {(photosByStep[step.step_key] ?? 0) -
+                            (thumbsByStep[step.step_key]?.length ?? 0)}
+                        </Text>
                       </View>
                     )}
                   </View>
@@ -640,6 +683,32 @@ const styles = StyleSheet.create({
     minHeight: 70,
     textAlignVertical: 'top',
     ...typography.bodySm,
+  },
+  thumbsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 8,
+    flexWrap: 'wrap',
+  },
+  thumb: {
+    width: 58,
+    height: 58,
+    borderRadius: 6,
+    backgroundColor: colors.cardAlt,
+  },
+  thumbMore: {
+    width: 58,
+    height: 58,
+    borderRadius: 6,
+    backgroundColor: colors.cardAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  thumbMoreText: {
+    ...typography.bodyBold,
+    color: colors.textMuted,
   },
   finalFields: {
     gap: 10,
