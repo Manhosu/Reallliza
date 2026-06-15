@@ -93,18 +93,20 @@ export async function GET(request: NextRequest) {
 
     // Role-based access control
     if (user.role === "partner" || user.role === "technician") {
-      // Partners/Technicians: veem propostas direcionadas a eles + broadcast
-      // que casa com sua região (operating_region contém target_state).
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("operating_region")
-        .eq("id", user.id)
-        .maybeSingle();
-      const region = (profileData?.operating_region || "").toUpperCase();
-
-      // Para partner_id direto, o partner_id da proposta = id da tabela partners
-      // que liga a um user_id. Para broadcast, partner_id IS NULL.
-      // Aceitação direta também passa por user.id em accepted_by.
+      // Partners/Technicians veem:
+      //  - propostas direcionadas (partner_id = meu partner)
+      //  - TODOS broadcasts pendentes (partner_id IS NULL)
+      //
+      // Jessica 14/06: a notificação chegava mas a aba Propostas mostrava
+      // "Nenhuma proposta". Causa: o filtro antigo exigia
+      // `target_state == operating_region[:2]`, mas o fanout (POST) usa
+      // `operating_region.includes(target_state)` — mais permissivo —, e
+      // quando operating_region está vazio o usuário ficava sem nada
+      // mesmo recebendo o push.
+      //
+      // Decisão: se a notificação chegou, é porque o sistema considerou
+      // o usuário elegível. Aqui mostramos todos broadcasts pendentes;
+      // o ranking continua acontecendo no POST (top 10 notificado).
       let partnerOwnId: string | null = null;
       if (user.role === "partner") {
         const { data: partnerData } = await supabase
@@ -115,28 +117,13 @@ export async function GET(request: NextRequest) {
         partnerOwnId = partnerData?.id ?? null;
       }
 
-      // Build OR filter: (partner_id = my_partner_id) OR (broadcast E região casa)
       const orParts: string[] = [];
       if (partnerOwnId) {
         orParts.push(`partner_id.eq.${partnerOwnId}`);
       }
-      // Broadcast geral (target_state IS NULL) — sempre aparece
-      // Broadcast com state específico — só se region casa
-      if (region) {
-        orParts.push(
-          `and(partner_id.is.null,or(target_state.is.null,target_state.eq.${region.slice(0, 2)}))`
-        );
-      } else {
-        // sem região cadastrada: vê apenas broadcasts globais
-        orParts.push(`and(partner_id.is.null,target_state.is.null)`);
-      }
+      // Broadcast pendente para qualquer technician/partner ativo.
+      orParts.push(`partner_id.is.null`);
 
-      if (orParts.length === 0) {
-        return jsonResponse({
-          data: [],
-          meta: { total: 0, page, limit, total_pages: 0 },
-        });
-      }
       query = query.or(orParts.join(","));
     } else {
       checkRole(user, ["admin", "manager"]);
