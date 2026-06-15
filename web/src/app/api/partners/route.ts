@@ -258,8 +258,26 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error(`Failed to create partner: ${error.message}`);
-      return jsonResponse({ message: "Failed to create partner" }, 500);
+      console.error(`Failed to create partner: ${error.message}`, error);
+      // Jessica 14/06: a mensagem generica "Failed to create partner"
+      // escondia a causa real (CNPJ duplicado, e-mail duplicado, etc).
+      // Mapeia codigos comuns do Postgres pra texto amigavel; demais erros
+      // sao propagados literais para diagnostico.
+      let friendly = `Não foi possível cadastrar o parceiro: ${error.message}`;
+      if (error.code === "23505") {
+        // unique_violation — mensagens dependem do constraint name
+        if (error.message.toLowerCase().includes("cnpj")) {
+          friendly = `Já existe um parceiro cadastrado com este CNPJ.`;
+        } else if (error.message.toLowerCase().includes("user_id")) {
+          friendly = `Este usuário já está vinculado a outro parceiro.`;
+        } else {
+          friendly = `Já existe um registro com algum dos dados informados (CNPJ ou e-mail).`;
+        }
+      } else if (error.code === "23503") {
+        friendly = `Dados de referência inválidos (usuário ou empresa não encontrados).`;
+      }
+      const httpStatus = error.code === "23505" ? 409 : 500;
+      return jsonResponse({ message: friendly }, httpStatus);
     }
 
     // Log audit
