@@ -140,14 +140,23 @@ export async function POST(
       updatedProposal = data;
     }
 
-    // Se aceitou, associa à OS
+    // Se aceitou, associa à OS.
+    // Jessica 14/06: ao aceitar uma proposta DIRETA, o código antigo só
+    // setava partner_id e a OS ficava em status 'pending', sem
+    // technician_id — daí a aba "Serviços" do parceiro ficava sem o
+    // botão "Iniciar Deslocamento" e nada acontecia. Agora os dois
+    // modos (direto e broadcast) caem no mesmo fluxo: technician_id
+    // = quem aceitou, status = 'assigned', e o resto (histórico de
+    // status, agenda automática) acontece igual.
     if (action === "accept") {
-      const soUpdate: Record<string, unknown> = { updated_at: now };
-      if (isBroadcast) {
-        // Atribui o user (technician/partner) como technician_id
-        soUpdate.technician_id = user.id;
-        soUpdate.status = "assigned";
-      } else if (proposal.partner_id) {
+      const soUpdate: Record<string, unknown> = {
+        updated_at: now,
+        technician_id: user.id,
+        status: "assigned",
+      };
+      // Direta: marca também o partner_id pra preservar a empresa do
+      // contrato; broadcast não tem partner.
+      if (!isBroadcast && proposal.partner_id) {
         soUpdate.partner_id = proposal.partner_id;
       }
 
@@ -162,7 +171,7 @@ export async function POST(
         );
       }
 
-      // Para broadcast: expira outras propostas pendentes da mesma OS
+      // Para broadcast: expira outras propostas pendentes da mesma OS.
       if (isBroadcast) {
         await supabase
           .from("service_proposals")
@@ -170,34 +179,38 @@ export async function POST(
           .eq("service_order_id", proposal.service_order_id)
           .eq("status", "pending")
           .neq("id", id);
+      }
 
-        // Histórico de status da OS
-        await supabase.from("os_status_history").insert({
-          service_order_id: proposal.service_order_id,
-          from_status: "pending",
-          to_status: "assigned",
-          changed_by: user.id,
-          notes: `Proposta broadcast aceita por ${user.full_name || user.email}`,
-        });
+      // Histórico de status da OS (vale pros dois modos).
+      const noteSuffix = isBroadcast
+        ? `Proposta broadcast aceita por ${user.full_name || user.email}`
+        : `Proposta aceita por ${user.full_name || user.email} (parceiro)`;
+      await supabase.from("os_status_history").insert({
+        service_order_id: proposal.service_order_id,
+        from_status: "pending",
+        to_status: "assigned",
+        changed_by: user.id,
+        notes: noteSuffix,
+      });
 
-        // Bloco 7 (01/06) — proposta aceita também cria agenda automática
-        // pro técnico que aceitou. Conflito não aborta (a aceitação já foi
-        // gravada), só loga — agenda nesse caso fica pra ajuste manual.
-        try {
-          const result = await createScheduleFromOs(
-            supabase,
-            proposal.service_order_id,
-            user.id,
-            "proposal_accepted"
+      // Bloco 7 (01/06) — proposta aceita também cria agenda automática
+      // pro técnico que aceitou. Vale pros dois modos. Conflito não
+      // aborta (a aceitação já foi gravada), só loga — agenda nesse
+      // caso fica pra ajuste manual.
+      try {
+        const result = await createScheduleFromOs(
+          supabase,
+          proposal.service_order_id,
+          user.id,
+          "proposal_accepted"
+        );
+        if (result.outcome === "conflict") {
+          console.warn(
+            `proposal-accepted: schedule conflict for tech ${user.id}: ${result.conflict_message}`
           );
-          if (result.outcome === "conflict") {
-            console.warn(
-              `proposal-accepted: schedule conflict for tech ${user.id}: ${result.conflict_message}`
-            );
-          }
-        } catch (err) {
-          console.warn("auto-schedule on proposal accept failed:", err);
         }
+      } catch (err) {
+        console.warn("auto-schedule on proposal accept failed:", err);
       }
     }
 
