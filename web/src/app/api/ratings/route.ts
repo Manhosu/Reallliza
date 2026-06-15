@@ -112,16 +112,38 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify service order exists if provided
+    // Aceita tanto UUID quanto número da OS no campo service_order_id.
+    // Jessica 14/06: colocava o numero da OS (ex: "62") e levava 404.
+    // Agora resolve numero -> UUID antes de inserir.
+    let resolvedServiceOrderId: string | null = null;
     if (body.service_order_id) {
-      const { data: serviceOrder, error: soError } = await supabase
-        .from("service_orders")
-        .select("id")
-        .eq("id", body.service_order_id)
-        .single();
+      const raw = String(body.service_order_id).trim().replace(/^#/, "");
+      const isUuid =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          raw
+        );
+      const asNumber = Number(raw);
+      const isOrderNumber = !isUuid && /^\d+$/.test(raw) && asNumber > 0;
+
+      if (!isUuid && !isOrderNumber) {
+        throw new AuthError(
+          400,
+          `OS inválida: "${raw}". Use o número (ex: 62) ou o ID interno.`
+        );
+      }
+
+      const query = supabase.from("service_orders").select("id");
+      const { data: serviceOrder, error: soError } = await (isUuid
+        ? query.eq("id", raw).single()
+        : query.eq("order_number", asNumber).single());
 
       if (soError || !serviceOrder) {
-        throw new AuthError(404, "Service order not found");
+        throw new AuthError(
+          404,
+          `OS #${raw} não encontrada. Confira o número e tente novamente.`
+        );
       }
+      resolvedServiceOrderId = serviceOrder.id as string;
     }
 
     const insertData: Record<string, unknown> = {
@@ -133,8 +155,8 @@ export async function POST(request: NextRequest) {
       communication_score: Number(body.communication_score),
     };
 
-    if (body.service_order_id) {
-      insertData.service_order_id = body.service_order_id;
+    if (resolvedServiceOrderId) {
+      insertData.service_order_id = resolvedServiceOrderId;
     }
 
     if (body.notes !== undefined && body.notes !== null) {

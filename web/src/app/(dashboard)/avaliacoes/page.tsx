@@ -625,18 +625,24 @@ export default function AvaliacoesPage() {
                 />
               </div>
 
-              {/* Service Order ID (optional) */}
-              <Input
-                label="Ordem de Serviço (opcional)"
-                placeholder="ID da OS vinculada"
-                value={createForm.service_order_id}
-                onChange={(e) =>
-                  setCreateForm({
-                    ...createForm,
-                    service_order_id: e.target.value,
-                  })
-                }
-              />
+              {/* Service Order — aceita número (#62) ou UUID. Jessica 14/06:
+                  antes só aceitava UUID interno e levava 404 com o número. */}
+              <div className="space-y-1">
+                <Input
+                  label="Número da OS (opcional)"
+                  placeholder="Ex: 62"
+                  value={createForm.service_order_id}
+                  onChange={(e) =>
+                    setCreateForm({
+                      ...createForm,
+                      service_order_id: e.target.value,
+                    })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Digite o número da OS (ex: 62). Não precisa do código interno.
+                </p>
+              </div>
             </div>
 
             <div className="flex justify-end gap-3 mt-6">
