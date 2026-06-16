@@ -43,24 +43,29 @@ export async function GET(request: NextRequest) {
       );
 
     // Role-based access control
+    // Jessica 16/06: parceiro aceitava proposta broadcast mas o app dele
+    // mostrava "Nenhuma OS encontrada". Causa: o aceite seta technician_id
+    // = user.id e (so quando direta) partner_id. Em broadcast partner_id
+    // fica null. O filtro antigo do partner exigia partner_id estritamente,
+    // entao a OS aceita por broadcast nunca aparecia pra ele.
+    //
+    // Solucao: parceiro ve OS quando ele e o partner_id OU quando ele
+    // assumiu a execucao (technician_id = user.id). Tecnico continua
+    // filtrando so por technician_id.
     if (user.role === "technician") {
       query = query.eq("technician_id", user.id);
     } else if (user.role === "partner") {
-      // Get the partner record for this user
       const { data: partnerData } = await supabase
         .from("partners")
         .select("id")
         .eq("user_id", user.id)
         .single();
 
+      const orParts: string[] = [`technician_id.eq.${user.id}`];
       if (partnerData) {
-        query = query.eq("partner_id", partnerData.id);
-      } else {
-        return jsonResponse({
-          data: [],
-          meta: { total: 0, page, limit, total_pages: 0 },
-        });
+        orParts.push(`partner_id.eq.${partnerData.id}`);
       }
+      query = query.or(orParts.join(","));
     }
     // admin / manager can see all
 

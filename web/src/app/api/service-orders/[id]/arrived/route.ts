@@ -58,7 +58,7 @@ export async function PATCH(
     const { data: order, error: findError } = await supabase
       .from("service_orders")
       .select(
-        "id, status, order_number, technician_id, arrived_at, geo_lat, geo_lng"
+        "id, status, order_number, technician_id, partner_id, arrived_at, geo_lat, geo_lng"
       )
       .eq("id", id)
       .single();
@@ -67,12 +67,28 @@ export async function PATCH(
       throw new AuthError(404, `Service order with ID ${id} not found`);
     }
 
-    // Permissão: técnico só registra chegada da sua própria OS.
-    if (user.role === "technician" && order.technician_id !== user.id) {
-      throw new AuthError(
-        403,
-        "Você não tem permissão para registrar chegada nesta OS"
-      );
+    // Permissao: tecnico OU parceiro que aceitou a OS (broadcast/direta).
+    // Antes so olhava technician_id pra role=technician — parceiro role
+    // aceitando broadcast ficava sem permissao.
+    if (user.role === "technician" || user.role === "partner") {
+      let partnerOwnId: string | null = null;
+      if (user.role === "partner") {
+        const { data: pd } = await supabase
+          .from("partners")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        partnerOwnId = pd?.id ?? null;
+      }
+      const okAsTech = order.technician_id === user.id;
+      const okAsPartner =
+        !!partnerOwnId && (order as { partner_id?: string | null }).partner_id === partnerOwnId;
+      if (!okAsTech && !okAsPartner) {
+        throw new AuthError(
+          403,
+          "Voce nao tem permissao para registrar chegada nesta OS"
+        );
+      }
     }
 
     if (order.status !== "in_progress") {

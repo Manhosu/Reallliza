@@ -23,10 +23,10 @@ export async function GET(
 
     const supabase = getAdminClient();
 
-    // Verifica acesso à OS (técnico só vê as suas)
+    // Verifica acesso a OS (tecnico ou parceiro que aceitou)
     const { data: order, error: orderErr } = await supabase
       .from("service_orders")
-      .select("id, technician_id, step_template_group_id")
+      .select("id, technician_id, partner_id, step_template_group_id")
       .eq("id", id)
       .single();
 
@@ -34,8 +34,22 @@ export async function GET(
       throw new AuthError(404, "OS não encontrada");
     }
 
-    if (user.role === "technician" && order.technician_id !== user.id) {
-      throw new AuthError(403, "Sem permissão para ver as etapas desta OS");
+    if (user.role === "technician" || user.role === "partner") {
+      let partnerOwnId: string | null = null;
+      if (user.role === "partner") {
+        const { data: pd } = await supabase
+          .from("partners")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        partnerOwnId = pd?.id ?? null;
+      }
+      const okAsTech = order.technician_id === user.id;
+      const okAsPartner =
+        !!partnerOwnId && order.partner_id === partnerOwnId;
+      if (!okAsTech && !okAsPartner) {
+        throw new AuthError(403, "Sem permissão para ver as etapas desta OS");
+      }
     }
 
     const { data: existing } = await supabase

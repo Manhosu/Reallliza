@@ -70,9 +70,23 @@ export async function PATCH(
       );
     }
 
-    // Role-based permission: technicians can only change status of their own orders
-    if (user.role === "technician" && order.technician_id !== user.id) {
-      throw new AuthError(403, "You do not have permission to change status of this service order");
+    // Permissao de operador (tecnico ou parceiro que aceitou):
+    if (user.role === "technician" || user.role === "partner") {
+      let partnerOwnId: string | null = null;
+      if (user.role === "partner") {
+        const { data: pd } = await supabase
+          .from("partners")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        partnerOwnId = pd?.id ?? null;
+      }
+      const okAsTech = order.technician_id === user.id;
+      const okAsPartner =
+        !!partnerOwnId && order.partner_id === partnerOwnId;
+      if (!okAsTech && !okAsPartner) {
+        throw new AuthError(403, "You do not have permission to change status of this service order");
+      }
     }
 
     // Build the update object

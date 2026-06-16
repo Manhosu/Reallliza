@@ -43,7 +43,9 @@ export async function GET(
       throw new AuthError(403, "You do not have permission to view this service order");
     }
 
-    // Partners can only see their own partner's orders
+    // Partners: ve OS atribuida ao seu partner_id OU OS que ele assumiu
+    // como tecnico via broadcast (technician_id = user.id). Mesmo motivo
+    // do filtro do listing — propostas broadcast nao tem partner_id.
     if (user.role === "partner") {
       const { data: partnerData } = await supabase
         .from("partners")
@@ -51,7 +53,11 @@ export async function GET(
         .eq("user_id", user.id)
         .single();
 
-      if (!partnerData || order.partner_id !== partnerData.id) {
+      const ownsAsTechnician = order.technician_id === user.id;
+      const ownsAsPartner =
+        !!partnerData && order.partner_id === partnerData.id;
+
+      if (!ownsAsTechnician && !ownsAsPartner) {
         throw new AuthError(403, "You do not have permission to view this service order");
       }
     }
@@ -190,9 +196,22 @@ export async function PUT(
           updatePayload[field] = body[field];
         }
       }
-    } else if (user.role === "technician") {
-      // Technician can only update limited fields
-      if (existing.technician_id !== user.id) {
+    } else if (user.role === "technician" || user.role === "partner") {
+      // Operador (tecnico ou parceiro que assumiu via broadcast): so pode
+      // atualizar um conjunto limitado de campos relacionados a execucao.
+      let partnerOwnId: string | null = null;
+      if (user.role === "partner") {
+        const { data: pd } = await supabase
+          .from("partners")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        partnerOwnId = pd?.id ?? null;
+      }
+      const okAsTech = existing.technician_id === user.id;
+      const okAsPartner =
+        !!partnerOwnId && (existing as { partner_id?: string | null }).partner_id === partnerOwnId;
+      if (!okAsTech && !okAsPartner) {
         throw new AuthError(403, "You do not have permission to update this service order");
       }
 
