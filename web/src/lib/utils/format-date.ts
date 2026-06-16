@@ -20,6 +20,19 @@ function parseLocalDate(s: string): Date {
 }
 
 /**
+ * Substituto de `parseISO` da date-fns que respeita date-only.
+ * - `2026-06-17` → Date local (17/06 00:00 horário local).
+ * - ISO completo → comportamento padrão `new Date`.
+ *
+ * Use sempre que for renderizar uma data DATE-only do Postgres em UI.
+ */
+export function parseLocalDateString(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  const d = isDateOnly(s) ? parseLocalDate(s) : new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/**
  * Formata data sem hora — `2026-06-10` → `10/06/2026`.
  * Aceita tanto date-only quanto ISO completo. Para date-only, parseia local.
  */

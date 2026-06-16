@@ -79,13 +79,11 @@ export function AgendaScreen() {
     setWeekStart(prev => addDays(prev, direction * 7));
   };
 
-  const filteredSchedules = schedules.filter(s => {
-    try {
-      return isSameDay(new Date(s.date), selectedDate);
-    } catch {
-      return false;
-    }
-  });
+  // Bug Jessica 16/06: new Date("2026-06-17") era interpretado como UTC midnight
+  // e isSameDay caía 1 dia atrás. Comparamos por string yyyy-MM-dd da própria
+  // selectedDate (gerada local) — bate exato com s.date do banco.
+  const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+  const filteredSchedules = schedules.filter(s => s.date === selectedDateStr);
 
   const getStatusColor = (status: ScheduleStatus): string => {
     switch (status) {

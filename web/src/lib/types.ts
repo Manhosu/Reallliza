@@ -333,8 +333,9 @@ export interface ProfessionalRating {
 export interface ServiceProposal {
   id: string;
   service_order_id: string;
-  partner_id: string;
+  partner_id: string | null;
   proposed_by: string;
+  accepted_by: string | null;
   status: ProposalStatus;
   proposed_value: number | null;
   message: string | null;
@@ -345,6 +346,14 @@ export interface ServiceProposal {
   updated_at: string;
   service_order?: { id: string; title: string; client_name: string };
   partner?: { id: string; company_name: string };
+  // Quem aceitou — preenchido apenas em propostas com status='accepted'.
+  // Inclui o role pra distinguir parceiro (PJ) de técnico (PF) no card.
+  accepted_by_user?: {
+    id: string;
+    full_name: string;
+    email: string;
+    role: string;
+  } | null;
 }
 
 export interface TechnicianLocation {

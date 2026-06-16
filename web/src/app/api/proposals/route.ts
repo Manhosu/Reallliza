@@ -86,7 +86,8 @@ export async function GET(request: NextRequest) {
           address_city, address_state, address_zip, geo_lat, geo_lng,
           scheduled_date, estimated_value, status, priority
         ),
-        partner:partners!service_proposals_partner_id_fkey(id, company_name)
+        partner:partners!service_proposals_partner_id_fkey(id, company_name),
+        accepted_by_user:profiles!service_proposals_accepted_by_fkey(id, full_name, email, role)
       `,
         { count: "exact" }
       );

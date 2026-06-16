@@ -426,15 +426,43 @@ export default function PropostasPage() {
                       </Badge>
                     </div>
 
-                    {/* Partner company */}
+                    {/* Destinatário da proposta: direta mostra empresa,
+                        broadcast indica "Broadcast (qualquer técnico/parceiro)". */}
                     <div className="flex items-center gap-2 text-sm">
                       <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted">
                         <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
                       </div>
                       <span className="truncate text-muted-foreground">
-                        {proposal.partner?.company_name || "Parceiro"}
+                        {proposal.partner?.company_name
+                          ? proposal.partner.company_name
+                          : "Broadcast — qualquer técnico/parceiro elegível"}
                       </span>
                     </div>
+
+                    {/* Quem aceitou — Jessica 16/06: o admin precisava saber
+                        qual parceiro/técnico aceitou a proposta. */}
+                    {proposal.status === ProposalStatus.ACCEPTED &&
+                      proposal.accepted_by_user && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-green-500/10">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <span className="block truncate font-medium text-foreground">
+                              Aceita por {proposal.accepted_by_user.full_name}
+                            </span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {proposal.accepted_by_user.role === "partner"
+                                ? "Parceiro"
+                                : proposal.accepted_by_user.role === "technician"
+                                  ? "Técnico"
+                                  : proposal.accepted_by_user.role}
+                              {" · "}
+                              {proposal.accepted_by_user.email}
+                            </span>
+                          </div>
+                        </div>
+                      )}
 
                     {/* Proposed Value */}
                     <div className="flex items-center gap-2 text-sm">

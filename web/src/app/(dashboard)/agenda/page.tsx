@@ -30,9 +30,9 @@ import {
   isToday,
   isSameMonth,
   getDay,
-  parseISO,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { parseLocalDateString } from "@/lib/utils/format-date";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -814,7 +814,10 @@ export default function AgendaPage() {
             ) : (
               listSchedules.map((schedule, index) => {
                 const colors = SCHEDULE_STATUS_COLORS[schedule.status];
-                const schedDate = parseISO(schedule.date);
+                // Bug Jessica 16/06: parseISO("2026-06-17") era interpretado
+                // como UTC midnight e exibia 16/06 no Brasil. parseLocalDateString
+                // respeita date-only e parseia no fuso local.
+                const schedDate = parseLocalDateString(schedule.date) ?? new Date();
 
                 return (
                   <motion.div
