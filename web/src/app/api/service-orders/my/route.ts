@@ -33,7 +33,13 @@ export async function GET(request: NextRequest) {
         { count: "exact" }
       );
 
-    // Always filter by user
+    // Always filter by user.
+    // Bug Jessica 17/06: parceiro aceitava proposta broadcast — backend
+    // setava technician_id = user.id e partner_id = NULL. O filtro daqui
+    // era so partner_id = mypartner, entao a OS aceita via broadcast
+    // nunca aparecia. Mesmo fix aplicado em /api/service-orders ontem,
+    // mas o mobile chama /my (essa rota). Agora parceiro ve OS quando
+    // e o partner_id OU quando assumiu como tecnico.
     if (user.role === "technician") {
       query = query.eq("technician_id", user.id);
     } else if (user.role === "partner") {
@@ -43,11 +49,11 @@ export async function GET(request: NextRequest) {
         .eq("user_id", user.id)
         .single();
 
+      const orParts: string[] = [`technician_id.eq.${user.id}`];
       if (partnerData) {
-        query = query.eq("partner_id", partnerData.id);
-      } else {
-        return jsonResponse({ data: [], meta: { total: 0, page, limit, total_pages: 0 } });
+        orParts.push(`partner_id.eq.${partnerData.id}`);
       }
+      query = query.or(orParts.join(","));
     }
     // admin/manager see all (same as /api/service-orders)
 
