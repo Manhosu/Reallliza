@@ -28,6 +28,7 @@ import { PriorityBadge } from '../components/PriorityBadge';
 import { EmptyState } from '../components/EmptyState';
 import { OfflineBanner } from '../components/OfflineBanner';
 import { SyncIndicator } from '../components/SyncIndicator';
+import { useServiceOrderRealtime } from '../lib/hooks/useServiceOrderRealtime';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import type { OsStackParamList } from '../navigation/os-stack';
@@ -133,6 +134,14 @@ export function HomeScreen() {
     setIsLoading(true);
     fetchOrders(1).finally(() => setIsLoading(false));
   }, [fetchOrders]);
+
+  // Realtime: quando uma OS atribuida ao user (ou ao parceiro dele) mudar,
+  // re-busca a pagina 1 silenciosamente. Resolve o "tem que puxar refresh
+  // pra ver a OS recem-aceita" reportado pela Jessica em 17/06.
+  const onRealtime = useCallback(() => {
+    fetchOrders(1, true);
+  }, [fetchOrders]);
+  useServiceOrderRealtime({ onRelevantChange: onRealtime });
 
   const handleRefresh = async () => {
     setIsRefreshing(true);

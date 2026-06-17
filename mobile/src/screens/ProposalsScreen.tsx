@@ -18,6 +18,7 @@ import { PaginatedResponse } from '../lib/types';
 import { EmptyState } from '../components/EmptyState';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { useProposalsRealtime } from '../lib/hooks/useProposalsRealtime';
 
 // ============================================================
 // Types
@@ -114,6 +115,14 @@ export function ProposalsScreen() {
     setIsLoading(true);
     fetchProposals(1).finally(() => setIsLoading(false));
   }, [fetchProposals]);
+
+  // Realtime: nova proposta broadcast cai imediatamente na lista, e quando
+  // outro técnico aceita um broadcast em que esse user também recebeu, a
+  // entrada some/atualiza pra "expirada" sem precisar puxar refresh.
+  const onProposalChange = useCallback(() => {
+    fetchProposals(1, true);
+  }, [fetchProposals]);
+  useProposalsRealtime({ onChange: onProposalChange });
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
