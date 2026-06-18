@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -22,6 +22,7 @@ import {
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { apiClient } from '../lib/api';
+import { useSchedulesRealtime } from '../lib/hooks/useSchedulesRealtime';
 import {
   Schedule,
   ScheduleStatus,
@@ -68,6 +69,20 @@ export function AgendaScreen() {
     setIsLoading(true);
     fetchSchedules().finally(() => setIsLoading(false));
   }, [fetchSchedules]);
+
+  // Re-busca toda vez que a tela ganha foco (trocar de aba e voltar).
+  // Sem isso, useEffect so dispara em mudanca de weekStart e schedules
+  // criados depois do primeiro mount nao aparecem ate fechar/abrir o app.
+  useFocusEffect(
+    useCallback(() => {
+      fetchSchedules();
+    }, [fetchSchedules]),
+  );
+
+  // Realtime: novo agendamento criado (ex: parceiro aceitou broadcast
+  // e createScheduleFromOs gerou evento) atualiza a lista sem precisar
+  // sair e voltar da tela.
+  useSchedulesRealtime({ onChange: fetchSchedules });
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
