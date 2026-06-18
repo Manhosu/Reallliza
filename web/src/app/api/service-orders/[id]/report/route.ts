@@ -33,6 +33,24 @@ const fmtDate = (d: string | null): string =>
 const fmtDateTime = (d: string | null): string =>
   d ? new Date(d).toLocaleString("pt-BR") : "-";
 
+const fmtTime = (d: string | null): string =>
+  d
+    ? new Date(d).toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "-";
+
+const fmtDuration = (seconds: number | null | undefined): string => {
+  const s = Math.max(0, Math.floor(Number(seconds) || 0));
+  if (s < 60) return `${s}s`;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h && m) return `${h}h ${m}min`;
+  if (h) return `${h}h`;
+  return `${m}min`;
+};
+
 /**
  * GET /api/service-orders/[id]/report
  * Gera PDF da OS no layout Cenize (cabecalho, cliente, itens,
@@ -75,6 +93,18 @@ export async function GET(
       .select("*")
       .eq("service_order_id", id)
       .order("position", { ascending: true });
+
+    // Cronograma de execucao (Jessica 18/06): le os_step_executions
+    // pra montar a timeline de inicio/pausas/retomadas/conclusao.
+    // Estes campos vieram da migration 036 — OSs antigas devolvem array vazio.
+    const { data: stepExecs } = await supabase
+      .from("os_step_executions")
+      .select(
+        "id, step_key, order_index, status, started_at, completed_at, " +
+          "paused_at, pause_count, total_pause_seconds, pause_log, metadata"
+      )
+      .eq("service_order_id", id)
+      .order("order_index", { ascending: true });
 
     const doc = new PDFDocument({ size: "A4", margin: 40 });
     const chunks: Buffer[] = [];
@@ -386,6 +416,149 @@ export async function GET(
       doc.text(`Observacoes: ${order.notes}`, leftX, doc.y + 1, { width: pageWidth });
     }
     doc.moveDown(0.5);
+
+    // ============================================
+    // CRONOGRAMA DE EXECUCAO (Jessica 18/06)
+    // Ponto do dia do tecnico: inicio, pausas, retomadas e finalizacao,
+    // mais total efetivo / pausado / geral.
+    // ============================================
+    type TimelineEvent = {
+      at: string;
+      kind: "start" | "pause" | "resume" | "complete";
+      stepName: string;
+      reason?: string;
+    };
+
+    interface StepRow {
+      step_key: string;
+      started_at: string | null;
+      completed_at: string | null;
+      total_pause_seconds: number | null;
+      pause_log:
+        | Array<{
+            paused_at: string;
+            resumed_at: string;
+            duration_seconds: number;
+            reason?: string;
+          }>
+        | null;
+      metadata: Record<string, unknown> | null;
+    }
+
+    const rows = ((stepExecs ?? []) as unknown) as StepRow[];
+    const stepLabel = (s: StepRow) =>
+      ((s.metadata as { name?: string } | null)?.name as string | undefined) ??
+      s.step_key;
+
+    const events: TimelineEvent[] = [];
+    let summaryStart: string | null = null;
+    let summaryEnd: string | null = null;
+    let totalActiveSec = 0;
+    let totalPauseSec = 0;
+
+    for (const s of rows) {
+      const name = stepLabel(s);
+      if (s.started_at) {
+        events.push({ at: s.started_at, kind: "start", stepName: name });
+        if (!summaryStart || s.started_at < summaryStart)
+          summaryStart = s.started_at;
+      }
+      for (const p of s.pause_log ?? []) {
+        events.push({
+          at: p.paused_at,
+          kind: "pause",
+          stepName: name,
+          reason: p.reason,
+        });
+        events.push({ at: p.resumed_at, kind: "resume", stepName: name });
+      }
+      if (s.completed_at) {
+        events.push({ at: s.completed_at, kind: "complete", stepName: name });
+        if (!summaryEnd || s.completed_at > summaryEnd)
+          summaryEnd = s.completed_at;
+      }
+      if (s.started_at && s.completed_at) {
+        const totalSec = Math.round(
+          (new Date(s.completed_at).getTime() -
+            new Date(s.started_at).getTime()) /
+            1000
+        );
+        totalActiveSec += Math.max(0, totalSec - (s.total_pause_seconds ?? 0));
+      }
+      totalPauseSec += s.total_pause_seconds ?? 0;
+    }
+    events.sort((a, b) => a.at.localeCompare(b.at));
+    const totalGeralSec = totalActiveSec + totalPauseSec;
+
+    if (rows.length > 0 && events.length > 0) {
+      if (doc.y > 640) doc.addPage();
+      doc
+        .fontSize(10)
+        .font("Helvetica-Bold")
+        .fillColor("#000000")
+        .text("Cronograma de Execucao", leftX, doc.y);
+      doc.fontSize(9).font("Helvetica").fillColor("#222222");
+
+      const headerY = doc.y + 4;
+      doc.text(
+        `Inicio do servico: ${fmtDateTime(summaryStart)}`,
+        leftX,
+        headerY
+      );
+      doc.text(`Finalizacao: ${fmtDateTime(summaryEnd)}`, leftX, doc.y + 1);
+
+      // KPIs alinhados a direita, na mesma altura do bloco de horarios.
+      doc.text(`Total efetivo: ${fmtDuration(totalActiveSec)}`, rightX - 180, headerY, {
+        width: 180,
+        align: "right",
+      });
+      doc.text(
+        `Total pausado: ${fmtDuration(totalPauseSec)}`,
+        rightX - 180,
+        headerY + 11,
+        { width: 180, align: "right" }
+      );
+      doc
+        .fontSize(10)
+        .font("Helvetica-Bold")
+        .text(
+          `Total geral: ${fmtDuration(totalGeralSec)}`,
+          rightX - 180,
+          headerY + 22,
+          { width: 180, align: "right" }
+        );
+
+      doc.moveDown(0.8);
+      doc
+        .fontSize(9)
+        .font("Helvetica-Bold")
+        .fillColor("#000000")
+        .text("Acoes do dia:", leftX, doc.y);
+      doc.font("Helvetica").fillColor("#333333");
+
+      const KIND_LABEL: Record<TimelineEvent["kind"], string> = {
+        start: "Inicio",
+        pause: "Pausa",
+        resume: "Retomada",
+        complete: "Concluida",
+      };
+
+      for (const ev of events) {
+        if (doc.y > 760) doc.addPage();
+        const time = fmtTime(ev.at);
+        const label = KIND_LABEL[ev.kind];
+        const tail =
+          ev.kind === "pause" && ev.reason
+            ? ` - ${ev.reason}`
+            : ev.kind === "start" || ev.kind === "complete"
+              ? ` - ${ev.stepName}`
+              : "";
+        doc.text(`  ${time}   ${label}${tail}`, leftX, doc.y + 2, {
+          width: pageWidth,
+        });
+      }
+      doc.moveDown(0.5);
+    }
 
     // ============================================
     // APROVACAO
