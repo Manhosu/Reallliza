@@ -14,6 +14,7 @@ interface ItemPayload {
   final_photos_required_min?: number;
   occurrence_enabled?: boolean;
   is_required?: boolean;
+  wait_time_minutes?: number;
 }
 
 function slugifyKey(value: string): string {
@@ -149,6 +150,10 @@ export async function PATCH(
           final_photos_required_min: it.final_photos_required_min ?? 1,
           occurrence_enabled: it.occurrence_enabled ?? true,
           is_required: it.is_required ?? true,
+          wait_time_minutes: Math.max(
+            0,
+            Math.min(1440, Math.round(Number(it.wait_time_minutes ?? 0)))
+          ),
         };
       });
 

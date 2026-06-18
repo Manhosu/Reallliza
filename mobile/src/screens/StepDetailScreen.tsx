@@ -20,6 +20,8 @@ import * as Location from 'expo-location';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { apiClient, isDeviceOnline, queueOfflineAction } from '../lib/api';
+import { PauseLogEntry, formatDurationShort } from '../lib/types';
+import { useStepExecutionsRealtime } from '../lib/hooks/useStepExecutionsRealtime';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import type { OsStackParamList } from '../navigation/os-stack';
@@ -43,6 +45,12 @@ interface StepExecution {
   photo_initial_url?: string | null;
   photo_final_url?: string | null;
   occurrence_text?: string | null;
+  // Migration 036
+  paused_at?: string | null;
+  pause_count?: number;
+  total_pause_seconds?: number;
+  pause_log?: PauseLogEntry[];
+  unlocked_at?: string | null;
 }
 
 interface Coords {
@@ -171,10 +179,60 @@ export function StepDetailScreen() {
     fetchStep().finally(() => setIsLoading(false));
   }, [fetchStep]);
 
+  // Refresh em tempo real (Jessica 18/06): admin pode pausar/retomar via web
+  useStepExecutionsRealtime({ osId: serviceOrderId, onChange: fetchStep });
+
   const onRefresh = async () => {
     setIsRefreshing(true);
     await fetchStep();
     setIsRefreshing(false);
+  };
+
+  const handlePause = async () => {
+    if (!step) return;
+    Alert.prompt(
+      'Pausar etapa',
+      'Por que você está pausando? (opcional)',
+      async (reason) => {
+        setIsActing(true);
+        try {
+          await apiClient.post(
+            `/service-orders/${serviceOrderId}/steps/${step.id}/pause`,
+            reason ? { reason } : {},
+          );
+          await fetchStep();
+        } catch (err: unknown) {
+          const msg =
+            err && typeof err === 'object' && 'message' in err
+              ? (err as { message: string }).message
+              : 'Não foi possível pausar a etapa.';
+          Alert.alert('Erro', msg);
+        } finally {
+          setIsActing(false);
+        }
+      },
+      'plain-text',
+    );
+  };
+
+  const handleResume = async () => {
+    if (!step) return;
+    setIsActing(true);
+    try {
+      await apiClient.post(
+        `/service-orders/${serviceOrderId}/steps/${step.id}/resume`,
+        {},
+      );
+      await fetchStep();
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'message' in err
+          ? (err as { message: string }).message
+          : 'Não foi possível retomar a etapa.';
+      Alert.alert('Erro', msg);
+    } finally {
+      setIsActing(false);
+    }
   };
 
   const meta = (step?.metadata || {}) as Record<string, unknown>;
@@ -498,21 +556,98 @@ export function StepDetailScreen() {
         </TouchableOpacity>
       )}
 
+      {/* Historico de pausas (Jessica 18/06): exibe quando ja houve pelo
+          menos uma pausa nesta etapa, mesmo durante execucao. */}
+      {(step.pause_count ?? 0) > 0 && (step.pause_log?.length ?? 0) > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Histórico de pausas</Text>
+          <View style={styles.pauseSummary}>
+            <Text style={styles.pauseSummaryText}>
+              {step.pause_count}× pausa{(step.pause_count ?? 0) === 1 ? '' : 's'} ·{' '}
+              {formatDurationShort(step.total_pause_seconds ?? 0)} total
+            </Text>
+          </View>
+          {(step.pause_log ?? []).map((p, i) => (
+            <View key={i} style={styles.pauseLogRow}>
+              <Ionicons name="pause-outline" size={14} color={colors.warning} />
+              <Text style={styles.pauseLogText}>
+                {format(new Date(p.paused_at), 'dd/MM HH:mm', { locale: ptBR })}
+                {' → '}
+                {format(new Date(p.resumed_at), 'HH:mm', { locale: ptBR })}
+                {'  ('}
+                {formatDurationShort(p.duration_seconds)}
+                {')'}
+                {p.reason ? ` — ${p.reason}` : ''}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Pausar/Retomar — botoes acima do Finalizar pra reforcar acao secundaria */}
+      {isInProgress && step.paused_at && (
+        <View style={styles.pausedBanner}>
+          <Ionicons name="pause-circle" size={20} color={colors.warning} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pausedBannerTitle}>Etapa pausada</Text>
+            <Text style={styles.pausedBannerSub}>
+              Pausada{' '}
+              {format(new Date(step.paused_at), "dd/MM 'às' HH:mm", {
+                locale: ptBR,
+              })}
+              . Toque em Retomar para continuar.
+            </Text>
+          </View>
+        </View>
+      )}
+
       {isInProgress && (
-        <TouchableOpacity
-          style={[styles.cta, isActing && styles.ctaDisabled]}
-          onPress={handleComplete}
-          disabled={isActing}
-        >
-          {isActing ? (
-            <ActivityIndicator size="small" color={colors.black} />
+        <View style={styles.actionsRow}>
+          {step.paused_at ? (
+            <TouchableOpacity
+              style={[styles.ctaSecondary, isActing && styles.ctaDisabled]}
+              onPress={handleResume}
+              disabled={isActing}
+            >
+              {isActing ? (
+                <ActivityIndicator size="small" color={colors.black} />
+              ) : (
+                <>
+                  <Ionicons name="play" size={18} color={colors.black} />
+                  <Text style={styles.ctaText}>Retomar</Text>
+                </>
+              )}
+            </TouchableOpacity>
           ) : (
-            <>
-              <Ionicons name="checkmark" size={18} color={colors.black} />
-              <Text style={styles.ctaText}>Finalizar etapa</Text>
-            </>
+            <TouchableOpacity
+              style={[styles.ctaPause, isActing && styles.ctaDisabled]}
+              onPress={handlePause}
+              disabled={isActing}
+            >
+              <Ionicons name="pause" size={18} color={colors.text} />
+              <Text style={styles.ctaPauseText}>Pausar</Text>
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.cta,
+              styles.ctaFlex,
+              (isActing || !!step.paused_at) && styles.ctaDisabled,
+            ]}
+            onPress={handleComplete}
+            disabled={isActing || !!step.paused_at}
+          >
+            {isActing ? (
+              <ActivityIndicator size="small" color={colors.black} />
+            ) : (
+              <>
+                <Ionicons name="checkmark" size={18} color={colors.black} />
+                <Text style={styles.ctaText}>Finalizar etapa</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       )}
     </ScrollView>
   );
@@ -602,6 +737,72 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 4,
   },
+  ctaFlex: { flex: 1 },
   ctaDisabled: { opacity: 0.6 },
   ctaText: { ...typography.button, color: colors.black },
+  ctaPause: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.cardAlt,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  ctaPauseText: { ...typography.button, color: colors.text },
+  ctaSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.warning,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'stretch',
+  },
+  pausedBanner: {
+    flexDirection: 'row',
+    gap: 10,
+    padding: 12,
+    backgroundColor: 'rgba(245, 158, 11, 0.10)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  pausedBannerTitle: { ...typography.buttonSm, color: colors.text },
+  pausedBannerSub: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  pauseSummary: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: colors.cardAlt,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginBottom: 4,
+  },
+  pauseSummaryText: { ...typography.captionBold, color: colors.text },
+  pauseLogRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    paddingVertical: 3,
+  },
+  pauseLogText: {
+    ...typography.caption,
+    color: colors.textMuted,
+    flex: 1,
+  },
 });

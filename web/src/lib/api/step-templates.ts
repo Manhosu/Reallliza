@@ -11,6 +11,9 @@ export interface StepTemplateItem {
   final_photos_required_min: number;
   occurrence_enabled: boolean;
   is_required: boolean;
+  /** Minutos de cura/secagem que o técnico precisa aguardar após
+   *  concluir esta etapa antes da próxima destravar. 0 = libera imediato. */
+  wait_time_minutes: number;
 }
 
 export interface StepTemplateGroup {
@@ -34,6 +37,8 @@ export interface StepTemplateItemPayload {
   final_photos_required_min?: number;
   occurrence_enabled?: boolean;
   is_required?: boolean;
+  /** Minutos de cura/secagem após esta etapa (default 0). */
+  wait_time_minutes?: number;
 }
 
 export interface CreateStepTemplatePayload {

@@ -464,3 +464,85 @@ export const SCHEDULE_STATUS_LABELS: Record<ScheduleStatus, string> = {
   [ScheduleStatus.CANCELLED]: 'Cancelado',
   [ScheduleStatus.RESCHEDULED]: 'Reagendado',
 };
+
+// ============================================================
+// Step execution (etapas da OS — Jessica 18/06)
+// ============================================================
+
+export type StepStatus = 'pending' | 'in_progress' | 'completed' | 'skipped';
+
+export interface PauseLogEntry {
+  paused_at: string;
+  resumed_at: string;
+  duration_seconds: number;
+  reason?: string;
+}
+
+/**
+ * Snapshot do template no momento do provision — protege contra
+ * mudanças futuras no template.
+ */
+export interface StepExecutionMetadata {
+  name?: string;
+  description?: string | null;
+  photos_required_min?: number;
+  final_photos_required_min?: number;
+  occurrence_enabled?: boolean;
+  is_required?: boolean;
+  wait_time_minutes?: number;
+  metragem_executada?: number;
+  intercorrencias?: string;
+  // Reason em pausa em aberto — movido para pause_log no resume.
+  _current_pause_reason?: string;
+}
+
+export interface StepExecution {
+  id: string;
+  service_order_id: string;
+  step_key: string;
+  order_index: number;
+  status: StepStatus;
+  started_at: string | null;
+  completed_at: string | null;
+  photos_count: number;
+  notes: string | null;
+  metadata: StepExecutionMetadata | null;
+  photo_initial_url: string | null;
+  photo_final_url: string | null;
+  occurrence_text: string | null;
+  executor_id: string | null;
+  started_lat?: number | null;
+  started_lng?: number | null;
+  completed_lat?: number | null;
+  completed_lng?: number | null;
+  // Pausa por etapa (migration 036).
+  paused_at: string | null;
+  pause_count: number;
+  total_pause_seconds: number;
+  pause_log: PauseLogEntry[];
+  // Lock por cura/secagem da etapa anterior.
+  unlocked_at: string | null;
+  updated_at?: string;
+}
+
+export function isPaused(step: Pick<StepExecution, 'paused_at'>): boolean {
+  return !!step.paused_at;
+}
+
+export function isLockedByWait(
+  step: Pick<StepExecution, 'unlocked_at' | 'status'>,
+  now: number = Date.now()
+): boolean {
+  if (step.status !== 'pending') return false;
+  if (!step.unlocked_at) return false;
+  return new Date(step.unlocked_at).getTime() > now;
+}
+
+export function formatDurationShort(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h && m) return `${h}h ${m}min`;
+  if (h) return `${h}h`;
+  return `${m}min`;
+}

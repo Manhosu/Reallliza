@@ -54,6 +54,7 @@ function emptyItem(orderIndex: number): DraftItem {
     final_photos_required_min: 1,
     occurrence_enabled: true,
     is_required: true,
+    wait_time_minutes: 0,
   };
 }
 
@@ -89,6 +90,7 @@ function TemplateForm({ open, template, onClose, onSaved }: TemplateFormProps) {
               final_photos_required_min: it.final_photos_required_min,
               occurrence_enabled: it.occurrence_enabled,
               is_required: it.is_required,
+              wait_time_minutes: it.wait_time_minutes ?? 0,
             }))
           : [emptyItem(1)]
       );
@@ -152,6 +154,10 @@ function TemplateForm({ open, template, onClose, onSaved }: TemplateFormProps) {
       ),
       occurrence_enabled: it.occurrence_enabled ?? true,
       is_required: it.is_required ?? true,
+      wait_time_minutes: Math.max(
+        0,
+        Math.min(1440, Math.round(Number(it.wait_time_minutes ?? 0)))
+      ),
     }));
 
     setIsSaving(true);
@@ -280,7 +286,7 @@ function TemplateForm({ open, template, onClose, onSaved }: TemplateFormProps) {
                       className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
                     />
 
-                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
                       <div className="space-y-1">
                         <label className="flex items-center gap-1 text-xs text-muted-foreground">
                           <Camera className="h-3 w-3" /> Fotos iniciais mín.
@@ -310,6 +316,34 @@ function TemplateForm({ open, template, onClose, onSaved }: TemplateFormProps) {
                               final_photos_required_min: parseInt(
                                 e.target.value || "0",
                                 10
+                              ),
+                            })
+                          }
+                          className="flex h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                        />
+                      </div>
+                      {/* Tempo de cura/secagem (Jessica 18/06): destrava a
+                          proxima etapa apenas depois desse tempo. */}
+                      <div
+                        className="space-y-1"
+                        title="Minutos de cura/secagem após esta etapa antes da próxima destravar (0 = libera imediato)"
+                      >
+                        <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                          ⏱ Tempo espera (min)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={1440}
+                          value={it.wait_time_minutes ?? 0}
+                          onChange={(e) =>
+                            patchItem(it.draftId, {
+                              wait_time_minutes: Math.max(
+                                0,
+                                Math.min(
+                                  1440,
+                                  parseInt(e.target.value || "0", 10) || 0
+                                )
                               ),
                             })
                           }
@@ -418,6 +452,7 @@ export default function TemplatesExecucaoPage() {
           final_photos_required_min: it.final_photos_required_min,
           occurrence_enabled: it.occurrence_enabled,
           is_required: it.is_required,
+          wait_time_minutes: it.wait_time_minutes ?? 0,
         })),
       });
       toast.success("Template duplicado");

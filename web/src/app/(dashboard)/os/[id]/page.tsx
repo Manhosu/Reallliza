@@ -7,6 +7,7 @@ import {
   formatDateBR as formatDate,
   formatDateTimeBR as formatDateTime,
 } from "@/lib/utils/format-date";
+import { ExecutionReportSection } from "@/components/os/ExecutionReportSection";
 import {
   ArrowLeft,
   Edit,
@@ -1588,6 +1589,17 @@ export default function OsDetailPage() {
               </CardContent>
             </Card>
           </motion.div>
+
+          {/* Relatório de execução (Jessica 18/06): pausas, tempo efetivo,
+              KPIs por etapa. Só aparece a partir de "in_progress". */}
+          {order &&
+            order.status !== "draft" &&
+            order.status !== "pending" &&
+            order.status !== "assigned" && (
+              <motion.div variants={itemVariants}>
+                <ExecutionReportSection osId={order.id} />
+              </motion.div>
+            )}
 
           {/* Status History */}
           <motion.div variants={itemVariants}>

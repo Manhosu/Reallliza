@@ -15,6 +15,7 @@ interface TemplateItemRow {
   final_photos_required_min: number;
   occurrence_enabled: boolean;
   is_required: boolean;
+  wait_time_minutes: number;
 }
 
 /**
@@ -77,6 +78,9 @@ export async function provisionSteps(
       final_photos_required_min: it.final_photos_required_min,
       occurrence_enabled: it.occurrence_enabled,
       is_required: it.is_required,
+      // Tempo de cura/secagem que destrava a PROXIMA etapa. Snapshot
+      // pra a regra valer mesmo se admin editar o template depois.
+      wait_time_minutes: it.wait_time_minutes ?? 0,
     },
   }));
 

@@ -18,7 +18,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { apiClient } from '../lib/api';
-import { Photo } from '../lib/types';
+import { Photo, PauseLogEntry, formatDurationShort } from '../lib/types';
+import { useStepExecutionsRealtime } from '../lib/hooks/useStepExecutionsRealtime';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import type { OsStackParamList } from '../navigation/os-stack';
@@ -42,6 +43,12 @@ interface StepExecution {
   photo_initial_url?: string | null;
   photo_final_url?: string | null;
   occurrence_text?: string | null;
+  // Migration 036 — pausa por etapa e lock por cura/secagem.
+  paused_at?: string | null;
+  pause_count?: number;
+  total_pause_seconds?: number;
+  pause_log?: PauseLogEntry[];
+  unlocked_at?: string | null;
 }
 
 interface StepWithTemplate extends StepExecution {
@@ -98,6 +105,18 @@ const STEP_LABELS: Record<string, { name: string; description: string; minPhotos
     needsSignature: true,
   },
 };
+
+function formatCountdown(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    return `${h}h ${String(mm).padStart(2, '0')}min`;
+  }
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
 export function StepsScreen() {
   const route = useRoute<StepRouteProp>();
@@ -180,10 +199,81 @@ export function StepsScreen() {
     fetchData().finally(() => setIsLoading(false));
   }, [fetchData]);
 
+  // Realtime: refresca quando admin pausa/retoma OS de outro lugar (Jessica 18/06)
+  useStepExecutionsRealtime({ osId: serviceOrderId, onChange: fetchData });
+
+  // Tick para countdown de cura/secagem em etapas locked.
+  // Roda apenas quando ha pelo menos uma etapa com unlocked_at futuro.
+  const [nowTick, setNowTick] = useState<number>(Date.now());
+  useEffect(() => {
+    const hasFutureWait = steps.some(
+      (s) =>
+        s.unlocked_at && new Date(s.unlocked_at).getTime() > Date.now()
+    );
+    if (!hasFutureWait) return;
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setNowTick(now);
+      // Quando todos os countdowns expirarem, busca dados do servidor pra liberar
+      const stillWaiting = steps.some(
+        (s) => s.unlocked_at && new Date(s.unlocked_at).getTime() > now
+      );
+      if (!stillWaiting) {
+        fetchData();
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [steps, fetchData]);
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await fetchData();
     setIsRefreshing(false);
+  };
+
+  const handlePause = async (step: StepWithTemplate) => {
+    Alert.prompt(
+      'Pausar etapa',
+      'Motivo da pausa (opcional)',
+      async (reason) => {
+        try {
+          setActingId(step.id);
+          await apiClient.post(
+            `/service-orders/${serviceOrderId}/steps/${step.id}/pause`,
+            reason ? { reason } : {}
+          );
+          await fetchData();
+        } catch (error: unknown) {
+          const msg =
+            error && typeof error === 'object' && 'message' in error
+              ? (error as { message: string }).message
+              : 'Erro ao pausar etapa';
+          Alert.alert('Erro', msg);
+        } finally {
+          setActingId(null);
+        }
+      },
+      'plain-text'
+    );
+  };
+
+  const handleResume = async (step: StepWithTemplate) => {
+    try {
+      setActingId(step.id);
+      await apiClient.post(
+        `/service-orders/${serviceOrderId}/steps/${step.id}/resume`,
+        {}
+      );
+      await fetchData();
+    } catch (error: unknown) {
+      const msg =
+        error && typeof error === 'object' && 'message' in error
+          ? (error as { message: string }).message
+          : 'Erro ao retomar etapa';
+      Alert.alert('Erro', msg);
+    } finally {
+      setActingId(null);
+    }
   };
 
   const handleStart = async (step: StepWithTemplate) => {
@@ -316,12 +406,22 @@ export function StepsScreen() {
 
       {steps.map((step, idx) => {
         // Lock sequencial: bloqueia qualquer etapa pending cuja anterior não esteja concluída.
-        const isLocked =
+        const isLockedBySequence =
           idx > 0 &&
           steps[idx - 1].status !== 'completed' &&
           step.status === 'pending';
+        // Lock por cura/secagem (Jessica 18/06): etapa anterior concluiu mas
+        // unlocked_at ainda no futuro -> ainda nao destrava.
+        const unlockedAtMs = step.unlocked_at
+          ? new Date(step.unlocked_at).getTime()
+          : 0;
+        const remainingMs = Math.max(0, unlockedAtMs - nowTick);
+        const isLockedByWait =
+          step.status === 'pending' && remainingMs > 0;
+        const isLocked = isLockedBySequence || isLockedByWait;
         const isCompleted = step.status === 'completed';
         const isInProgress = step.status === 'in_progress';
+        const isPausedNow = !!step.paused_at;
         const photosCount = photosByStep[step.step_key] ?? step.photos_count;
         const canComplete =
           isInProgress &&
@@ -497,6 +597,28 @@ export function StepsScreen() {
                   </Text>
                 )}
 
+                {/* Badge de pausa — quando ha pause_count > 0 ou esta pausada agora. */}
+                {isInProgress && (step.pause_count ?? 0) > 0 && (
+                  <View
+                    style={[
+                      styles.pauseBadge,
+                      isPausedNow && styles.pauseBadgeActive,
+                    ]}
+                  >
+                    <Ionicons
+                      name={isPausedNow ? 'pause-circle' : 'pause-outline'}
+                      size={14}
+                      color={isPausedNow ? colors.warning : colors.textMuted}
+                    />
+                    <Text style={styles.pauseBadgeText}>
+                      {isPausedNow ? 'Pausada agora' : 'Etapa retomada'} ·{' '}
+                      {step.pause_count}× pausa
+                      {(step.pause_count ?? 0) === 1 ? '' : 's'} ·{' '}
+                      {formatDurationShort(step.total_pause_seconds ?? 0)} total
+                    </Text>
+                  </View>
+                )}
+
                 {/* Actions */}
                 {!isCompleted && (
                   <View style={styles.actions}>
@@ -537,13 +659,59 @@ export function StepsScreen() {
                           </TouchableOpacity>
                         )}
 
+                        {/* Pausar/Retomar (Jessica 18/06): para servicos longos. */}
+                        {isPausedNow ? (
+                          <TouchableOpacity
+                            style={[styles.actionBtn, styles.actionBtnResume]}
+                            onPress={() => handleResume(step)}
+                            disabled={actingId === step.id}
+                          >
+                            {actingId === step.id ? (
+                              <ActivityIndicator
+                                size="small"
+                                color={colors.black}
+                              />
+                            ) : (
+                              <>
+                                <Ionicons
+                                  name="play"
+                                  size={16}
+                                  color={colors.black}
+                                />
+                                <Text style={styles.actionBtnPrimaryText}>
+                                  Retomar
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            style={[styles.actionBtn, styles.actionBtnPause]}
+                            onPress={() => handlePause(step)}
+                            disabled={actingId === step.id}
+                          >
+                            <Ionicons
+                              name="pause"
+                              size={16}
+                              color={colors.text}
+                            />
+                            <Text style={styles.actionBtnSecondaryText}>
+                              Pausar
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+
                         <TouchableOpacity
                           style={[
                             styles.actionBtn,
-                            canComplete ? styles.actionBtnSuccess : styles.actionBtnDisabled,
+                            canComplete && !isPausedNow
+                              ? styles.actionBtnSuccess
+                              : styles.actionBtnDisabled,
                           ]}
                           onPress={() => handleComplete(step)}
-                          disabled={!canComplete || actingId === step.id}
+                          disabled={
+                            !canComplete || isPausedNow || actingId === step.id
+                          }
                         >
                           {actingId === step.id ? (
                             <ActivityIndicator size="small" color={colors.black} />
@@ -561,7 +729,18 @@ export function StepsScreen() {
               </View>
             )}
 
-            {isLocked && (
+            {isLocked && isLockedByWait && (
+              <View style={styles.lockedWaitBox}>
+                <Ionicons name="time-outline" size={16} color={colors.primary} />
+                <Text style={styles.lockedWaitText}>
+                  Aguardando cura/secagem · libera em{' '}
+                  <Text style={styles.lockedWaitTimer}>
+                    {formatCountdown(remainingMs)}
+                  </Text>
+                </Text>
+              </View>
+            )}
+            {isLocked && !isLockedByWait && (
               <Text style={styles.lockedText}>
                 Conclua a etapa anterior primeiro.
               </Text>
@@ -760,6 +939,54 @@ const styles = StyleSheet.create({
   },
   actionBtnDisabled: {
     backgroundColor: colors.border,
+  },
+  actionBtnPause: {
+    backgroundColor: colors.cardAlt,
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  actionBtnResume: {
+    backgroundColor: colors.warning,
+  },
+  pauseBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.cardAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+    marginVertical: 4,
+  },
+  pauseBadgeActive: {
+    borderColor: colors.warning,
+    backgroundColor: 'rgba(234, 179, 8, 0.1)',
+  },
+  pauseBadgeText: {
+    ...typography.caption,
+    color: colors.text,
+  },
+  lockedWaitBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(234, 179, 8, 0.08)',
+    borderRadius: 8,
+  },
+  lockedWaitText: {
+    ...typography.bodySm,
+    color: colors.text,
+    flex: 1,
+  },
+  lockedWaitTimer: {
+    fontWeight: '700',
+    color: colors.primary,
   },
   completedNotes: {
     backgroundColor: colors.cardAlt,

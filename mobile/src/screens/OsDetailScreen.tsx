@@ -29,6 +29,7 @@ import {
 } from '../lib/types';
 import { StatusBadge } from '../components/StatusBadge';
 import { PriorityBadge } from '../components/PriorityBadge';
+import { ExecutionReportPanel } from '../components/ExecutionReportPanel';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import type { OsStackParamList } from '../navigation/os-stack';
@@ -943,6 +944,26 @@ export function OsDetailScreen() {
               : 'Registre sua chegada primeiro'}
           </Text>
         </TouchableOpacity>
+      )}
+
+      {/* Relatorio de execucao (Jessica 18/06): timeline read-only com
+          inicio/fim/pausa por etapa. So aparece a partir de in_progress. */}
+      {(order.status === OsStatus.IN_PROGRESS ||
+        order.status === OsStatus.PAUSED ||
+        order.status === OsStatus.COMPLETED) && (
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderLeft}>
+              <Ionicons
+                name="document-text-outline"
+                size={22}
+                color={colors.primary}
+              />
+              <Text style={styles.sectionTitle}>Relatório de execução</Text>
+            </View>
+          </View>
+          <ExecutionReportPanel osId={id} />
+        </View>
       )}
 
       {/* Checklist Section (legado — útil para perícia técnica) */}
