@@ -115,7 +115,8 @@ export function MainTabs() {
           }}
         />
       )}
-      {isPartner ? (
+      {/* Propostas: so para parceiro (tecnico recebe direto via OS atribuida). */}
+      {isPartner && (
         <Tab.Screen
           name="ProposalsTab"
           component={ProposalsScreen}
@@ -127,23 +128,25 @@ export function MainTabs() {
             ),
           }}
         />
-      ) : (
-        <Tab.Screen
-          name="AgendaTab"
-          component={AgendaScreen}
-          options={{
-            title: 'Agenda',
-            headerTitleStyle: {
-              fontWeight: '700',
-              fontSize: 20,
-              color: colors.primary,
-            },
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="calendar-outline" size={size} color={color} />
-            ),
-          }}
-        />
       )}
+      {/* Agenda: agora aparece tambem para parceiro (Jessica 17/06).
+          Parceiro que aceita broadcast vira technician_id da OS, entao
+          /schedules/my retorna eventos pra ele igual ao tecnico. */}
+      <Tab.Screen
+        name="AgendaTab"
+        component={AgendaScreen}
+        options={{
+          title: 'Agenda',
+          headerTitleStyle: {
+            fontWeight: '700',
+            fontSize: 20,
+            color: colors.primary,
+          },
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
+      />
       {!isPartner && (
         <Tab.Screen
           name="ToolsTab"
