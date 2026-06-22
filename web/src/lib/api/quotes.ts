@@ -57,6 +57,8 @@ export interface Quote {
   payments?: QuotePayment[];
 }
 
+export type QuoteModality = "reallliza" | "homologados";
+
 export interface CreateQuotePayload {
   partner_id?: string;
   client_name: string;
@@ -73,6 +75,12 @@ export interface CreateQuotePayload {
   address_zip?: string;
   notes?: string;
   items: Array<{ service_id: string; quantity: number }>;
+  modality?: QuoteModality;
+  service_date?: string;
+  service_time?: string;
+  region_city?: string;
+  region_state?: string;
+  manual_total_amount?: number;
 }
 
 export interface PayQuoteResult {

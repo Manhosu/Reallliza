@@ -39,6 +39,9 @@ import {
   ShieldCheck,
   Trophy,
   FileText,
+  Wallet,
+  ListChecks,
+  UserSquare2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserRole, type Notification } from "@/lib/types";
@@ -77,10 +80,40 @@ const allNavItems = [
     roles: [UserRole.ADMIN, UserRole.PARTNER],
   },
   {
+    label: "Solicitações",
+    href: "/solicitacoes",
+    icon: ListChecks,
+    roles: [UserRole.PARTNER],
+  },
+  {
+    label: "Clientes",
+    href: "/clientes",
+    icon: UserSquare2,
+    roles: [UserRole.PARTNER],
+  },
+  {
     label: "Propostas",
     href: "/propostas",
     icon: Send,
     roles: [UserRole.ADMIN, UserRole.PARTNER],
+  },
+  {
+    label: "Garantias",
+    href: "/garantias",
+    icon: ShieldCheck,
+    roles: [UserRole.PARTNER],
+  },
+  {
+    label: "Relatórios",
+    href: "/relatorios-loja",
+    icon: FileBarChart,
+    roles: [UserRole.PARTNER],
+  },
+  {
+    label: "Financeiro",
+    href: "/financeiro-loja",
+    icon: Wallet,
+    roles: [UserRole.PARTNER],
   },
   {
     label: "Chats",

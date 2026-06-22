@@ -114,5 +114,96 @@ export async function convertQuoteToServiceOrder(
     })
     .eq("id", quoteId);
 
+  // 5. Agendamento automatico (Fase 2 — modalidade Reallliza).
+  // Jornadas de 8h por dia a partir de service_date. Se nao tem data, pula.
+  if (
+    quote.modality === "reallliza" &&
+    quote.service_date &&
+    Number(quote.total_hours) > 0
+  ) {
+    await scheduleReallizaJobs(supabase, os.id, {
+      service_date: quote.service_date as string,
+      service_time: (quote.service_time as string | null) ?? "08:00",
+      total_hours: Number(quote.total_hours),
+      partner_id: (quote.partner_id as string | null) ?? null,
+    });
+  }
+
   return { ok: true, service_order_id: os.id };
+}
+
+/**
+ * Cria schedules em jornadas de 8h consecutivas a partir de service_date.
+ * Pula domingos e feriados (busca a proxima data util).
+ */
+async function scheduleReallizaJobs(
+  supabase: SupabaseClient,
+  serviceOrderId: string,
+  opts: {
+    service_date: string;
+    service_time: string;
+    total_hours: number;
+    partner_id: string | null;
+  }
+): Promise<void> {
+  const totalDays = Math.ceil(opts.total_hours / 8);
+  if (totalDays <= 0) return;
+
+  // Feriados ativos pra pular
+  const { data: holidays } = await supabase
+    .from("public_holidays")
+    .select("date")
+    .eq("is_active", true);
+  const holidaySet = new Set(
+    (holidays ?? []).map((h) => (h as { date: string }).date)
+  );
+
+  // Calcula horario de fim do bloco
+  const [sh, sm] = opts.service_time.split(":").map((n) => parseInt(n, 10) || 0);
+  const startMinutes = sh * 60 + sm;
+  const endMinutes = Math.min(startMinutes + 8 * 60, 22 * 60); // tampa em 22h
+  const endH = Math.floor(endMinutes / 60);
+  const endM = endMinutes % 60;
+  const startTime = `${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}`;
+  const endTime = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+
+  const inserts: Array<{
+    service_order_id: string;
+    technician_id: string | null;
+    date: string;
+    start_time: string;
+    end_time: string;
+    status: string;
+    source: string;
+    notes: string;
+  }> = [];
+
+  let current = new Date(`${opts.service_date}T00:00:00`);
+  let placed = 0;
+  let safety = 0;
+  while (placed < totalDays && safety < 90) {
+    safety++;
+    const dateStr = current.toISOString().slice(0, 10);
+    const dow = current.getDay();
+    const isSunday = dow === 0;
+    const isHoliday = holidaySet.has(dateStr);
+    if (!isSunday && !isHoliday) {
+      inserts.push({
+        service_order_id: serviceOrderId,
+        technician_id: null, // admin distribui depois
+        date: dateStr,
+        start_time: startTime,
+        end_time: endTime,
+        status: "scheduled",
+        source: "quote_paid",
+        notes: `Auto-agendado da quote (${placed + 1}/${totalDays})`,
+      });
+      placed++;
+    }
+    current.setDate(current.getDate() + 1);
+  }
+
+  if (inserts.length > 0) {
+    await supabase.from("schedules").insert(inserts);
+  }
 }

@@ -4,15 +4,35 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Minus, Plus, ArrowLeft, AlertCircle, Package } from "lucide-react";
+import { Minus, Plus, ArrowLeft, AlertCircle, Package, Calculator, Building2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { servicesApi, quotesApi } from "@/lib/api";
+import { apiClient } from "@/lib/api/client";
 import type { Service } from "@/lib/api/services";
 import { ApiError } from "@/lib/api/client";
 import { assertFreshSession } from "@/lib/api/session-guard";
+
+type Modality = "reallliza" | "homologados";
+
+interface CalcResult {
+  subtotal_services: number;
+  total_hours: number;
+  total_days: number;
+  travel_distance_km: number;
+  travel_cost: number;
+  stay_count: number;
+  stay_cost: number;
+  is_special_hour: boolean;
+  special_hour_extra: number;
+  total_amount: number;
+  platform_fee_pct: number;
+  platform_fee_amount: number;
+  payout_amount: number;
+  warnings: string[];
+}
 
 const DRAFT_KEY = "orcamento-novo-draft-v1";
 
@@ -140,6 +160,18 @@ export default function NovoOrcamentoPage() {
   const [notes, setNotes] = useState("");
   const [cepLoading, setCepLoading] = useState(false);
   const [cepError, setCepError] = useState<string | null>(null);
+
+  // Fase 2 — modalidade + calculo
+  const [modality, setModality] = useState<Modality>("reallliza");
+  const [serviceDate, setServiceDate] = useState("");
+  const [serviceTime, setServiceTime] = useState("");
+  // Modalidade homologados
+  const [manualTotal, setManualTotal] = useState("");
+  const [regionCity, setRegionCity] = useState("");
+  const [regionState, setRegionState] = useState("");
+  // Calculo (preview)
+  const [calc, setCalc] = useState<CalcResult | null>(null);
+  const [calcLoading, setCalcLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -232,6 +264,44 @@ export default function NovoOrcamentoPage() {
 
   const total = selected.reduce((s, i) => s + i.subtotal, 0);
 
+  async function handleCalculate() {
+    if (selected.length === 0) {
+      setError("Selecione ao menos um serviço antes de calcular.");
+      return;
+    }
+    setError(null);
+    setCalcLoading(true);
+    try {
+      const result = await apiClient.post<CalcResult>("/quotes/calculate", {
+        modality,
+        items: selected.map((i) => ({
+          service_id: i.service.id,
+          quantity: i.quantity,
+        })),
+        service_address_zip: addressZip.replace(/\D/g, "") || undefined,
+        service_address_city: addressCity.trim() || undefined,
+        service_address_state:
+          addressState.trim().toUpperCase() || undefined,
+        service_address_street: addressStreet.trim() || undefined,
+        service_date: serviceDate || undefined,
+        service_time: serviceTime || undefined,
+        manual_total_amount:
+          modality === "homologados" && manualTotal
+            ? Number(manualTotal.replace(",", "."))
+            : undefined,
+      });
+      setCalc(result);
+      if (result.warnings.length > 0) {
+        toast.warning(result.warnings.join(" • "), { duration: 6000 });
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao calcular orçamento");
+      setCalc(null);
+    } finally {
+      setCalcLoading(false);
+    }
+  }
+
   async function handleCepBlur() {
     setCepError(null);
     const digits = addressZip.replace(/\D/g, "");
@@ -294,6 +364,20 @@ export default function NovoOrcamentoPage() {
       return;
     }
 
+    // Validacoes especificas por modalidade
+    if (modality === "reallliza" && !serviceDate) {
+      setError("Modalidade Reallliza: informe a data de execução.");
+      setSaving(false);
+      return;
+    }
+    if (modality === "homologados") {
+      if (!regionCity || !regionState) {
+        setError("Modalidade Homologados: informe cidade e UF da publicação.");
+        setSaving(false);
+        return;
+      }
+    }
+
     try {
       const quote = await quotesApi.create({
         client_name: clientName.trim(),
@@ -313,6 +397,15 @@ export default function NovoOrcamentoPage() {
           service_id: i.service.id,
           quantity: i.quantity,
         })),
+        modality,
+        service_date: serviceDate || undefined,
+        service_time: serviceTime || undefined,
+        region_city: modality === "homologados" ? regionCity : undefined,
+        region_state: modality === "homologados" ? regionState : undefined,
+        manual_total_amount:
+          modality === "homologados" && manualTotal
+            ? Number(manualTotal.replace(",", "."))
+            : undefined,
       });
       toast.success("Orçamento criado");
       try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
@@ -519,6 +612,127 @@ export default function NovoOrcamentoPage() {
             </CardContent>
           </Card>
 
+          {/* Modalidade (Jessica 22/06 — spec Loja Parceira) */}
+          <Card>
+            <CardContent className="space-y-3 p-4">
+              <h2 className="font-semibold">Modalidade</h2>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModality("reallliza")}
+                  className={`flex flex-col items-start gap-1 rounded-lg border-2 p-3 text-left transition ${
+                    modality === "reallliza"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-semibold">Reallliza</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Equipe própria executa. Preço automático.
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModality("homologados")}
+                  className={`flex flex-col items-start gap-1 rounded-lg border-2 p-3 text-left transition ${
+                    modality === "homologados"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-semibold">Homologados</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Publica pra rede homologada. Você define o valor.
+                  </p>
+                </button>
+              </div>
+
+              {modality === "reallliza" && (
+                <div className="space-y-2 pt-2 border-t">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Quando executar
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      type="date"
+                      value={serviceDate}
+                      onChange={(e) => setServiceDate(e.target.value)}
+                    />
+                    <Input
+                      type="time"
+                      value={serviceTime}
+                      onChange={(e) => setServiceTime(e.target.value)}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Noite/sábado/domingo/feriado: +25% sobre os serviços.
+                  </p>
+                </div>
+              )}
+
+              {modality === "homologados" && (
+                <div className="space-y-2 pt-2 border-t">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Publicação
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      value={manualTotal}
+                      onChange={(e) => setManualTotal(e.target.value)}
+                      placeholder="Valor total (R$)"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                    />
+                    <Input
+                      type="date"
+                      value={serviceDate}
+                      onChange={(e) => setServiceDate(e.target.value)}
+                      placeholder="Data desejada"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Input
+                      value={regionCity}
+                      onChange={(e) => setRegionCity(e.target.value)}
+                      placeholder="Cidade"
+                      className="col-span-2"
+                    />
+                    <Input
+                      value={regionState}
+                      onChange={(e) =>
+                        setRegionState(e.target.value.toUpperCase().slice(0, 2))
+                      }
+                      placeholder="UF"
+                      maxLength={2}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Publica pra homologados da região. Primeiro a aceitar pega a OS.
+                  </p>
+                </div>
+              )}
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCalculate}
+                isLoading={calcLoading}
+                disabled={selected.length === 0}
+                className="w-full"
+              >
+                <Calculator className="h-4 w-4" />
+                Calcular orçamento
+              </Button>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardContent className="space-y-3 p-4">
               <h2 className="font-semibold">Resumo</h2>
@@ -541,9 +755,52 @@ export default function NovoOrcamentoPage() {
                   ))}
                 </div>
               )}
+
+              {/* Breakdown do calculo (Fase 2) */}
+              {calc && (
+                <div className="space-y-1 border-t pt-2 text-sm">
+                  {calc.travel_cost > 0 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Deslocamento ({calc.travel_distance_km.toFixed(1)} km)</span>
+                      <span>{formatBRL(calc.travel_cost)}</span>
+                    </div>
+                  )}
+                  {calc.stay_cost > 0 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Estadia ({calc.stay_count} diária{calc.stay_count === 1 ? "" : "s"})</span>
+                      <span>{formatBRL(calc.stay_cost)}</span>
+                    </div>
+                  )}
+                  {calc.is_special_hour && calc.special_hour_extra > 0 && (
+                    <div className="flex justify-between text-amber-600 dark:text-amber-400">
+                      <span>Horário especial (+25%)</span>
+                      <span>{formatBRL(calc.special_hour_extra)}</span>
+                    </div>
+                  )}
+                  {calc.total_days > 0 && (
+                    <div className="flex justify-between text-xs text-muted-foreground italic">
+                      <span>Duração estimada</span>
+                      <span>{calc.total_hours.toFixed(1)}h ≈ {calc.total_days} dia{calc.total_days === 1 ? "" : "s"}</span>
+                    </div>
+                  )}
+                  {modality === "homologados" && calc.platform_fee_amount > 0 && (
+                    <>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Taxa Reallliza ({calc.platform_fee_pct}%)</span>
+                        <span>{formatBRL(calc.platform_fee_amount)}</span>
+                      </div>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Repasse ao homologado</span>
+                        <span>{formatBRL(calc.payout_amount)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-between border-t pt-2 font-semibold">
                 <span>Total</span>
-                <span>{formatBRL(total)}</span>
+                <span>{formatBRL(calc ? calc.total_amount : total)}</span>
               </div>
 
               {error && (

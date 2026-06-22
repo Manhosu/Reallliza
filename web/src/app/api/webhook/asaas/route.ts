@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     const { data: payment } = await supabase
       .from("payments")
-      .select("id, status, quote_id")
+      .select("id, status, quote_id, amount")
       .eq("id", externalReference)
       .maybeSingle();
 
@@ -51,16 +51,52 @@ export async function POST(request: NextRequest) {
 
     const now = new Date().toISOString();
 
+    // Carrega quote pra determinar modalidade (custodia vs direto)
+    let modality: "reallliza" | "homologados" | null = null;
+    let platformFeePct = 0;
+    let payoutAmount = 0;
+    let platformFeeAmount = 0;
+    if (payment.quote_id) {
+      const { data: q } = await supabase
+        .from("quotes")
+        .select("modality, platform_fee_pct, payout_amount, platform_fee_amount")
+        .eq("id", payment.quote_id)
+        .single();
+      if (q) {
+        modality = (q as { modality: typeof modality }).modality ?? null;
+        platformFeePct =
+          Number((q as { platform_fee_pct?: number }).platform_fee_pct) || 0;
+        payoutAmount =
+          Number((q as { payout_amount?: number }).payout_amount) || 0;
+        platformFeeAmount =
+          Number((q as { platform_fee_amount?: number }).platform_fee_amount) || 0;
+      }
+    }
+
+    // Custodia: modalidade homologados retem o dinheiro ate OS concluir
+    const custodyStatus: "held" | "not_applicable" =
+      modality === "homologados" ? "held" : "not_applicable";
+
     await supabase
       .from("payments")
-      .update({ status: "confirmed", paid_at: now })
+      .update({
+        status: "confirmed",
+        paid_at: now,
+        custody_status: custodyStatus,
+        platform_fee_amount: platformFeeAmount,
+        payout_amount: payoutAmount,
+      })
       .eq("id", payment.id);
 
     let serviceOrderId: string | undefined;
     if (payment.quote_id) {
       await supabase
         .from("quotes")
-        .update({ status: "paid", paid_at: now })
+        .update({
+          status: "paid",
+          paid_at: now,
+          custody_held: custodyStatus === "held",
+        })
         .eq("id", payment.quote_id);
 
       const result = await convertQuoteToServiceOrder(

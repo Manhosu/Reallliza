@@ -108,11 +108,19 @@ export async function POST(request: NextRequest) {
 
     const { data: services } = await supabase
       .from("services")
-      .select("id, name, unit, commercial_price, is_active")
+      .select("id, name, unit, commercial_price, estimated_time_hours, is_active")
       .in("id", serviceIds);
 
+    type SvcRow = {
+      id: string;
+      name: string;
+      unit: string;
+      commercial_price: number;
+      estimated_time_hours: number;
+      is_active: boolean;
+    };
     const byId = new Map(
-      (services || []).map((s) => [s.id as string, s])
+      ((services as SvcRow[] | null) || []).map((s) => [s.id, s])
     );
 
     const itemRows: Array<{
@@ -122,7 +130,14 @@ export async function POST(request: NextRequest) {
       unit_price: number;
       quantity: number;
     }> = [];
-    let total = 0;
+    const calcItems: Array<{
+      service_id: string;
+      quantity: number;
+      commercial_price: number;
+      estimated_time_hours: number;
+      unit?: string;
+    }> = [];
+    let subtotal_services = 0;
 
     for (const it of body.items as IncomingItem[]) {
       const svc = it.service_id ? byId.get(it.service_id) : undefined;
@@ -132,13 +147,20 @@ export async function POST(request: NextRequest) {
       const quantity = Math.max(0, Number(it.quantity) || 0);
       if (quantity <= 0) continue;
       const unitPrice = Number(svc.commercial_price) || 0;
-      total += unitPrice * quantity;
+      subtotal_services += unitPrice * quantity;
       itemRows.push({
-        service_id: svc.id as string,
-        service_name: svc.name as string,
-        unit: (svc.unit as string) ?? null,
+        service_id: svc.id,
+        service_name: svc.name,
+        unit: svc.unit ?? null,
         unit_price: unitPrice,
         quantity,
+      });
+      calcItems.push({
+        service_id: svc.id,
+        quantity,
+        commercial_price: unitPrice,
+        estimated_time_hours: Number(svc.estimated_time_hours) || 0,
+        unit: svc.unit,
       });
     }
 
@@ -146,31 +168,99 @@ export async function POST(request: NextRequest) {
       throw new AuthError(400, "Informe a quantidade dos serviços");
     }
 
-    // CPF/CNPJ: armazena so digitos (validacao de checksum fica no front por enquanto)
+    // Modalidade e calculo (Fase 2): se vier modality, calcula full breakdown.
+    let modality: "reallliza" | "homologados" | null = null;
+    if (body.modality === "reallliza" || body.modality === "homologados") {
+      modality = body.modality;
+    }
+
+    type CalcResult = {
+      subtotal_services: number;
+      total_hours: number;
+      total_days: number;
+      travel_distance_km: number;
+      travel_cost: number;
+      stay_count: number;
+      stay_cost: number;
+      is_special_hour: boolean;
+      special_hour_extra: number;
+      total_amount: number;
+      platform_fee_pct: number;
+      platform_fee_amount: number;
+      payout_amount: number;
+    };
+    let calc: CalcResult | null = null;
+    if (modality) {
+      const { calculateQuote } = await import("@/lib/quotes/calculator");
+      calc = await calculateQuote({
+        modality,
+        items: calcItems,
+        service_address_zip: body.address_zip ?? null,
+        service_address_city: body.address_city ?? null,
+        service_address_state: body.address_state ?? null,
+        service_address_street: body.address_street ?? null,
+        service_date: body.service_date ?? null,
+        service_time: body.service_time ?? null,
+        manual_total_amount:
+          typeof body.manual_total_amount === "number"
+            ? body.manual_total_amount
+            : null,
+      });
+    }
+
+    // CPF/CNPJ: armazena so digitos
     const sanitizeDoc = (v: unknown) =>
       typeof v === "string" ? v.replace(/\D/g, "").slice(0, 14) : null;
 
+    const totalFinal = calc
+      ? calc.total_amount
+      : Math.round(subtotal_services * 100) / 100;
+
+    const insertPayload: Record<string, unknown> = {
+      partner_id: partnerId,
+      status: "draft",
+      modality,
+      client_name: String(body.client_name).trim(),
+      client_phone: body.client_phone || null,
+      client_whatsapp: body.client_whatsapp || null,
+      client_email: body.client_email || null,
+      client_document: sanitizeDoc(body.client_document) || null,
+      address_street: body.address_street || null,
+      address_number: body.address_number || null,
+      address_complement: body.address_complement || null,
+      address_neighborhood: body.address_neighborhood || null,
+      address_city: body.address_city || null,
+      address_state: body.address_state || null,
+      address_zip: body.address_zip || null,
+      service_date: body.service_date || null,
+      service_time: body.service_time || null,
+      region_city: body.region_city || null,
+      region_state: body.region_state || null,
+      notes: body.notes || null,
+      total_amount: totalFinal,
+      created_by: user.id,
+    };
+
+    if (calc) {
+      Object.assign(insertPayload, {
+        subtotal_services: calc.subtotal_services,
+        travel_distance_km: calc.travel_distance_km,
+        travel_cost: calc.travel_cost,
+        stay_count: calc.stay_count,
+        stay_cost: calc.stay_cost,
+        is_special_hour: calc.is_special_hour,
+        special_hour_extra: calc.special_hour_extra,
+        total_hours: calc.total_hours,
+        total_days: calc.total_days,
+        platform_fee_pct: calc.platform_fee_pct,
+        platform_fee_amount: calc.platform_fee_amount,
+        payout_amount: calc.payout_amount,
+      });
+    }
+
     const { data: quote, error: quoteErr } = await supabase
       .from("quotes")
-      .insert({
-        partner_id: partnerId,
-        status: "draft",
-        client_name: String(body.client_name).trim(),
-        client_phone: body.client_phone || null,
-        client_whatsapp: body.client_whatsapp || null,
-        client_email: body.client_email || null,
-        client_document: sanitizeDoc(body.client_document) || null,
-        address_street: body.address_street || null,
-        address_number: body.address_number || null,
-        address_complement: body.address_complement || null,
-        address_neighborhood: body.address_neighborhood || null,
-        address_city: body.address_city || null,
-        address_state: body.address_state || null,
-        address_zip: body.address_zip || null,
-        notes: body.notes || null,
-        total_amount: Math.round(total * 100) / 100,
-        created_by: user.id,
-      })
+      .insert(insertPayload)
       .select()
       .single();
 
