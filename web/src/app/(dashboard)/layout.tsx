@@ -42,6 +42,9 @@ import {
   Wallet,
   ListChecks,
   UserSquare2,
+  BarChart3,
+  Lock,
+  Cog,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserRole, type Notification } from "@/lib/types";
@@ -209,6 +212,30 @@ const allNavItems = [
     label: "Relatórios",
     href: "/relatorios",
     icon: FileBarChart,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    label: "Financeiro",
+    href: "/financeiro",
+    icon: Wallet,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    label: "BI / Dashboards",
+    href: "/bi",
+    icon: BarChart3,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    label: "Fechamento Mensal",
+    href: "/fechamento-mensal",
+    icon: Lock,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    label: "Config. Globais",
+    href: "/configuracoes-globais",
+    icon: Cog,
     roles: [UserRole.ADMIN],
   },
   {
