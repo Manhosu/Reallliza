@@ -67,9 +67,12 @@ function ServiceForm({
   const [unit, setUnit] = useState("m2");
   const [commercialPrice, setCommercialPrice] = useState("0");
   const [payoutPrice, setPayoutPrice] = useState("0");
+  const [estimatedTimeHours, setEstimatedTimeHours] = useState("0");
+  const [photos, setPhotos] = useState<Service["photos"]>([]);
   const [isActive, setIsActive] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -79,10 +82,44 @@ function ServiceForm({
       setUnit(service?.unit ?? "m2");
       setCommercialPrice(String(service?.commercial_price ?? 0));
       setPayoutPrice(String(service?.payout_price ?? 0));
+      setEstimatedTimeHours(String(service?.estimated_time_hours ?? 0));
+      setPhotos(service?.photos ?? []);
       setIsActive(service?.is_active ?? true);
       setError(null);
     }
   }, [open, service]);
+
+  async function handlePhotoUpload(file: File) {
+    if (!isEditing || !service) {
+      setError("Salve o serviço antes de adicionar fotos.");
+      return;
+    }
+    setError(null);
+    setPhotoUploading(true);
+    try {
+      const updated = await servicesApi.uploadPhoto(service.id, file);
+      setPhotos(updated.photos ?? []);
+      toast.success("Foto adicionada");
+    } catch (err: unknown) {
+      setError(errMsg(err, "Erro ao enviar foto"));
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
+  async function handlePhotoRemove(position: number) {
+    if (!isEditing || !service) return;
+    setPhotoUploading(true);
+    try {
+      const updated = await servicesApi.removePhoto(service.id, position);
+      setPhotos(updated.photos ?? []);
+      toast.success("Foto removida");
+    } catch (err: unknown) {
+      setError(errMsg(err, "Erro ao remover foto"));
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -94,12 +131,17 @@ function ServiceForm({
     }
     const comercial = Number(commercialPrice.replace(",", "."));
     const repasse = Number(payoutPrice.replace(",", "."));
+    const horas = Number(estimatedTimeHours.replace(",", "."));
     if (!Number.isFinite(comercial) || comercial < 0) {
       setError("Valor comercial inválido.");
       return;
     }
     if (!Number.isFinite(repasse) || repasse < 0) {
       setError("Valor de repasse inválido.");
+      return;
+    }
+    if (!Number.isFinite(horas) || horas < 0) {
+      setError("Tempo estimado inválido.");
       return;
     }
 
@@ -110,6 +152,7 @@ function ServiceForm({
       unit: unit.trim() || "m2",
       commercial_price: comercial,
       payout_price: repasse,
+      estimated_time_hours: horas,
       is_active: isActive,
     };
 
@@ -215,6 +258,91 @@ function ServiceForm({
                 onChange={(e) => setPayoutPrice(e.target.value)}
               />
             </div>
+          </div>
+
+          {/* Tempo estimado — usado pra orcamento calcular dias + agendamento auto */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground/80">
+              Tempo estimado (horas por {unit || "unidade"})
+            </label>
+            <Input
+              type="number"
+              step="0.001"
+              min="0"
+              value={estimatedTimeHours}
+              onChange={(e) => setEstimatedTimeHours(e.target.value)}
+              placeholder="Ex: 0.10 = 6min por unidade"
+            />
+            <p className="text-xs text-muted-foreground">
+              Usado no orçamento pra calcular total de horas/dias e agendar
+              automaticamente. Ex: piso SPC 0.10 h/m² → 100m² = 10h ≈ 2 dias.
+            </p>
+          </div>
+
+          {/* Fotos do servico (so depois de salvar — precisa do service.id) */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground/80">
+              Fotos do serviço
+            </label>
+            {!isEditing ? (
+              <p className="text-xs text-muted-foreground">
+                Salve o serviço primeiro e reabra para adicionar fotos.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <div className="grid grid-cols-3 gap-2">
+                  {photos.map((p) => (
+                    <div
+                      key={`${p.url}-${p.position ?? 0}`}
+                      className="relative aspect-square rounded-lg overflow-hidden border border-input bg-muted"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={p.thumbnail_url || p.url}
+                        alt={p.alt_text || ""}
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handlePhotoRemove(p.position ?? 0)}
+                        disabled={photoUploading}
+                        className="absolute top-1 right-1 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+                        aria-label="Remover foto"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M18 6 6 18M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                  <label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border border-dashed border-input bg-background text-xs text-muted-foreground hover:bg-muted">
+                    {photoUploading ? "Enviando..." : "+ Adicionar"}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      disabled={photoUploading}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handlePhotoUpload(f);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  JPG/PNG/WebP/GIF, até 10MB cada. Aparece pra loja no orçamento.
+                </p>
+              </div>
+            )}
           </div>
 
           {isEditing && (
@@ -643,7 +771,7 @@ export default function ServicosPage() {
                           Repasse
                         </p>
                         <p className="text-sm font-semibold">
-                          {formatBRL(s.payout_price)}
+                          {formatBRL(s.payout_price ?? 0)}
                         </p>
                       </div>
                     </div>

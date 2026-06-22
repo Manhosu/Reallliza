@@ -12,7 +12,10 @@ import {
   ArrowLeftRight,
   Clock,
   CheckCircle2,
+  Settings,
+  XCircle,
 } from "lucide-react";
+import { apiClient } from "@/lib/api/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -176,6 +179,153 @@ function CustodyTableSkeleton() {
 // ============================================================
 // Ferramentas Page
 // ============================================================
+
+interface ToolsMetrics {
+  totals: {
+    available: number;
+    in_custody: number;
+    maintenance: number;
+    retired: number;
+    all: number;
+  };
+  custody: {
+    active_count: number;
+    overdue_count: number;
+    due_in_7d_count: number;
+  };
+  requests: {
+    pending_count: number;
+    approved_count: number;
+  };
+}
+
+function ToolsMetricsPanel() {
+  const [metrics, setMetrics] = useState<ToolsMetrics | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .get<ToolsMetrics>("/tools/metrics")
+      .then((data) => {
+        if (!cancelled) setMetrics(data);
+      })
+      .catch(() => {
+        if (!cancelled) setMetrics(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const cards: Array<{
+    label: string;
+    value: number | string;
+    hint?: string;
+    icon: React.ComponentType<{ className?: string }>;
+    accent: string;
+    bg: string;
+  }> = [
+    {
+      label: "Disponíveis",
+      value: metrics?.totals.available ?? 0,
+      hint: `de ${metrics?.totals.all ?? 0} total`,
+      icon: CheckCircle2,
+      accent: "border-t-green-500",
+      bg: "bg-green-500/10",
+    },
+    {
+      label: "Em custódia",
+      value: metrics?.totals.in_custody ?? 0,
+      hint:
+        metrics && metrics.custody.overdue_count > 0
+          ? `${metrics.custody.overdue_count} atrasada${metrics.custody.overdue_count === 1 ? "" : "s"}`
+          : metrics?.custody.due_in_7d_count
+            ? `${metrics.custody.due_in_7d_count} vence em 7d`
+            : "todas no prazo",
+      icon: ArrowLeftRight,
+      accent: "border-t-blue-500",
+      bg: "bg-blue-500/10",
+    },
+    {
+      label: "Em manutenção",
+      value: metrics?.totals.maintenance ?? 0,
+      hint: "indisponível para uso",
+      icon: Settings,
+      accent: "border-t-amber-500",
+      bg: "bg-amber-500/10",
+    },
+    {
+      label: "Aposentadas",
+      value: metrics?.totals.retired ?? 0,
+      hint: "fora de operação",
+      icon: XCircle,
+      accent: "border-t-zinc-500",
+      bg: "bg-zinc-500/10",
+    },
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.05, duration: 0.4 }}
+      className="grid grid-cols-2 gap-3 md:grid-cols-4"
+    >
+      {cards.map((c) => {
+        const Icon = c.icon;
+        return (
+          <div
+            key={c.label}
+            className={cn(
+              "group rounded-xl border-t-2 bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
+              c.accent
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {c.label}
+              </p>
+              <div className={cn("rounded-lg p-1.5", c.bg)}>
+                <Icon className="h-4 w-4" />
+              </div>
+            </div>
+            <p className="mt-2 text-2xl font-bold tracking-tight">
+              {isLoading ? "..." : c.value}
+            </p>
+            <p className="text-xs text-muted-foreground">{c.hint}</p>
+          </div>
+        );
+      })}
+      {metrics && (metrics.requests.pending_count > 0 || metrics.custody.overdue_count > 0) && (
+        <div className="col-span-2 flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 text-sm md:col-span-4">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <span>
+            {metrics.requests.pending_count > 0 && (
+              <>
+                <strong>{metrics.requests.pending_count}</strong> requisição
+                {metrics.requests.pending_count === 1 ? "" : "ões"} pendente
+                {metrics.requests.pending_count === 1 ? "" : "s"} de aprovação
+              </>
+            )}
+            {metrics.requests.pending_count > 0 &&
+              metrics.custody.overdue_count > 0 && " · "}
+            {metrics.custody.overdue_count > 0 && (
+              <>
+                <strong>{metrics.custody.overdue_count}</strong> custódia
+                {metrics.custody.overdue_count === 1 ? "" : "s"} atrasada
+                {metrics.custody.overdue_count === 1 ? "" : "s"}
+              </>
+            )}
+          </span>
+        </div>
+      )}
+    </motion.div>
+  );
+}
 
 export default function FerramentasPage() {
   const [activeTab, setActiveTab] = useState<Tab>("inventario");
@@ -343,6 +493,9 @@ export default function FerramentasPage() {
           Nova Ferramenta
         </Button>
       </motion.div>
+
+      {/* KPI cards (Jessica 22/06) */}
+      <ToolsMetricsPanel />
 
       {/* Tab Buttons */}
       <motion.div

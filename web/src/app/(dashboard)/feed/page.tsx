@@ -121,6 +121,9 @@ export default function FeedPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Lightbox para imagens — clicar abre overlay interno (sem ir pra outro navegador)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
   // Create form
   const [createForm, setCreateForm] = useState({
     title: "",
@@ -460,7 +463,7 @@ export default function FeedPage() {
                     {post.content}
                   </p>
 
-                  {/* Media thumbnails */}
+                  {/* Media — videos rodam inline; imagens abrem lightbox interno */}
                   {post.media_urls && post.media_urls.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {post.media_urls.map((url, i) =>
@@ -477,19 +480,20 @@ export default function FeedPage() {
                             />
                           </div>
                         ) : (
-                          <a
+                          <button
                             key={i}
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            type="button"
+                            onClick={() => setLightboxUrl(url)}
                             className="block overflow-hidden rounded-lg border border-border hover:border-primary transition-colors"
+                            title="Abrir imagem"
                           >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={url}
                               alt={`Midia ${i + 1}`}
                               className="h-20 w-20 object-cover"
                             />
-                          </a>
+                          </button>
                         )
                       )}
                     </div>
@@ -916,6 +920,36 @@ export default function FeedPage() {
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Lightbox de imagem do feed (Jessica 22/06 — antes abria browser) */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-6"
+          onClick={() => setLightboxUrl(null)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === "Escape" && setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setLightboxUrl(null);
+            }}
+            className="absolute top-4 right-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
+            aria-label="Fechar"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxUrl}
+            alt="Visualização"
+            className="max-h-full max-w-full rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>

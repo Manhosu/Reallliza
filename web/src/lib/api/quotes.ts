@@ -35,8 +35,13 @@ export interface Quote {
   status: QuoteStatus;
   client_name: string;
   client_phone: string | null;
+  client_whatsapp: string | null;
   client_email: string | null;
+  client_document: string | null;
   address_street: string | null;
+  address_number: string | null;
+  address_complement: string | null;
+  address_neighborhood: string | null;
   address_city: string | null;
   address_state: string | null;
   address_zip: string | null;
@@ -56,8 +61,13 @@ export interface CreateQuotePayload {
   partner_id?: string;
   client_name: string;
   client_phone?: string;
+  client_whatsapp?: string;
   client_email?: string;
+  client_document?: string;
   address_street?: string;
+  address_number?: string;
+  address_complement?: string;
+  address_neighborhood?: string;
   address_city?: string;
   address_state?: string;
   address_zip?: string;

@@ -146,6 +146,10 @@ export async function POST(request: NextRequest) {
       throw new AuthError(400, "Informe a quantidade dos serviços");
     }
 
+    // CPF/CNPJ: armazena so digitos (validacao de checksum fica no front por enquanto)
+    const sanitizeDoc = (v: unknown) =>
+      typeof v === "string" ? v.replace(/\D/g, "").slice(0, 14) : null;
+
     const { data: quote, error: quoteErr } = await supabase
       .from("quotes")
       .insert({
@@ -153,8 +157,13 @@ export async function POST(request: NextRequest) {
         status: "draft",
         client_name: String(body.client_name).trim(),
         client_phone: body.client_phone || null,
+        client_whatsapp: body.client_whatsapp || null,
         client_email: body.client_email || null,
+        client_document: sanitizeDoc(body.client_document) || null,
         address_street: body.address_street || null,
+        address_number: body.address_number || null,
+        address_complement: body.address_complement || null,
+        address_neighborhood: body.address_neighborhood || null,
         address_city: body.address_city || null,
         address_state: body.address_state || null,
         address_zip: body.address_zip || null,

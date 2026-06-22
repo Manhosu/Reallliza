@@ -7,7 +7,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
-  Linking,
   TouchableOpacity,
   Share,
   Alert,
@@ -20,6 +19,7 @@ import { useNavigation } from '@react-navigation/native';
 import { apiClient, ApiError } from '../lib/api';
 import { PaginatedResponse, ServiceOrder, getOsTipo } from '../lib/types';
 import { EmptyState } from '../components/EmptyState';
+import { FeedVideo } from '../components/FeedVideo';
 import { HeaderBellButton } from '../components/HeaderBellButton';
 import { useAuthStore } from '../stores/auth-store';
 import { colors } from '../theme/colors';
@@ -254,15 +254,8 @@ export function FeedScreen() {
             resizeMode="cover"
           />
         )}
-        {hasVideo && (
-          <TouchableOpacity
-            style={styles.heroVideo}
-            onPress={() => Linking.openURL(firstMedia)}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="play-circle" size={64} color={colors.white} />
-            <Text style={styles.heroVideoLabel}>Tocar vídeo</Text>
-          </TouchableOpacity>
+        {hasVideo && firstMedia && (
+          <FeedVideo uri={firstMedia} style={styles.heroVideo} />
         )}
 
         {/* Header: author + date */}
@@ -310,14 +303,11 @@ export function FeedScreen() {
             <View style={styles.mediaContainer}>
               {item.media_urls.slice(1).map((url, i) =>
                 isVideoUrl(url) ? (
-                  <TouchableOpacity
+                  <FeedVideo
                     key={i}
+                    uri={url}
                     style={styles.videoThumbnail}
-                    onPress={() => Linking.openURL(url)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="play-circle" size={28} color={colors.white} />
-                  </TouchableOpacity>
+                  />
                 ) : (
                   <Image
                     key={i}

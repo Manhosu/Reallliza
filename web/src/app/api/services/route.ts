@@ -10,6 +10,40 @@ function parsePrice(value: unknown): number {
   return Math.round(n * 100) / 100;
 }
 
+function parseHours(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  // 3 casas decimais — permite 0.10 (6min/m2), 0.25 (15min/m), etc.
+  return Math.round(n * 1000) / 1000;
+}
+
+function sanitizePhotos(value: unknown): Array<{
+  url: string;
+  thumbnail_url?: string | null;
+  position?: number;
+  alt_text?: string | null;
+}> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(
+      (p): p is { url: string } =>
+        !!p && typeof p === "object" && typeof (p as { url?: unknown }).url === "string"
+    )
+    .map((p, idx) => {
+      const r = p as Record<string, unknown>;
+      return {
+        url: String(r.url),
+        thumbnail_url:
+          typeof r.thumbnail_url === "string" ? r.thumbnail_url : null,
+        position:
+          typeof r.position === "number" && r.position >= 0
+            ? Math.floor(r.position)
+            : idx,
+        alt_text: typeof r.alt_text === "string" ? r.alt_text : null,
+      };
+    });
+}
+
 /**
  * GET /api/services
  * Lista o catálogo de serviços com a categoria.
@@ -90,6 +124,8 @@ export async function POST(request: NextRequest) {
         unit: body.unit?.trim() || "m2",
         commercial_price: parsePrice(body.commercial_price),
         payout_price: parsePrice(body.payout_price),
+        estimated_time_hours: parseHours(body.estimated_time_hours),
+        photos: sanitizePhotos(body.photos),
         is_active: body.is_active !== undefined ? !!body.is_active : true,
         created_by: user.id,
       })

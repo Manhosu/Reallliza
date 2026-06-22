@@ -20,18 +20,126 @@ function formatBRL(value: number): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function maskCpfCnpj(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 14);
+  if (digits.length <= 11) {
+    // CPF: 000.000.000-00
+    return digits
+      .replace(/^(\d{3})(\d)/, "$1.$2")
+      .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+      .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3-$4");
+  }
+  // CNPJ: 00.000.000/0000-00
+  return digits
+    .replace(/^(\d{2})(\d)/, "$1.$2")
+    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3/$4")
+    .replace(/^(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})(\d)/, "$1.$2.$3/$4-$5");
+}
+
+function maskCep(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  return digits.replace(/^(\d{5})(\d)/, "$1-$2");
+}
+
+function maskPhone(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 10) {
+    return digits
+      .replace(/^(\d{2})(\d)/, "($1) $2")
+      .replace(/^(\(\d{2}\)) (\d{4})(\d)/, "$1 $2-$3");
+  }
+  return digits
+    .replace(/^(\d{2})(\d)/, "($1) $2")
+    .replace(/^(\(\d{2}\)) (\d{5})(\d)/, "$1 $2-$3");
+}
+
+/**
+ * Validacao de CPF (algoritmo dos digitos verificadores). Retorna true se valido.
+ */
+function isValidCpf(value: string): boolean {
+  const cpf = value.replace(/\D/g, "");
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(cpf[i]) * (10 - i);
+  let check = 11 - (sum % 11);
+  if (check >= 10) check = 0;
+  if (check !== parseInt(cpf[9])) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(cpf[i]) * (11 - i);
+  check = 11 - (sum % 11);
+  if (check >= 10) check = 0;
+  return check === parseInt(cpf[10]);
+}
+
+/**
+ * Validacao de CNPJ.
+ */
+function isValidCnpj(value: string): boolean {
+  const cnpj = value.replace(/\D/g, "");
+  if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+  const weights1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  const weights2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  const calc = (digs: string, weights: number[]) => {
+    const sum = weights.reduce((acc, w, i) => acc + parseInt(digs[i]) * w, 0);
+    const rest = sum % 11;
+    return rest < 2 ? 0 : 11 - rest;
+  };
+  return (
+    calc(cnpj.slice(0, 12), weights1) === parseInt(cnpj[12]) &&
+    calc(cnpj.slice(0, 13), weights2) === parseInt(cnpj[13])
+  );
+}
+
+function isValidDoc(value: string): boolean {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 11) return isValidCpf(digits);
+  if (digits.length === 14) return isValidCnpj(digits);
+  return false;
+}
+
+interface ViaCepResponse {
+  cep?: string;
+  logradouro?: string;
+  bairro?: string;
+  localidade?: string;
+  uf?: string;
+  erro?: boolean;
+}
+
+async function fetchViaCep(cep: string): Promise<ViaCepResponse | null> {
+  const digits = cep.replace(/\D/g, "");
+  if (digits.length !== 8) return null;
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as ViaCepResponse;
+    if (data.erro) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 export default function NovoOrcamentoPage() {
   const router = useRouter();
   const [services, setServices] = useState<Service[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
+  const [clientWhatsapp, setClientWhatsapp] = useState("");
   const [clientEmail, setClientEmail] = useState("");
+  const [clientDocument, setClientDocument] = useState("");
   const [addressStreet, setAddressStreet] = useState("");
+  const [addressNumber, setAddressNumber] = useState("");
+  const [addressComplement, setAddressComplement] = useState("");
+  const [addressNeighborhood, setAddressNeighborhood] = useState("");
   const [addressCity, setAddressCity] = useState("");
   const [addressState, setAddressState] = useState("");
   const [addressZip, setAddressZip] = useState("");
   const [notes, setNotes] = useState("");
+  const [cepLoading, setCepLoading] = useState(false);
+  const [cepError, setCepError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,8 +170,13 @@ export default function NovoOrcamentoPage() {
       const d = JSON.parse(raw) as {
         clientName?: string;
         clientPhone?: string;
+        clientWhatsapp?: string;
         clientEmail?: string;
+        clientDocument?: string;
         addressStreet?: string;
+        addressNumber?: string;
+        addressComplement?: string;
+        addressNeighborhood?: string;
         addressCity?: string;
         addressState?: string;
         addressZip?: string;
@@ -72,8 +185,13 @@ export default function NovoOrcamentoPage() {
       };
       if (d.clientName) setClientName(d.clientName);
       if (d.clientPhone) setClientPhone(d.clientPhone);
+      if (d.clientWhatsapp) setClientWhatsapp(d.clientWhatsapp);
       if (d.clientEmail) setClientEmail(d.clientEmail);
+      if (d.clientDocument) setClientDocument(d.clientDocument);
       if (d.addressStreet) setAddressStreet(d.addressStreet);
+      if (d.addressNumber) setAddressNumber(d.addressNumber);
+      if (d.addressComplement) setAddressComplement(d.addressComplement);
+      if (d.addressNeighborhood) setAddressNeighborhood(d.addressNeighborhood);
       if (d.addressCity) setAddressCity(d.addressCity);
       if (d.addressState) setAddressState(d.addressState);
       if (d.addressZip) setAddressZip(d.addressZip);
@@ -114,10 +232,35 @@ export default function NovoOrcamentoPage() {
 
   const total = selected.reduce((s, i) => s + i.subtotal, 0);
 
+  async function handleCepBlur() {
+    setCepError(null);
+    const digits = addressZip.replace(/\D/g, "");
+    if (digits.length !== 8) return;
+    setCepLoading(true);
+    const data = await fetchViaCep(digits);
+    setCepLoading(false);
+    if (!data) {
+      setCepError("CEP não encontrado.");
+      return;
+    }
+    if (data.logradouro && !addressStreet) setAddressStreet(data.logradouro);
+    if (data.bairro && !addressNeighborhood) setAddressNeighborhood(data.bairro);
+    if (data.localidade && !addressCity) setAddressCity(data.localidade);
+    if (data.uf && !addressState) setAddressState(data.uf);
+  }
+
   async function handleSubmit() {
     setError(null);
     if (!clientName.trim()) {
       setError("Informe o nome do cliente.");
+      return;
+    }
+    if (clientDocument && !isValidDoc(clientDocument)) {
+      setError("CPF/CNPJ inválido.");
+      return;
+    }
+    if (clientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {
+      setError("E-mail inválido.");
       return;
     }
     if (selected.length === 0) {
@@ -131,8 +274,9 @@ export default function NovoOrcamentoPage() {
       localStorage.setItem(
         DRAFT_KEY,
         JSON.stringify({
-          clientName, clientPhone, clientEmail,
-          addressStreet, addressCity, addressState, addressZip,
+          clientName, clientPhone, clientWhatsapp, clientEmail, clientDocument,
+          addressStreet, addressNumber, addressComplement, addressNeighborhood,
+          addressCity, addressState, addressZip,
           notes, quantities,
           savedAt: new Date().toISOString(),
         })
@@ -153,12 +297,17 @@ export default function NovoOrcamentoPage() {
     try {
       const quote = await quotesApi.create({
         client_name: clientName.trim(),
-        client_phone: clientPhone.trim() || undefined,
+        client_phone: clientPhone.replace(/\D/g, "") || undefined,
+        client_whatsapp: clientWhatsapp.replace(/\D/g, "") || undefined,
         client_email: clientEmail.trim() || undefined,
+        client_document: clientDocument.replace(/\D/g, "") || undefined,
         address_street: addressStreet.trim() || undefined,
+        address_number: addressNumber.trim() || undefined,
+        address_complement: addressComplement.trim() || undefined,
+        address_neighborhood: addressNeighborhood.trim() || undefined,
         address_city: addressCity.trim() || undefined,
-        address_state: addressState.trim() || undefined,
-        address_zip: addressZip.trim() || undefined,
+        address_state: addressState.trim().toUpperCase() || undefined,
+        address_zip: addressZip.replace(/\D/g, "") || undefined,
         notes: notes.trim() || undefined,
         items: selected.map((i) => ({
           service_id: i.service.id,
@@ -273,43 +422,93 @@ export default function NovoOrcamentoPage() {
               <Input
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
-                placeholder="Nome do cliente"
+                placeholder="Nome do cliente *"
+              />
+              <Input
+                value={maskCpfCnpj(clientDocument)}
+                onChange={(e) => setClientDocument(e.target.value)}
+                placeholder="CPF ou CNPJ"
+                inputMode="numeric"
               />
               <div className="grid grid-cols-2 gap-2">
                 <Input
-                  value={clientPhone}
+                  value={maskPhone(clientPhone)}
                   onChange={(e) => setClientPhone(e.target.value)}
                   placeholder="Telefone"
+                  inputMode="tel"
                 />
                 <Input
-                  value={clientEmail}
-                  onChange={(e) => setClientEmail(e.target.value)}
-                  placeholder="E-mail"
+                  value={maskPhone(clientWhatsapp)}
+                  onChange={(e) => setClientWhatsapp(e.target.value)}
+                  placeholder="WhatsApp"
+                  inputMode="tel"
                 />
               </div>
               <Input
-                value={addressStreet}
-                onChange={(e) => setAddressStreet(e.target.value)}
-                placeholder="Endereço"
+                value={clientEmail}
+                onChange={(e) => setClientEmail(e.target.value)}
+                placeholder="E-mail"
+                type="email"
+                inputMode="email"
               />
-              <div className="grid grid-cols-3 gap-2">
+
+              {/* Endereco com CEP em primeiro (ViaCEP autocomplete) */}
+              <div className="space-y-2 pt-2 border-t">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Endereço
+                </p>
                 <Input
-                  value={addressCity}
-                  onChange={(e) => setAddressCity(e.target.value)}
-                  placeholder="Cidade"
-                  className="col-span-2"
+                  value={maskCep(addressZip)}
+                  onChange={(e) => setAddressZip(e.target.value)}
+                  onBlur={handleCepBlur}
+                  placeholder={cepLoading ? "Buscando CEP..." : "CEP"}
+                  inputMode="numeric"
+                  disabled={cepLoading}
+                />
+                {cepError && (
+                  <p className="text-xs text-destructive">{cepError}</p>
+                )}
+                <div className="grid grid-cols-3 gap-2">
+                  <Input
+                    value={addressStreet}
+                    onChange={(e) => setAddressStreet(e.target.value)}
+                    placeholder="Logradouro"
+                    className="col-span-2"
+                  />
+                  <Input
+                    value={addressNumber}
+                    onChange={(e) => setAddressNumber(e.target.value)}
+                    placeholder="Número"
+                  />
+                </div>
+                <Input
+                  value={addressComplement}
+                  onChange={(e) => setAddressComplement(e.target.value)}
+                  placeholder="Complemento (opcional)"
                 />
                 <Input
-                  value={addressState}
-                  onChange={(e) => setAddressState(e.target.value)}
-                  placeholder="UF"
+                  value={addressNeighborhood}
+                  onChange={(e) => setAddressNeighborhood(e.target.value)}
+                  placeholder="Bairro"
                 />
+                <div className="grid grid-cols-3 gap-2">
+                  <Input
+                    value={addressCity}
+                    onChange={(e) => setAddressCity(e.target.value)}
+                    placeholder="Cidade"
+                    className="col-span-2"
+                  />
+                  <Input
+                    value={addressState}
+                    onChange={(e) =>
+                      setAddressState(e.target.value.toUpperCase().slice(0, 2))
+                    }
+                    placeholder="UF"
+                    maxLength={2}
+                  />
+                </div>
               </div>
-              <Input
-                value={addressZip}
-                onChange={(e) => setAddressZip(e.target.value)}
-                placeholder="CEP"
-              />
+
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}

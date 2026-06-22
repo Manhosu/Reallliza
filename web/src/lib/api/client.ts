@@ -75,9 +75,14 @@ async function request<T>(options: RequestOptions): Promise<T> {
 
   const url = `${BASE_URL}${path}${buildQueryString(params)}`;
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  // Pra FormData o browser monta o boundary multipart sozinho — nunca
+  // setamos Content-Type manualmente.
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+
+  const headers: Record<string, string> = {};
+  if (!isFormData) {
+    headers["Content-Type"] = "application/json";
+  }
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
@@ -86,7 +91,12 @@ async function request<T>(options: RequestOptions): Promise<T> {
   const res = await fetch(url, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body:
+      body === undefined
+        ? undefined
+        : isFormData
+          ? (body as FormData)
+          : JSON.stringify(body),
     signal,
   });
 
