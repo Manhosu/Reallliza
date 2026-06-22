@@ -24,7 +24,7 @@ export async function POST(
     const { data: invoice, error: invErr } = await supabase
       .from("invoices")
       .select(
-        "*, service_order:service_orders(id, client_name, address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip), quote:quotes!service_orders_quote_quote_id_fkey(client_document, client_email, client_phone)"
+        "*, service_order:service_orders(id, client_name, address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip)"
       )
       .eq("id", id)
       .single();
