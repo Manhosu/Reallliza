@@ -45,6 +45,8 @@ import {
   BarChart3,
   Lock,
   Cog,
+  GraduationCap,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserRole, type Notification } from "@/lib/types";
@@ -237,6 +239,18 @@ const allNavItems = [
     href: "/configuracoes-globais",
     icon: Cog,
     roles: [UserRole.ADMIN],
+  },
+  {
+    label: "Cursos",
+    href: "/cursos",
+    icon: GraduationCap,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    label: "Aprendizado",
+    href: "/aprendizado",
+    icon: BookOpen,
+    roles: [UserRole.TECHNICIAN, UserRole.PARTNER],
   },
   {
     label: "Auditoria",
