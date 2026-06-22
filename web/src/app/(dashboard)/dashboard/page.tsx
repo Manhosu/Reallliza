@@ -11,7 +11,12 @@ import {
   CalendarDays,
   Activity,
   PieChart as PieChartIcon,
+  CalendarClock,
+  ShieldCheck,
+  Banknote,
 } from "lucide-react";
+import { apiClient } from "@/lib/api/client";
+import { useEffect, useState } from "react";
 import {
   AreaChart,
   Area,
@@ -182,9 +187,25 @@ function MetricSkeleton() {
 // Dashboard Page
 // ============================================================
 
+interface PartnerExtras {
+  scheduled_count: number;
+  warranties_open_count: number;
+  contracted_this_month: number;
+}
+
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const isPartner = user?.role === UserRole.PARTNER;
+
+  // KPIs extras do partner (Fase 3 — Jessica spec Loja Parceira)
+  const [partnerExtras, setPartnerExtras] = useState<PartnerExtras | null>(null);
+  useEffect(() => {
+    if (!isPartner) return;
+    apiClient
+      .get<PartnerExtras>("/dashboard/partner-extras")
+      .then(setPartnerExtras)
+      .catch(() => setPartnerExtras(null));
+  }, [isPartner]);
 
   // Fetch dashboard stats
   const {
@@ -285,14 +306,21 @@ export default function DashboardPage() {
             <MetricSkeleton />
             <MetricSkeleton />
             <MetricSkeleton />
+            {isPartner && (
+              <>
+                <MetricSkeleton />
+                <MetricSkeleton />
+                <MetricSkeleton />
+              </>
+            )}
             {!isPartner && <MetricSkeleton />}
           </>
         ) : isPartner ? (
           <>
             <MetricCard
-              title="Meus Chamados Abertos"
+              title="Solicitações Abertas"
               value={String(stats?.openOs ?? 0)}
-              change="Total atual"
+              change="Aguardando ação"
               changeType="neutral"
               icon={
                 <ClipboardList className="h-5 w-5" style={{ color: "#EAB308" }} />
@@ -301,16 +329,27 @@ export default function DashboardPage() {
               delay={0}
             />
             <MetricCard
+              title="Agendadas"
+              value={String(partnerExtras?.scheduled_count ?? 0)}
+              change="Aguardando execução"
+              changeType="neutral"
+              icon={
+                <CalendarClock className="h-5 w-5" style={{ color: "#A855F7" }} />
+              }
+              accentColor="#A855F7"
+              delay={0.05}
+            />
+            <MetricCard
               title="Em Andamento"
               value={String(stats?.inProgressOs ?? 0)}
-              change="Total atual"
+              change="Sendo executadas"
               changeType="neutral"
               icon={<Clock className="h-5 w-5" style={{ color: "#3B82F6" }} />}
               accentColor="#3B82F6"
               delay={0.1}
             />
             <MetricCard
-              title="Concluídos"
+              title="Concluídas"
               value={String(stats?.completedOs ?? 0)}
               change="Total geral"
               changeType="up"
@@ -321,7 +360,30 @@ export default function DashboardPage() {
                 />
               }
               accentColor="#22C55E"
+              delay={0.15}
+            />
+            <MetricCard
+              title="Garantias Abertas"
+              value={String(partnerExtras?.warranties_open_count ?? 0)}
+              change="Aguardando resposta"
+              changeType="neutral"
+              icon={
+                <ShieldCheck className="h-5 w-5" style={{ color: "#F59E0B" }} />
+              }
+              accentColor="#F59E0B"
               delay={0.2}
+            />
+            <MetricCard
+              title="Contratado no mês"
+              value={(partnerExtras?.contracted_this_month ?? 0).toLocaleString(
+                "pt-BR",
+                { style: "currency", currency: "BRL" }
+              )}
+              change="Valor de OSs pagas"
+              changeType="up"
+              icon={<Banknote className="h-5 w-5" style={{ color: "#10B981" }} />}
+              accentColor="#10B981"
+              delay={0.25}
             />
           </>
         ) : (

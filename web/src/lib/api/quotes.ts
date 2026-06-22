@@ -52,6 +52,25 @@ export interface Quote {
   paid_at: string | null;
   created_at: string;
   updated_at: string;
+  // Fase 2 — modalidade + calculo
+  modality: QuoteModality | null;
+  service_date: string | null;
+  service_time: string | null;
+  travel_distance_km: number | null;
+  travel_cost: number | null;
+  stay_count: number | null;
+  stay_cost: number | null;
+  is_special_hour: boolean | null;
+  special_hour_extra: number | null;
+  subtotal_services: number | null;
+  total_hours: number | null;
+  total_days: number | null;
+  platform_fee_pct: number | null;
+  platform_fee_amount: number | null;
+  payout_amount: number | null;
+  region_city: string | null;
+  region_state: string | null;
+  custody_held: boolean | null;
   partner?: { id: string; company_name: string; user_id?: string } | null;
   items?: QuoteItem[];
   payments?: QuotePayment[];
