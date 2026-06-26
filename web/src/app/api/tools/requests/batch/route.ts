@@ -4,15 +4,19 @@ import { authenticateRequest, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 
+type RequestPriority = "low" | "medium" | "high" | "urgent";
+
 interface BatchItem {
   tool_id: string;
   quantity: number;
   justification?: string | null;
+  priority?: RequestPriority;
 }
 
 interface BatchPayload {
   items: BatchItem[];
   shared_justification?: string | null;
+  priority?: RequestPriority;
 }
 
 /**
@@ -32,6 +36,11 @@ export async function POST(request: NextRequest) {
     }
 
     const sharedJustification = body.shared_justification?.toString().trim() || null;
+    const validPriorities: RequestPriority[] = ["low", "medium", "high", "urgent"];
+    const sharedPriority: RequestPriority =
+      body.priority && validPriorities.includes(body.priority)
+        ? body.priority
+        : "medium";
     const supabase = getAdminClient();
 
     // Validate tools exist and snapshot names
@@ -69,12 +78,17 @@ export async function POST(request: NextRequest) {
         (it.justification && it.justification.toString().trim()) ||
         sharedJustification ||
         null;
+      const itemPriority: RequestPriority =
+        it.priority && validPriorities.includes(it.priority)
+          ? it.priority
+          : sharedPriority;
       return {
         requester_id: user.id,
         tool_id: tool.id,
         tool_name: tool.name,
         quantity: Math.floor(qty),
         justification,
+        priority: itemPriority,
         status: "pending",
       };
     });

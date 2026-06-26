@@ -152,6 +152,15 @@ function WeekViewSkeleton() {
 // Schedule Block Component
 // ============================================================
 
+// Cor da barra lateral por prioridade da OS vinculada.
+// Jessica 24/06: agenda destaca prioridade automaticamente.
+const PRIORITY_RAIL: Record<string, string> = {
+  urgent: "before:bg-red-500",
+  high: "before:bg-orange-500",
+  medium: "before:bg-yellow-500",
+  low: "before:bg-zinc-400",
+};
+
 function ScheduleBlock({
   schedule,
 }: {
@@ -169,6 +178,9 @@ function ScheduleBlock({
   );
 
   const isFromOs = schedule.source === "os";
+  const osPriority = schedule.service_order?.priority as string | undefined;
+  const railClass = osPriority ? PRIORITY_RAIL[osPriority] : "";
+  const isUrgent = osPriority === "urgent";
 
   return (
     <motion.div
@@ -176,9 +188,13 @@ function ScheduleBlock({
       animate={{ opacity: 1, scale: 1 }}
       className={cn(
         "absolute inset-x-1 z-10 cursor-pointer overflow-hidden rounded-lg border-l-[3px] px-2 py-1.5 transition-all duration-200 hover:shadow-md",
+        // Trilho de prioridade ocupa as 4px da esquerda quando ha priority na OS
+        railClass && "relative before:absolute before:inset-y-0 before:left-0 before:w-1",
+        railClass,
         colors.bg,
         colors.border,
-        isFromOs && "ring-1 ring-primary/30"
+        isFromOs && "ring-1 ring-primary/30",
+        isUrgent && "ring-2 ring-red-500/50 animate-pulse"
       )}
       style={{
         top: `${top}px`,
@@ -187,6 +203,11 @@ function ScheduleBlock({
     >
       <div className="flex items-center gap-1">
         {isFromOs && <ClipboardList className={cn("h-2.5 w-2.5 shrink-0", colors.text)} />}
+        {isUrgent && (
+          <span className="rounded bg-red-500 px-1 text-[8px] font-bold uppercase text-white">
+            URG
+          </span>
+        )}
         <p className={cn("truncate text-[11px] font-semibold", colors.text)}>
           {schedule.service_order?.title || schedule.service_order?.order_number || schedule.service_order_id.slice(0, 8)}
         </p>
@@ -332,7 +353,15 @@ export default function AgendaPage() {
         )}`
       : format(currentDate, "MMMM yyyy", { locale: ptBR });
 
-  // List view schedules (sorted chronologically, excluding cancelled/completed)
+  // List view schedules — dentro do mesmo dia, urgentes vem primeiro.
+  // Entre dias diferentes, dia mais proximo vem antes (cronologico).
+  // Jessica 24/06: prioridade automatica na agenda.
+  const PRIORITY_RANK: Record<string, number> = {
+    urgent: 0,
+    high: 1,
+    medium: 2,
+    low: 3,
+  };
   const listSchedules = [...schedules]
     .filter(
       (s) =>
@@ -340,9 +369,11 @@ export default function AgendaPage() {
         s.status !== ScheduleStatus.COMPLETED
     )
     .sort((a, b) => {
-      const dateA = `${a.date}T${a.start_time || "00:00"}`;
-      const dateB = `${b.date}T${b.start_time || "00:00"}`;
-      return dateA.localeCompare(dateB);
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      const pa = PRIORITY_RANK[a.service_order?.priority as string] ?? 9;
+      const pb = PRIORITY_RANK[b.service_order?.priority as string] ?? 9;
+      if (pa !== pb) return pa - pb;
+      return (a.start_time || "00:00").localeCompare(b.start_time || "00:00");
     });
 
   const handleOpenCreateModal = async () => {

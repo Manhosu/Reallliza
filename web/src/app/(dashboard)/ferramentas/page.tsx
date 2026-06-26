@@ -301,7 +301,10 @@ function ToolsMetricsPanel() {
         );
       })}
       {metrics && (metrics.requests.pending_count > 0 || metrics.custody.overdue_count > 0) && (
-        <div className="col-span-2 flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 text-sm md:col-span-4">
+        <a
+          href="/ferramentas/solicitacoes"
+          className="col-span-2 flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 text-sm hover:bg-amber-500/10 md:col-span-4"
+        >
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
           <span>
             {metrics.requests.pending_count > 0 && (
@@ -320,8 +323,11 @@ function ToolsMetricsPanel() {
                 {metrics.custody.overdue_count === 1 ? "" : "s"}
               </>
             )}
+            <span className="ml-2 text-xs text-amber-700 dark:text-amber-300">
+              → ver fila por prioridade
+            </span>
           </span>
-        </div>
+        </a>
       )}
     </motion.div>
   );

@@ -32,6 +32,9 @@ export function ToolCart({ visible, onClose, onSubmitted }: ToolCartProps) {
   const clear = useToolCart((s) => s.clear);
 
   const [justification, setJustification] = useState('');
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>(
+    'medium',
+  );
   const [submitting, setSubmitting] = useState(false);
 
   const lines = Object.values(items);
@@ -50,10 +53,12 @@ export function ToolCart({ visible, onClose, onSubmitted }: ToolCartProps) {
           quantity: l.quantity,
         })),
         shared_justification: justification.trim() || undefined,
+        priority,
       };
       await apiClient.post('/tools/requests/batch', payload);
       clear();
       setJustification('');
+      setPriority('medium');
       Alert.alert('Sucesso', 'Solicitacao enviada para analise.');
       onSubmitted();
     } catch (error: unknown) {
@@ -166,6 +171,54 @@ export function ToolCart({ visible, onClose, onSubmitted }: ToolCartProps) {
 
           {/* Footer */}
           <View style={styles.footer}>
+            <Text style={styles.label}>Prioridade</Text>
+            <View style={styles.priorityRow}>
+              {(['low', 'medium', 'high', 'urgent'] as const).map((p) => {
+                const labels = {
+                  low: 'Baixa',
+                  medium: 'Media',
+                  high: 'Alta',
+                  urgent: 'Urgente',
+                };
+                const tintByPriority = {
+                  low: '#71717A',
+                  medium: '#EAB308',
+                  high: '#F97316',
+                  urgent: '#EF4444',
+                };
+                const isActive = priority === p;
+                return (
+                  <TouchableOpacity
+                    key={p}
+                    onPress={() => setPriority(p)}
+                    style={[
+                      styles.priorityChip,
+                      {
+                        borderColor: isActive
+                          ? tintByPriority[p]
+                          : colors.border,
+                        backgroundColor: isActive
+                          ? tintByPriority[p] + '22'
+                          : 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.priorityChipText,
+                        {
+                          color: isActive ? tintByPriority[p] : colors.textDark,
+                          fontWeight: isActive ? '700' : '500',
+                        },
+                      ]}
+                    >
+                      {labels[p]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             <Text style={styles.label}>Justificativa (opcional para todos os itens)</Text>
             <TextInput
               style={styles.justificationInput}
@@ -333,6 +386,20 @@ const styles = StyleSheet.create({
   label: {
     ...typography.bodySmBold,
     color: colors.textMuted,
+  },
+  priorityRow: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  priorityChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1.5,
+  },
+  priorityChipText: {
+    ...typography.bodySm,
   },
   justificationInput: {
     backgroundColor: colors.card,
