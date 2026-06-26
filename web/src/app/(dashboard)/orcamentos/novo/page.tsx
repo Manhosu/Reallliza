@@ -172,6 +172,11 @@ export default function NovoOrcamentoPage() {
   // Calculo (preview)
   const [calc, setCalc] = useState<CalcResult | null>(null);
   const [calcLoading, setCalcLoading] = useState(false);
+  // Preview de foto do servico (lightbox)
+  const [photoPreview, setPhotoPreview] = useState<{
+    url: string;
+    title: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -465,16 +470,38 @@ export default function NovoOrcamentoPage() {
             <div className="space-y-2">
               {services.map((s) => {
                 const qty = quantities[s.id] ?? 0;
+                const firstPhoto = s.photos?.[0];
                 return (
                   <Card key={s.id}>
                     <CardContent className="flex items-center gap-3 p-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                        <Package className="h-5 w-5 text-primary" />
-                      </div>
+                      {firstPhoto ? (
+                        <button
+                          type="button"
+                          onClick={() => setPhotoPreview({ url: firstPhoto.url, title: s.name })}
+                          className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-border hover:ring-2 hover:ring-primary transition"
+                          title="Ver foto do serviço"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={firstPhoto.thumbnail_url || firstPhoto.url}
+                            alt={s.name}
+                            className="h-full w-full object-cover"
+                          />
+                        </button>
+                      ) : (
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                          <Package className="h-5 w-5 text-primary" />
+                        </div>
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className="font-medium leading-snug">{s.name}</p>
                         <p className="text-xs text-muted-foreground">
                           {formatBRL(s.commercial_price || 0)} / {s.unit}
+                          {(s.photos?.length ?? 0) > 1 && (
+                            <span className="ml-2 text-primary">
+                              · {s.photos.length} fotos
+                            </span>
+                          )}
                         </p>
                       </div>
                       <div className="flex items-center gap-1">
@@ -821,6 +848,54 @@ export default function NovoOrcamentoPage() {
           </Card>
         </div>
       </div>
+
+      {/* Lightbox de foto do servico — Jessica 24/06: loja precisa ver
+          a foto do serviço pra confirmar o que está contratando */}
+      {photoPreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setPhotoPreview(null)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === "Escape" && setPhotoPreview(null)}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPhotoPreview(null);
+            }}
+            className="absolute top-4 right-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
+            aria-label="Fechar"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+          <div
+            className="max-h-full max-w-4xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="mb-2 text-center text-sm font-medium text-white">
+              {photoPreview.title}
+            </p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photoPreview.url}
+              alt={photoPreview.title}
+              className="max-h-[80vh] max-w-full rounded-lg object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

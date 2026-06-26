@@ -700,7 +700,7 @@ export default function UsuariosPage() {
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCreateModal(false)} />
-          <div className="relative z-10 w-full max-w-lg rounded-xl bg-card border p-6 shadow-xl mx-4">
+          <div className="relative z-10 w-full max-w-lg rounded-xl bg-card border p-6 shadow-xl mx-4 max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-semibold mb-4">Novo Usuário</h2>
             <div className="space-y-4">
               <Input
@@ -837,7 +837,7 @@ export default function UsuariosPage() {
       {editingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setEditingUser(null)} />
-          <div className="relative z-10 w-full max-w-lg rounded-xl bg-card border p-6 shadow-xl mx-4">
+          <div className="relative z-10 w-full max-w-lg rounded-xl bg-card border p-6 shadow-xl mx-4 max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-semibold mb-4">Editar Usuário</h2>
             <div className="space-y-4">
               <Input
