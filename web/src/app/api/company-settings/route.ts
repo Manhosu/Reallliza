@@ -58,6 +58,14 @@ export async function PATCH(request: NextRequest) {
     if (body.business_hour_end !== undefined)
       update.business_hour_end = String(body.business_hour_end).slice(0, 8);
 
+    // Cobertura operacional da UF base (Jessica 24/06). Valores 0 desativam a
+    // regra: raio 0 = sempre cobra deslocamento; tempo 0 = sempre cobra estadia
+    // acima do raio. Limites generosos deixam a empresa parametrizar como quiser.
+    if (body.coverage_radius_km !== undefined)
+      update.coverage_radius_km = num(body.coverage_radius_km, 100, 0, 10000);
+    if (body.max_service_hours_no_stay !== undefined)
+      update.max_service_hours_no_stay = num(body.max_service_hours_no_stay, 10, 0, 240);
+
     if (Object.keys(update).length === 0) {
       throw new AuthError(400, "Nada para atualizar");
     }

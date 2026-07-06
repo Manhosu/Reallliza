@@ -31,6 +31,8 @@ interface CompanySettings {
   platform_fee_pct: number;
   business_hour_start: string;
   business_hour_end: string;
+  coverage_radius_km: number;
+  max_service_hours_no_stay: number;
 }
 
 interface StayRate {
@@ -140,6 +142,8 @@ function CompanyTab() {
         platform_fee_pct: settings.platform_fee_pct,
         business_hour_start: settings.business_hour_start,
         business_hour_end: settings.business_hour_end,
+        coverage_radius_km: settings.coverage_radius_km,
+        max_service_hours_no_stay: settings.max_service_hours_no_stay,
       });
       setSettings(updated);
       toast.success("Configurações salvas");
@@ -303,6 +307,63 @@ function CompanyTab() {
                 setSettings({ ...settings, business_hour_end: e.target.value })
               }
             />
+          </div>
+        </div>
+
+        {/* Cobertura operacional da UF base (Jessica 24/06) */}
+        <div className="space-y-3 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4">
+          <div>
+            <h3 className="text-sm font-semibold">
+              Cobertura Operacional da UF Base
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Regra aplicada <strong>somente</strong> a atendimentos dentro da mesma UF da
+              base da empresa ({settings.base_state ?? "—"}). Para outros estados,
+              o cálculo padrão continua valendo. Deixar em <strong>0</strong> desativa
+              a regra correspondente.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">
+                Raio de cobertura sem deslocamento (km)
+              </label>
+              <Input
+                type="number"
+                step="1"
+                min="0"
+                value={settings.coverage_radius_km ?? 0}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    coverage_radius_km: Number(e.target.value) || 0,
+                  })
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Até essa distância, não cobra deslocamento (dentro da UF base).
+              </p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">
+                Tempo máximo sem estadia (horas)
+              </label>
+              <Input
+                type="number"
+                step="1"
+                min="0"
+                value={settings.max_service_hours_no_stay ?? 0}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    max_service_hours_no_stay: Number(e.target.value) || 0,
+                  })
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Só cobra estadia acima desse tempo <em>E</em> além do raio.
+              </p>
+            </div>
           </div>
         </div>
 

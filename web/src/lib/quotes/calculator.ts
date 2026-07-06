@@ -25,6 +25,10 @@ export interface CompanySettings {
   platform_fee_pct: number;
   business_hour_start: string; // HH:MM:SS
   business_hour_end: string;
+  /** Raio (km) de cobertura sem deslocamento dentro da UF base. */
+  coverage_radius_km: number | null;
+  /** Tempo maximo (h) de servico sem estadia dentro da UF base. */
+  max_service_hours_no_stay: number | null;
 }
 
 export interface StateStayRate {
@@ -80,7 +84,7 @@ export async function loadCompanySettings(): Promise<CompanySettings> {
   const { data, error } = await supabase
     .from("company_settings")
     .select(
-      "base_lat, base_lng, base_state, price_per_km, special_hour_multiplier, platform_fee_pct, business_hour_start, business_hour_end"
+      "base_lat, base_lng, base_state, price_per_km, special_hour_multiplier, platform_fee_pct, business_hour_start, business_hour_end, coverage_radius_km, max_service_hours_no_stay"
     )
     .limit(1)
     .single();
@@ -258,6 +262,20 @@ export async function calculateQuote(
   let travel_distance_km = 0;
   let travel_cost = 0;
 
+  // Determina se cliente esta na mesma UF da base (drive da regra Jessica 24/06)
+  const sameStateAsBase =
+    !!settings.base_state &&
+    !!input.service_address_state &&
+    input.service_address_state.toUpperCase() === settings.base_state.toUpperCase();
+
+  // Cobertura operacional (Jessica 24/06):
+  //   - coverage_radius_km > 0: dentro da UF base, ate esse raio nao cobra deslocamento
+  //   - max_service_hours_no_stay > 0: dentro da UF base, so cobra estadia se
+  //     distancia > raio E total_hours > tempo_max
+  // Valores 0/null desativam a respectiva regra (comportamento antigo).
+  const coverageRadius = Number(settings.coverage_radius_km ?? 0) || 0;
+  const maxHoursNoStay = Number(settings.max_service_hours_no_stay ?? 0) || 0;
+
   if (
     settings.base_lat != null &&
     settings.base_lng != null &&
@@ -278,8 +296,22 @@ export async function calculateQuote(
         dest.lat,
         dest.lng
       );
-      travel_cost =
-        Math.round(travel_distance_km * settings.price_per_km * 100) / 100;
+
+      // Regra de cobertura: dentro da UF base + dentro do raio -> sem deslocamento
+      const withinCoverageRadius =
+        sameStateAsBase &&
+        coverageRadius > 0 &&
+        travel_distance_km <= coverageRadius;
+
+      if (withinCoverageRadius) {
+        travel_cost = 0;
+        warnings.push(
+          `Atendimento a ${travel_distance_km.toFixed(1)} km — dentro do raio de cobertura de ${coverageRadius} km na UF base. Deslocamento nao cobrado.`
+        );
+      } else {
+        travel_cost =
+          Math.round(travel_distance_km * settings.price_per_km * 100) / 100;
+      }
     } else {
       warnings.push(
         "Nao foi possivel geocodificar o endereco do cliente — deslocamento ficou zerado."
@@ -294,14 +326,32 @@ export async function calculateQuote(
     );
   }
 
-  // Estadia: aplica somente se cliente fora do estado base
+  // Estadia
   let stay_count = 0;
   let stay_cost = 0;
-  if (
+
+  if (sameStateAsBase) {
+    // Dentro da UF base: so cobra estadia se distancia > raio E tempo > tempo_max
+    // (as duas condicoes precisam ser verdadeiras). Regra desativada se
+    // qualquer dos parametros for 0.
+    const overRadius = coverageRadius > 0 && travel_distance_km > coverageRadius;
+    const overTime = maxHoursNoStay > 0 && total_hours > maxHoursNoStay;
+    if (overRadius && overTime) {
+      stay_count = Math.ceil(total_hours / 8);
+      const daily = await loadStayRate(input.service_address_state as string);
+      if (daily > 0) {
+        stay_cost = Math.round(stay_count * daily * 100) / 100;
+      } else {
+        warnings.push(
+          `Estadia aplicavel (${travel_distance_km.toFixed(1)} km > ${coverageRadius} km, ${total_hours}h > ${maxHoursNoStay}h) mas valor da UF ${input.service_address_state} nao cadastrado. Configure em /tabela-estadias.`
+        );
+      }
+    }
+  } else if (
     settings.base_state &&
-    input.service_address_state &&
-    input.service_address_state.toUpperCase() !== settings.base_state.toUpperCase()
+    input.service_address_state
   ) {
+    // Fora da UF base: comportamento antigo (1 diaria a cada 8h)
     stay_count = total_hours > 0 ? Math.ceil(total_hours / 8) : 0;
     if (stay_count > 0) {
       const daily = await loadStayRate(input.service_address_state);
