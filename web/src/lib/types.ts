@@ -17,6 +17,7 @@ export enum UserStatus {
 
 export enum OsStatus {
   DRAFT = "draft",
+  AWAITING_ASSIGNMENT = "awaiting_assignment",
   PENDING = "pending",
   ASSIGNED = "assigned",
   IN_PROGRESS = "in_progress",
@@ -396,6 +397,7 @@ export interface PaginatedResponse<T> {
 
 export const OS_STATUS_LABELS: Record<OsStatus, string> = {
   [OsStatus.DRAFT]: "Rascunho",
+  [OsStatus.AWAITING_ASSIGNMENT]: "Aguardando Designação",
   [OsStatus.PENDING]: "Pendente",
   [OsStatus.ASSIGNED]: "Atribuída",
   [OsStatus.IN_PROGRESS]: "Em Andamento",

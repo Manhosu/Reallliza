@@ -79,6 +79,13 @@ const allNavItems = [
     roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.PARTNER],
   },
   {
+    label: "Aguardando Designação",
+    href: "/os/designacao",
+    icon: UserCheck,
+    roles: [UserRole.ADMIN],
+    badgeKey: "awaiting_assignment",
+  },
+  {
     label: "Orçamentos",
     href: "/orcamentos",
     icon: FileText,
@@ -331,6 +338,7 @@ export default function DashboardLayout({
   const [isDark, setIsDark] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [awaitingAssignCount, setAwaitingAssignCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -378,6 +386,35 @@ export default function DashboardLayout({
     return () => {
       cancelled = true;
       clearInterval(interval);
+    };
+  }, [user]);
+
+  // Contador da fila de designacao (Jessica 24/06). So admins veem.
+  useEffect(() => {
+    if (!user || user.role !== UserRole.ADMIN) return;
+    let cancelled = false;
+
+    const fetchAwaiting = async () => {
+      try {
+        const res = await fetch(
+          "/api/service-orders?status=awaiting_assignment&limit=1",
+          { credentials: "include" }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const total = Number(
+          data?.meta?.total ?? data?.total ?? (Array.isArray(data?.data) ? data.data.length : 0)
+        );
+        if (!cancelled) setAwaitingAssignCount(Number.isFinite(total) ? total : 0);
+      } catch {
+        // silencioso
+      }
+    };
+    fetchAwaiting();
+    const t = setInterval(fetchAwaiting, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
     };
   }, [user]);
 
@@ -602,7 +639,20 @@ export default function DashboardLayout({
                   )}
                 />
 
-                {!isCollapsed && <span>{item.label}</span>}
+                {!isCollapsed && <span className="flex-1">{item.label}</span>}
+
+                {/* Badge de contador (fila designacao) */}
+                {(item as { badgeKey?: string }).badgeKey === "awaiting_assignment" &&
+                  awaitingAssignCount > 0 && (
+                    <span
+                      className={cn(
+                        "inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white",
+                        isCollapsed && "absolute right-1 top-1"
+                      )}
+                    >
+                      {awaitingAssignCount > 99 ? "99+" : awaitingAssignCount}
+                    </span>
+                  )}
 
                 {/* Tooltip for collapsed state */}
                 {isCollapsed && (

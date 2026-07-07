@@ -45,12 +45,17 @@ export async function convertQuoteToServiceOrder(
 
   const createdBy = (quote.created_by as string | null) || SYSTEM_USER_ID;
 
-  // 1. Cria a Ordem de Serviço (entra como pending para o admin distribuir).
+  // 1. Cria a Ordem de Serviço.
+  // Jessica 24/06: modalidade reallliza entra em 'awaiting_assignment' —
+  // Jessica designa tecnico + template antes do tecnico ver. Homologados
+  // continua no fluxo proprio (proposal + aceite).
+  const initialStatus =
+    quote.modality === "reallliza" ? "awaiting_assignment" : "pending";
   const { data: os, error: osErr } = await supabase
     .from("service_orders")
     .insert({
       title: `Orçamento #${quote.quote_number} — ${quote.client_name}`,
-      status: "pending",
+      status: initialStatus,
       partner_id: quote.partner_id,
       client_name: quote.client_name,
       client_phone: quote.client_phone,
@@ -99,7 +104,7 @@ export async function convertQuoteToServiceOrder(
   await supabase.from("os_status_history").insert({
     service_order_id: os.id,
     from_status: null,
-    to_status: "pending",
+    to_status: initialStatus,
     changed_by: createdBy,
     notes: `Gerada a partir do orçamento #${quote.quote_number}`,
   });
@@ -129,7 +134,56 @@ export async function convertQuoteToServiceOrder(
     });
   }
 
+  // 6. Notifica admins quando modalidade reallliza cai na fila de designacao
+  // (Jessica 24/06). Feito em fire-and-forget pra nao atrasar webhook Asaas.
+  if (initialStatus === "awaiting_assignment") {
+    notifyAdminsOfAwaitingAssignment(
+      supabase,
+      os.id,
+      quote.quote_number as string | number,
+      quote.client_name as string
+    ).catch((err) => {
+      console.error(`convertQuote: notify admins failed: ${err?.message ?? err}`);
+    });
+  }
+
   return { ok: true, service_order_id: os.id };
+}
+
+/**
+ * Cria notificacao in-app pra TODOS os admins ativos quando uma OS
+ * entra em awaiting_assignment. Fire-and-forget — falha nao bloqueia.
+ */
+async function notifyAdminsOfAwaitingAssignment(
+  supabase: SupabaseClient,
+  serviceOrderId: string,
+  quoteNumber: string | number,
+  clientName: string
+): Promise<void> {
+  const { data: admins } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("role", "admin")
+    .eq("is_active", true);
+
+  if (!admins || admins.length === 0) return;
+
+  const { createNotification } = await import(
+    "@/lib/api-helpers/notifications"
+  );
+
+  await Promise.allSettled(
+    admins.map((a) =>
+      createNotification(
+        (a as { id: string }).id,
+        "Nova OS aguardando designação",
+        `Orçamento #${quoteNumber} de ${clientName} está aguardando designação de técnico e etapas.`,
+        "general",
+        { service_order_id: serviceOrderId, kind: "awaiting_assignment" },
+        { priority: "high" }
+      )
+    )
+  );
 }
 
 /**

@@ -47,6 +47,7 @@ import { toast } from "sonner";
 
 const STATUS_BADGE_VARIANT: Record<OsStatus, string> = {
   [OsStatus.DRAFT]: "gray",
+  [OsStatus.AWAITING_ASSIGNMENT]: "warning",
   [OsStatus.PENDING]: "warning",
   [OsStatus.ASSIGNED]: "info",
   [OsStatus.IN_PROGRESS]: "info",
