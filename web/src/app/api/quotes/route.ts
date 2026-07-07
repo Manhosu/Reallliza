@@ -174,6 +174,34 @@ export async function POST(request: NextRequest) {
       modality = body.modality;
     }
 
+    // Cobertura UF (Jessica 24/06): plataforma vs Reallliza atendem sao
+    // configuraveis. Bloqueia se UF nao coberta pela plataforma. Bloqueia
+    // modalidade 'reallliza' se UF nao coberta pela Reallliza. Skip se
+    // sem endereco (draft pre-selecao) — a validacao final acontece no
+    // primeiro POST com endereco preenchido.
+    const uf = body.address_state
+      ? String(body.address_state).toUpperCase()
+      : null;
+    if (uf) {
+      const { isStateAvailable } = await import("@/lib/quotes/uf-scope");
+      const platformOk = await isStateAvailable(uf, "platform");
+      if (!platformOk) {
+        throw new AuthError(
+          400,
+          `A plataforma ainda nao opera em ${uf}. Contate o administrador.`
+        );
+      }
+      if (modality === "reallliza") {
+        const reallizaOk = await isStateAvailable(uf, "reallliza");
+        if (!reallizaOk) {
+          throw new AuthError(
+            400,
+            `Reallliza nao atende ${uf} diretamente. Escolha "Publicar pra homologados".`
+          );
+        }
+      }
+    }
+
     type CalcResult = {
       subtotal_services: number;
       total_hours: number;

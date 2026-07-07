@@ -172,6 +172,11 @@ export default function NovoOrcamentoPage() {
   // Calculo (preview)
   const [calc, setCalc] = useState<CalcResult | null>(null);
   const [calcLoading, setCalcLoading] = useState(false);
+  // Cobertura UF (Jessica 24/06): filtra modalidades disponiveis por UF do endereco
+  const [availability, setAvailability] = useState<{
+    platform_available: boolean;
+    reallliza_available: boolean;
+  } | null>(null);
   // Preview de foto do servico (lightbox)
   const [photoPreview, setPhotoPreview] = useState<{
     url: string;
@@ -196,6 +201,38 @@ export default function NovoOrcamentoPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Cobertura UF (Jessica 24/06) — busca availability sempre que addressState mudar.
+  // Se UF esta desabilitada na Reallliza, o botao "Reallliza executa" some.
+  useEffect(() => {
+    const uf = addressState.toUpperCase();
+    if (uf.length !== 2) {
+      setAvailability(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiClient.get<{
+          platform_available: boolean;
+          reallliza_available: boolean;
+        }>(`/quotes/availability?state=${uf}`);
+        if (!cancelled) {
+          setAvailability(data);
+          // Se a modalidade selecionada perdeu disponibilidade, resetar
+          if (modality === "reallliza" && !data.reallliza_available) {
+            setModality("homologados");
+          }
+        }
+      } catch (err) {
+        console.error("availability check failed", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addressState]);
 
   // BUG-001: restaura rascunho do orçamento (sessão expirada não perde dados).
   useEffect(() => {
@@ -639,28 +676,60 @@ export default function NovoOrcamentoPage() {
             </CardContent>
           </Card>
 
-          {/* Modalidade (Jessica 22/06 — spec Loja Parceira) */}
+          {/* Modalidade (Jessica 22/06 — spec Loja Parceira; 24/06 filtro por UF) */}
           <Card>
             <CardContent className="space-y-3 p-4">
               <h2 className="font-semibold">Modalidade</h2>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setModality("reallliza")}
-                  className={`flex flex-col items-start gap-1 rounded-lg border-2 p-3 text-left transition ${
-                    modality === "reallliza"
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-semibold">Reallliza</span>
+
+              {/* Plataforma nao opera na UF -> bloqueio total */}
+              {availability && !availability.platform_available && (
+                <div className="rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-sm text-red-600 dark:text-red-400">
+                  <AlertCircle className="mb-1 inline h-4 w-4" />
+                  {" "}A plataforma ainda não opera em <strong>{addressState}</strong>.
+                  Contate o administrador para habilitar essa UF.
+                </div>
+              )}
+
+              {/* Reallliza nao atende essa UF -> some botao */}
+              {availability &&
+                availability.platform_available &&
+                !availability.reallliza_available && (
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
+                    <AlertCircle className="mb-1 inline h-3.5 w-3.5" />
+                    {" "}A Reallliza não atende diretamente em{" "}
+                    <strong>{addressState}</strong>. Apenas a modalidade
+                    "Homologados" está disponível para esta região.
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Equipe própria executa. Preço automático.
-                  </p>
-                </button>
+                )}
+
+              <div
+                className={
+                  availability && !availability.reallliza_available
+                    ? "grid grid-cols-1 gap-2"
+                    : "grid grid-cols-2 gap-2"
+                }
+              >
+                {/* So renderiza botao Reallliza se a Reallliza atende essa UF
+                    (ou se ainda nao ha UF digitada, mantem visivel) */}
+                {(!availability || availability.reallliza_available) && (
+                  <button
+                    type="button"
+                    onClick={() => setModality("reallliza")}
+                    className={`flex flex-col items-start gap-1 rounded-lg border-2 p-3 text-left transition ${
+                      modality === "reallliza"
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-semibold">Reallliza</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Equipe própria executa. Preço automático.
+                    </p>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setModality("homologados")}

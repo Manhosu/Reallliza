@@ -11,6 +11,8 @@ import {
   Save,
   Plus,
   Trash2,
+  Globe,
+  Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
+import { StateCoverageGrid } from "@/components/settings/StateCoverageGrid";
 
 interface CompanySettings {
   id: string;
@@ -51,7 +54,7 @@ interface Holiday {
   source: string;
 }
 
-type Tab = "company" | "states" | "holidays";
+type Tab = "company" | "states" | "holidays" | "platform_coverage" | "reallliza_coverage";
 
 export default function ConfiguracoesGlobaisPage() {
   const [tab, setTab] = useState<Tab>("company");
@@ -76,6 +79,8 @@ export default function ConfiguracoesGlobaisPage() {
           { key: "company" as Tab, label: "Empresa", icon: Building2 },
           { key: "states" as Tab, label: "Estadias por UF", icon: MapPin },
           { key: "holidays" as Tab, label: "Feriados", icon: Calendar },
+          { key: "platform_coverage" as Tab, label: "Cobertura Plataforma", icon: Globe },
+          { key: "reallliza_coverage" as Tab, label: "Cobertura Reallliza", icon: Wrench },
         ].map((t) => {
           const Icon = t.icon;
           const active = tab === t.key;
@@ -101,6 +106,21 @@ export default function ConfiguracoesGlobaisPage() {
       {tab === "company" && <CompanyTab />}
       {tab === "states" && <StatesTab />}
       {tab === "holidays" && <HolidaysTab />}
+      {tab === "platform_coverage" && (
+        <StateCoverageGrid
+          endpoint="/platform-states"
+          helperText="UFs onde a plataforma opera. Lojas e homologados só podem se cadastrar e criar orçamentos em UFs ativas aqui."
+          emptyPill="nenhuma UF ativa — plataforma bloqueada"
+        />
+      )}
+      {tab === "reallliza_coverage" && (
+        <StateCoverageGrid
+          endpoint="/reallliza-service-states"
+          helperText="UFs onde a Reallliza executa serviços diretamente (modalidade &quot;Reallliza executa&quot;). Fora dessas UFs, a loja só vê a modalidade &quot;Homologados&quot;. Deve ser subconjunto da Cobertura Plataforma."
+          emptyPill='modalidade "Reallliza" nunca aparece'
+          showPlatformFlag
+        />
+      )}
     </div>
   );
 }
