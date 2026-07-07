@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Clock,
   Loader2,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -195,6 +196,59 @@ export default function OrcamentoDetailPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Breakdown do calculo (Jessica 24/06): mostra sempre que
+                  houver deslocamento, estadia ou horario especial > 0.
+                  Copiado do preview da tela de novo orcamento pra ser
+                  consistente com o que a loja viu na hora de gerar. */}
+              {((quote.subtotal_services ?? 0) > 0 ||
+                (quote.travel_cost ?? 0) > 0 ||
+                (quote.stay_cost ?? 0) > 0 ||
+                quote.is_special_hour) && (
+                <div className="space-y-1 border-t pt-2 text-sm">
+                  {(quote.subtotal_services ?? 0) > 0 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Subtotal de serviços</span>
+                      <span>{formatBRL(quote.subtotal_services ?? 0)}</span>
+                    </div>
+                  )}
+                  {(quote.travel_cost ?? 0) > 0 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>
+                        Deslocamento
+                        {(quote.travel_distance_km ?? 0) > 0 && (
+                          <span className="text-xs">
+                            {" "}
+                            ({(quote.travel_distance_km ?? 0).toFixed(1)} km)
+                          </span>
+                        )}
+                      </span>
+                      <span>{formatBRL(quote.travel_cost ?? 0)}</span>
+                    </div>
+                  )}
+                  {(quote.stay_cost ?? 0) > 0 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>
+                        Estadia
+                        {(quote.stay_count ?? 0) > 0 && (
+                          <span className="text-xs">
+                            {" "}
+                            ({quote.stay_count} {(quote.stay_count ?? 0) === 1 ? "diária" : "diárias"})
+                          </span>
+                        )}
+                      </span>
+                      <span>{formatBRL(quote.stay_cost ?? 0)}</span>
+                    </div>
+                  )}
+                  {quote.is_special_hour && (quote.special_hour_extra ?? 0) > 0 && (
+                    <div className="flex justify-between font-semibold text-amber-600 dark:text-amber-500">
+                      <span>Horário especial (+25%)</span>
+                      <span>{formatBRL(quote.special_hour_extra ?? 0)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-between border-t pt-2 font-semibold">
                 <span>Total</span>
                 <span>{formatBRL(quote.total_amount)}</span>
@@ -203,8 +257,30 @@ export default function OrcamentoDetailPage() {
           </Card>
         </div>
 
-        {/* Pagamento */}
-        <div>
+        {/* Pagamento + PDF */}
+        <div className="space-y-4">
+          {/* Botao Baixar PDF (Jessica 24/06) — visivel em qualquer status
+              porque a loja pode querer o documento pra enviar ao cliente
+              antes mesmo de pagar. */}
+          <Card>
+            <CardContent className="space-y-2 p-5">
+              <h2 className="font-semibold">Documento</h2>
+              <p className="text-xs text-muted-foreground">
+                Baixe o orçamento em PDF para enviar ao cliente final ou
+                arquivar.
+              </p>
+              <a
+                href={`/api/quotes/${id}/pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                <Download className="h-4 w-4" />
+                Baixar PDF do orçamento
+              </a>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardContent className="space-y-3 p-5">
               <h2 className="font-semibold">Pagamento</h2>
