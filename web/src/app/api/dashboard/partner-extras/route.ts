@@ -66,6 +66,14 @@ export async function GET(request: NextRequest) {
     if (partnerId) warrQ = warrQ.eq("partner_id", partnerId);
     const { count: warranties_open_count } = await warrQ;
 
+    // Garantias concluidas (Jessica 10/07 — novo KPI dashboard loja)
+    let warrDoneQ = supabase
+      .from("warranties")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "resolved");
+    if (partnerId) warrDoneQ = warrDoneQ.eq("partner_id", partnerId);
+    const { count: warranties_completed_count } = await warrDoneQ;
+
     // Contratado no mes (quotes pagas)
     let monthQ = supabase
       .from("quotes")
@@ -81,6 +89,7 @@ export async function GET(request: NextRequest) {
     return jsonResponse({
       scheduled_count,
       warranties_open_count: warranties_open_count ?? 0,
+      warranties_completed_count: warranties_completed_count ?? 0,
       contracted_this_month: Math.round(contracted_this_month * 100) / 100,
     });
   } catch (error) {

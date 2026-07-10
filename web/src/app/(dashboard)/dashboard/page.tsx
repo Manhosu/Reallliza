@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ClipboardList,
@@ -102,6 +103,7 @@ interface MetricCardProps {
   icon: React.ReactNode;
   accentColor: string;
   delay: number;
+  href?: string;
 }
 
 function MetricCard({
@@ -112,52 +114,61 @@ function MetricCard({
   icon,
   accentColor,
   delay,
+  href,
 }: MetricCardProps) {
+  const inner = (
+    <Card
+      hover
+      className={cn(
+        "relative overflow-hidden",
+        href && "cursor-pointer transition-transform hover:scale-[1.02]"
+      )}
+    >
+      {/* Top accent line */}
+      <div
+        className="absolute inset-x-0 top-0 h-[2px]"
+        style={{ background: accentColor }}
+      />
+      <CardContent className="p-6">
+        <div className="flex items-start justify-between">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-muted-foreground">{title}</p>
+            <p className="text-3xl font-bold tracking-tight">{value}</p>
+            <div className="flex items-center gap-1">
+              {changeType === "up" && (
+                <ArrowUpRight className="h-3.5 w-3.5 text-green-500" />
+              )}
+              <span
+                className={`text-xs font-medium ${
+                  changeType === "up"
+                    ? "text-green-500"
+                    : changeType === "down"
+                    ? "text-red-500"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {change}
+              </span>
+            </div>
+          </div>
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-xl"
+            style={{ background: `${accentColor}15` }}
+          >
+            {icon}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.4, ease: "easeOut" }}
     >
-      <Card hover className="relative overflow-hidden">
-        {/* Top accent line */}
-        <div
-          className="absolute inset-x-0 top-0 h-[2px]"
-          style={{ background: accentColor }}
-        />
-        <CardContent className="p-6">
-          <div className="flex items-start justify-between">
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-muted-foreground">
-                {title}
-              </p>
-              <p className="text-3xl font-bold tracking-tight">{value}</p>
-              <div className="flex items-center gap-1">
-                {changeType === "up" && (
-                  <ArrowUpRight className="h-3.5 w-3.5 text-green-500" />
-                )}
-                <span
-                  className={`text-xs font-medium ${
-                    changeType === "up"
-                      ? "text-green-500"
-                      : changeType === "down"
-                      ? "text-red-500"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  {change}
-                </span>
-              </div>
-            </div>
-            <div
-              className="flex h-10 w-10 items-center justify-center rounded-xl"
-              style={{ background: `${accentColor}15` }}
-            >
-              {icon}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {href ? <Link href={href}>{inner}</Link> : inner}
     </motion.div>
   );
 }
@@ -190,6 +201,7 @@ function MetricSkeleton() {
 interface PartnerExtras {
   scheduled_count: number;
   warranties_open_count: number;
+  warranties_completed_count: number;
   contracted_this_month: number;
 }
 
@@ -311,56 +323,48 @@ export default function DashboardPage() {
                 <MetricSkeleton />
                 <MetricSkeleton />
                 <MetricSkeleton />
+                <MetricSkeleton />
+                <MetricSkeleton />
               </>
             )}
             {!isPartner && <MetricSkeleton />}
           </>
         ) : isPartner ? (
           <>
+            {/* 6 KPIs pedidos pela Jessica 10/07 — clicáveis via href */}
             <MetricCard
-              title="Solicitações Abertas"
+              title="OS Abertas"
               value={String(stats?.openOs ?? 0)}
-              change="Aguardando ação"
+              change="Aguardando execução"
               changeType="neutral"
               icon={
                 <ClipboardList className="h-5 w-5" style={{ color: "#EAB308" }} />
               }
               accentColor="#EAB308"
               delay={0}
+              href="/os?status=pending"
             />
             <MetricCard
-              title="Agendadas"
-              value={String(partnerExtras?.scheduled_count ?? 0)}
-              change="Aguardando execução"
-              changeType="neutral"
-              icon={
-                <CalendarClock className="h-5 w-5" style={{ color: "#A855F7" }} />
-              }
-              accentColor="#A855F7"
-              delay={0.05}
-            />
-            <MetricCard
-              title="Em Andamento"
+              title="OS em Andamento"
               value={String(stats?.inProgressOs ?? 0)}
               change="Sendo executadas"
               changeType="neutral"
               icon={<Clock className="h-5 w-5" style={{ color: "#3B82F6" }} />}
               accentColor="#3B82F6"
-              delay={0.1}
+              delay={0.05}
+              href="/os?status=in_progress"
             />
             <MetricCard
-              title="Concluídas"
+              title="OS Concluídas"
               value={String(stats?.completedOs ?? 0)}
               change="Total geral"
               changeType="up"
               icon={
-                <CheckCircle2
-                  className="h-5 w-5"
-                  style={{ color: "#22C55E" }}
-                />
+                <CheckCircle2 className="h-5 w-5" style={{ color: "#22C55E" }} />
               }
               accentColor="#22C55E"
-              delay={0.15}
+              delay={0.1}
+              href="/os?status=completed"
             />
             <MetricCard
               title="Garantias Abertas"
@@ -371,7 +375,20 @@ export default function DashboardPage() {
                 <ShieldCheck className="h-5 w-5" style={{ color: "#F59E0B" }} />
               }
               accentColor="#F59E0B"
+              delay={0.15}
+              href="/garantias?status=open"
+            />
+            <MetricCard
+              title="Garantias Concluídas"
+              value={String(partnerExtras?.warranties_completed_count ?? 0)}
+              change="Total geral"
+              changeType="up"
+              icon={
+                <ShieldCheck className="h-5 w-5" style={{ color: "#22C55E" }} />
+              }
+              accentColor="#22C55E"
               delay={0.2}
+              href="/garantias?status=resolved"
             />
             <MetricCard
               title="Contratado no mês"
@@ -379,11 +396,12 @@ export default function DashboardPage() {
                 "pt-BR",
                 { style: "currency", currency: "BRL" }
               )}
-              change="Valor de OSs pagas"
+              change="Valor pago no mês"
               changeType="up"
               icon={<Banknote className="h-5 w-5" style={{ color: "#10B981" }} />}
               accentColor="#10B981"
               delay={0.25}
+              href="/orcamentos?paid_this_month=1"
             />
           </>
         ) : (

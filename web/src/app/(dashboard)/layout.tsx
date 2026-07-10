@@ -76,7 +76,8 @@ const allNavItems = [
     label: "Ordens de Serviço",
     href: "/os",
     icon: ClipboardList,
-    roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.PARTNER],
+    // Loja parceira removida (Jessica 10/07 — menu enxuto)
+    roles: [UserRole.ADMIN, UserRole.TECHNICIAN],
   },
   {
     label: "Aguardando Designação",
@@ -95,7 +96,8 @@ const allNavItems = [
     label: "Solicitações",
     href: "/solicitacoes",
     icon: ListChecks,
-    roles: [UserRole.PARTNER],
+    // Removido pra loja (Jessica 10/07 — menu enxuto)
+    roles: [],
   },
   {
     label: "Clientes",
@@ -107,7 +109,8 @@ const allNavItems = [
     label: "Propostas",
     href: "/propostas",
     icon: Send,
-    roles: [UserRole.ADMIN, UserRole.PARTNER],
+    // Loja parceira removida (Jessica 10/07 — menu enxuto)
+    roles: [UserRole.ADMIN],
   },
   {
     label: "Garantias",
@@ -257,7 +260,8 @@ const allNavItems = [
     label: "Aprendizado",
     href: "/aprendizado",
     icon: BookOpen,
-    roles: [UserRole.TECHNICIAN, UserRole.PARTNER],
+    // Loja parceira removida (Jessica 10/07 — menu enxuto)
+    roles: [UserRole.TECHNICIAN],
   },
   {
     label: "Auditoria",

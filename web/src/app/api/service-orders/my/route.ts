@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { redactOsListForRole } from "@/lib/api-helpers/redact";
 
 /**
  * GET /api/service-orders/my
@@ -78,8 +79,14 @@ export async function GET(request: NextRequest) {
       throw new Error("Failed to fetch service orders");
     }
 
+    // Loja nao pode ver valores (Jessica 10/07)
+    const redacted = redactOsListForRole(
+      (data ?? []) as Record<string, unknown>[],
+      user.role
+    );
+
     return jsonResponse({
-      data: data || [],
+      data: redacted,
       meta: {
         total: count || 0,
         page,

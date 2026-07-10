@@ -5,6 +5,7 @@ import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { createNotification } from "@/lib/api-helpers/notifications";
 import { createScheduleFromOs } from "@/lib/api-helpers/schedules";
+import { redactOsForRole } from "@/lib/api-helpers/redact";
 
 /**
  * GET /api/service-orders/[id]
@@ -99,13 +100,19 @@ export async function GET(
       payments = paymentsData || [];
     }
 
-    return jsonResponse({
-      ...order,
-      photos_count: photosCount || 0,
-      status_history: statusHistory || [],
-      items: items || [],
-      payments,
-    });
+    // Loja nao pode ver valores (Jessica 10/07) — server-side redaction
+    const payload = redactOsForRole(
+      {
+        ...order,
+        photos_count: photosCount || 0,
+        status_history: statusHistory || [],
+        items: items || [],
+        payments,
+      } as Record<string, unknown>,
+      user.role
+    );
+
+    return jsonResponse(payload);
   } catch (error) {
     return errorResponse(error);
   }
@@ -124,6 +131,16 @@ export async function PUT(
 ) {
   try {
     const user = await authenticateRequest(request);
+    // Jessica 10/07: loja e' read-only na OS
+    checkRole(user, [
+      "admin",
+      "manager",
+      "gestor",
+      "diretor",
+      "supervisor",
+      "operador",
+      "technician",
+    ]);
     const { id } = await params;
 
     const body = await request.json();
@@ -330,7 +347,8 @@ export async function DELETE(
 ) {
   try {
     const user = await authenticateRequest(_request);
-    checkRole(user, ["admin", "manager", "partner"]);
+    // Jessica 10/07: loja e' read-only na OS — nao pode deletar
+    checkRole(user, ["admin", "manager", "gestor", "diretor"]);
 
     const { id } = await params;
     const supabase = getAdminClient();

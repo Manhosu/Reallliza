@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   ShieldCheck,
@@ -95,6 +96,14 @@ function formatDate(iso: string | null) {
 export default function GarantiasPage() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === UserRole.ADMIN;
+
+  const searchParams = useSearchParams();
+  // Deep-link do dashboard: /garantias?status=open|resolved
+  const initialStatusFilter =
+    (searchParams.get("status") as Warranty["status"] | null) ?? "all";
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | Warranty["status"]
+  >(initialStatusFilter as "all" | Warranty["status"]);
 
   const [warranties, setWarranties] = useState<Warranty[]>([]);
   const [completedOs, setCompletedOs] = useState<QuoteWithOs[]>([]);
@@ -259,16 +268,45 @@ export default function GarantiasPage() {
         )}
       </motion.div>
 
+      {/* Filtro de status — vem do dashboard via ?status= */}
+      <div className="flex flex-wrap gap-2 rounded-xl bg-secondary/50 p-1">
+        {(
+          [
+            { key: "all", label: "Todas" },
+            { key: "open", label: "Abertas" },
+            { key: "in_progress", label: "Em análise" },
+            { key: "resolved", label: "Resolvidas" },
+            { key: "rejected", label: "Rejeitadas" },
+          ] as const
+        ).map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setStatusFilter(f.key as typeof statusFilter)}
+            className={cn(
+              "rounded-lg px-3 py-1.5 text-xs font-medium transition",
+              statusFilter === f.key
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-32 w-full rounded-xl" />
           ))}
         </div>
-      ) : warranties.length === 0 ? (
+      ) : (statusFilter === "all"
+          ? warranties
+          : warranties.filter((w) => w.status === statusFilter)
+        ).length === 0 ? (
         <EmptyState
           icon={<ShieldCheck className="h-8 w-8" />}
-          title="Nenhuma garantia aberta"
+          title="Nenhuma garantia"
           description={
             isAdmin
               ? "Quando uma loja abrir garantia ela aparece aqui."
@@ -277,7 +315,10 @@ export default function GarantiasPage() {
         />
       ) : (
         <div className="space-y-2">
-          {warranties.map((w) => {
+          {(statusFilter === "all"
+            ? warranties
+            : warranties.filter((w) => w.status === statusFilter)
+          ).map((w) => {
             const cfg = STATUS_CONFIG[w.status];
             const StatusIcon = cfg.icon;
             return (

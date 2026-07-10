@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { formatDateBR as formatDate } from "@/lib/utils/format-date";
 import {
@@ -146,7 +146,11 @@ export default function OsListingPage() {
   const [view, setView] = useState<"table" | "kanban">("table");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const searchParams = useSearchParams();
+  // Aceita ?status=<xxx> pra deep-link vindo dos KPIs do dashboard loja
+  const [statusFilter, setStatusFilter] = useState<string>(
+    searchParams.get("status") ?? "all"
+  );
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
 

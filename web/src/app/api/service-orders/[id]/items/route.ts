@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { redactItemsForRole } from "@/lib/api-helpers/redact";
 
 /**
  * GET /api/service-orders/[id]/items
@@ -57,7 +58,13 @@ export async function GET(
       throw new Error("Failed to fetch service order items");
     }
 
-    return jsonResponse(items || []);
+    // Loja nao ve valores (Jessica 10/07)
+    const redacted = redactItemsForRole(
+      (items ?? []) as Record<string, unknown>[],
+      user.role
+    );
+
+    return jsonResponse(redacted);
   } catch (error) {
     return errorResponse(error);
   }

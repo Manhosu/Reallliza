@@ -71,6 +71,18 @@ export interface Quote {
   region_city: string | null;
   region_state: string | null;
   custody_held: boolean | null;
+  // Novos campos pro PDF layout Jessica 10/07 — loja preenche no form
+  service_type?: string | null;
+  total_area_m2?: number | null;
+  rooms?: string | null;
+  technical_responsible?: string | null;
+  technicians_count?: number | null;
+  material_description?: string | null;
+  warranty_months?: number | null;
+  execution_start_date?: string | null;
+  scope_items?: string[] | null;
+  important_notes?: string | null;
+  general_notes?: string | null;
   partner?: { id: string; company_name: string; user_id?: string } | null;
   items?: QuoteItem[];
   payments?: QuotePayment[];
@@ -100,6 +112,18 @@ export interface CreateQuotePayload {
   region_city?: string;
   region_state?: string;
   manual_total_amount?: number;
+  // Novos campos PDF Jessica 10/07
+  service_type?: string;
+  total_area_m2?: number;
+  rooms?: string;
+  technical_responsible?: string;
+  technicians_count?: number;
+  material_description?: string;
+  warranty_months?: number;
+  execution_start_date?: string;
+  scope_items?: string[];
+  important_notes?: string;
+  general_notes?: string;
 }
 
 export interface PayQuoteResult {

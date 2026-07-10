@@ -267,6 +267,42 @@ export async function POST(request: NextRequest) {
       notes: body.notes || null,
       total_amount: totalFinal,
       created_by: user.id,
+      // Novos campos PDF Jessica 10/07 (loja preenche no form)
+      service_type: body.service_type
+        ? String(body.service_type).slice(0, 500)
+        : null,
+      total_area_m2:
+        typeof body.total_area_m2 === "number" && body.total_area_m2 >= 0
+          ? body.total_area_m2
+          : null,
+      rooms: body.rooms ? String(body.rooms).slice(0, 500) : null,
+      technical_responsible: body.technical_responsible
+        ? String(body.technical_responsible).slice(0, 200)
+        : null,
+      technicians_count:
+        typeof body.technicians_count === "number" && body.technicians_count > 0
+          ? Math.floor(body.technicians_count)
+          : null,
+      material_description: body.material_description
+        ? String(body.material_description).slice(0, 2000)
+        : null,
+      warranty_months:
+        typeof body.warranty_months === "number" && body.warranty_months >= 0
+          ? Math.floor(body.warranty_months)
+          : null,
+      execution_start_date: body.execution_start_date || null,
+      scope_items: Array.isArray(body.scope_items)
+        ? body.scope_items
+            .map((s: unknown) => String(s ?? "").trim())
+            .filter((s: string) => s.length > 0 && s.length <= 200)
+            .slice(0, 30)
+        : [],
+      important_notes: body.important_notes
+        ? String(body.important_notes).slice(0, 2000)
+        : null,
+      general_notes: body.general_notes
+        ? String(body.general_notes).slice(0, 2000)
+        : null,
     };
 
     if (calc) {

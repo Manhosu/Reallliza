@@ -1358,33 +1358,35 @@ export default function OsDetailPage() {
             </div>
           )}
 
-          {/* Download PDF Report */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              try {
-                const token = (await import("@/lib/api/client")).getAccessToken;
-                const accessToken = await token();
-                const res = await fetch(`/api/service-orders/${id}/report`, {
-                  headers: { Authorization: `Bearer ${accessToken}` },
-                });
-                if (!res.ok) throw new Error("Erro ao gerar relatorio");
-                const blob = await res.blob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `OS_${order.order_number || id}_relatorio.pdf`;
-                a.click();
-                URL.revokeObjectURL(url);
-              } catch {
-                toast.error("Erro ao gerar relatorio PDF");
-              }
-            }}
-          >
-            <Download className="h-4 w-4" />
-            Relatorio PDF
-          </Button>
+          {/* Download PDF Report — oculto pra loja (Jessica 10/07) */}
+          {!isPartner && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  const token = (await import("@/lib/api/client")).getAccessToken;
+                  const accessToken = await token();
+                  const res = await fetch(`/api/service-orders/${id}/report`, {
+                    headers: { Authorization: `Bearer ${accessToken}` },
+                  });
+                  if (!res.ok) throw new Error("Erro ao gerar relatorio");
+                  const blob = await res.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `OS_${order.order_number || id}_relatorio.pdf`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch {
+                  toast.error("Erro ao gerar relatorio PDF");
+                }
+              }}
+            >
+              <Download className="h-4 w-4" />
+              Relatorio PDF
+            </Button>
+          )}
 
           {/* Approve button - visible only when completed and user is admin */}
           {order.status === OsStatus.COMPLETED && user?.role === UserRole.ADMIN && (
@@ -1737,6 +1739,40 @@ export default function OsDetailPage() {
                     (acc, it) => acc + Number(it.total || 0),
                     0
                   );
+                  // Jessica 10/07: loja nao pode ver valor na OS.
+                  // Renderiza variante compacta so com descricao / qtd / un.
+                  if (isPartner) {
+                    return (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b text-xs text-muted-foreground">
+                              <th className="px-2 py-2 text-left">Tipo</th>
+                              <th className="px-2 py-2 text-left">Identif.</th>
+                              <th className="px-2 py-2 text-left">Descrição</th>
+                              <th className="px-2 py-2 text-left">Un.</th>
+                              <th className="px-2 py-2 text-right">Qtde</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {orderItems.map((it) => (
+                              <tr key={it.id} className="border-b last:border-0">
+                                <td className="px-2 py-2">
+                                  <Badge variant={it.kind === "S" ? "info" : ("purple" as any)} size="sm">
+                                    {it.kind === "S" ? "Serviço" : "Produto"}
+                                  </Badge>
+                                </td>
+                                <td className="px-2 py-2 text-muted-foreground">{it.identification || "-"}</td>
+                                <td className="px-2 py-2">{it.description}</td>
+                                <td className="px-2 py-2 text-muted-foreground">{it.unit || "-"}</td>
+                                <td className="px-2 py-2 text-right">{Number(it.quantity)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  }
                   return (
                     <div className="space-y-3">
                       <div className="overflow-x-auto">
@@ -2089,36 +2125,38 @@ export default function OsDetailPage() {
             </Card>
           </motion.div>
 
-          {/* Valores */}
-          <motion.div variants={itemVariants}>
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                  Valores
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <DollarSign className="h-4 w-4" />
-                    Estimado
+          {/* Valores — oculto pra loja (Jessica 10/07) */}
+          {!isPartner && (
+            <motion.div variants={itemVariants}>
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                    Valores
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <DollarSign className="h-4 w-4" />
+                      Estimado
+                    </div>
+                    <span className="text-sm font-medium">
+                      {formatCurrency(order.estimated_value)}
+                    </span>
                   </div>
-                  <span className="text-sm font-medium">
-                    {formatCurrency(order.estimated_value)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <DollarSign className="h-4 w-4" />
-                    Final
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <DollarSign className="h-4 w-4" />
+                      Final
+                    </div>
+                    <span className="text-sm font-semibold text-primary">
+                      {formatCurrency(order.final_value)}
+                    </span>
                   </div>
-                  <span className="text-sm font-semibold text-primary">
-                    {formatCurrency(order.final_value)}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
         </div>
       </div>
       {/* ============ Rework Dialog ============ */}

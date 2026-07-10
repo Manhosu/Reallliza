@@ -169,6 +169,20 @@ export default function NovoOrcamentoPage() {
   const [manualTotal, setManualTotal] = useState("");
   const [regionCity, setRegionCity] = useState("");
   const [regionState, setRegionState] = useState("");
+  // Campos do PDF novo (Jessica 10/07)
+  const [serviceType, setServiceType] = useState("");
+  const [totalAreaM2, setTotalAreaM2] = useState("");
+  const [rooms, setRooms] = useState("");
+  const [scheduleTimeLabel, setScheduleTimeLabel] = useState("08h às 17h");
+  const [techniciansCount, setTechniciansCount] = useState("");
+  const [technicalResponsible, setTechnicalResponsible] = useState("Equipe Reallliza");
+  const [materialDescription, setMaterialDescription] = useState("");
+  const [warrantyMonths, setWarrantyMonths] = useState("12");
+  const [executionStartDate, setExecutionStartDate] = useState("");
+  const [scopeItems, setScopeItems] = useState<string[]>([]);
+  const [newScopeItem, setNewScopeItem] = useState("");
+  const [importantNotes, setImportantNotes] = useState("");
+  const [generalNotes, setGeneralNotes] = useState("");
   // Calculo (preview)
   const [calc, setCalc] = useState<CalcResult | null>(null);
   const [calcLoading, setCalcLoading] = useState(false);
@@ -256,6 +270,18 @@ export default function NovoOrcamentoPage() {
         addressZip?: string;
         notes?: string;
         quantities?: Record<string, number>;
+        serviceType?: string;
+        totalAreaM2?: string;
+        rooms?: string;
+        executionStartDate?: string;
+        scheduleTimeLabel?: string;
+        techniciansCount?: string;
+        technicalResponsible?: string;
+        materialDescription?: string;
+        warrantyMonths?: string;
+        scopeItems?: string[];
+        importantNotes?: string;
+        generalNotes?: string;
       };
       if (d.clientName) setClientName(d.clientName);
       if (d.clientPhone) setClientPhone(d.clientPhone);
@@ -271,6 +297,18 @@ export default function NovoOrcamentoPage() {
       if (d.addressZip) setAddressZip(d.addressZip);
       if (d.notes) setNotes(d.notes);
       if (d.quantities) setQuantities(d.quantities);
+      if (d.serviceType) setServiceType(d.serviceType);
+      if (d.totalAreaM2) setTotalAreaM2(d.totalAreaM2);
+      if (d.rooms) setRooms(d.rooms);
+      if (d.executionStartDate) setExecutionStartDate(d.executionStartDate);
+      if (d.scheduleTimeLabel) setScheduleTimeLabel(d.scheduleTimeLabel);
+      if (d.techniciansCount) setTechniciansCount(d.techniciansCount);
+      if (d.technicalResponsible) setTechnicalResponsible(d.technicalResponsible);
+      if (d.materialDescription) setMaterialDescription(d.materialDescription);
+      if (d.warrantyMonths) setWarrantyMonths(d.warrantyMonths);
+      if (Array.isArray(d.scopeItems)) setScopeItems(d.scopeItems);
+      if (d.importantNotes) setImportantNotes(d.importantNotes);
+      if (d.generalNotes) setGeneralNotes(d.generalNotes);
       toast.info("Rascunho restaurado", {
         description: "Continue de onde parou e clique em Gerar orçamento.",
         action: {
@@ -390,6 +428,10 @@ export default function NovoOrcamentoPage() {
           addressStreet, addressNumber, addressComplement, addressNeighborhood,
           addressCity, addressState, addressZip,
           notes, quantities,
+          // Campos PDF Jessica 10/07
+          serviceType, totalAreaM2, rooms, executionStartDate, scheduleTimeLabel,
+          techniciansCount, technicalResponsible, materialDescription,
+          warrantyMonths, scopeItems, importantNotes, generalNotes,
           savedAt: new Date().toISOString(),
         })
       );
@@ -448,6 +490,18 @@ export default function NovoOrcamentoPage() {
           modality === "homologados" && manualTotal
             ? Number(manualTotal.replace(",", "."))
             : undefined,
+        // Campos PDF Jessica 10/07
+        service_type: serviceType.trim() || undefined,
+        total_area_m2: totalAreaM2 ? Number(totalAreaM2.replace(",", ".")) : undefined,
+        rooms: rooms.trim() || undefined,
+        technical_responsible: technicalResponsible.trim() || undefined,
+        technicians_count: techniciansCount ? Number(techniciansCount) : undefined,
+        material_description: materialDescription.trim() || undefined,
+        warranty_months: warrantyMonths ? Number(warrantyMonths) : undefined,
+        execution_start_date: executionStartDate || undefined,
+        scope_items: scopeItems.length > 0 ? scopeItems : undefined,
+        important_notes: importantNotes.trim() || undefined,
+        general_notes: generalNotes.trim() || undefined,
       });
       toast.success("Orçamento criado");
       try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
@@ -826,6 +880,209 @@ export default function NovoOrcamentoPage() {
                 <Calculator className="h-4 w-4" />
                 Calcular orçamento
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* Informacoes da Execucao (Jessica 10/07) — campos que saem no PDF novo */}
+          <Card>
+            <CardContent className="space-y-3 p-4">
+              <h2 className="font-semibold">Informações da execução</h2>
+              <p className="text-xs text-muted-foreground">
+                Preenchimento livre — usado no PDF do orçamento pra descrever o
+                serviço ao cliente final.
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Tipo de serviço
+                  </label>
+                  <Input
+                    value={serviceType}
+                    onChange={(e) => setServiceType(e.target.value)}
+                    placeholder="Ex.: Instalação de piso vinílico clicado SPC"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Área total (m²)
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={totalAreaM2}
+                    onChange={(e) => setTotalAreaM2(e.target.value)}
+                    placeholder="Ex.: 120"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Ambientes
+                  </label>
+                  <Input
+                    value={rooms}
+                    onChange={(e) => setRooms(e.target.value)}
+                    placeholder="Sala, quartos, banheiro…"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Data prevista da execução
+                  </label>
+                  <Input
+                    type="date"
+                    value={executionStartDate}
+                    onChange={(e) => setExecutionStartDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Horário previsto
+                  </label>
+                  <Input
+                    value={scheduleTimeLabel}
+                    onChange={(e) => setScheduleTimeLabel(e.target.value)}
+                    placeholder="08h às 17h"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Quantidade de técnicos
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={techniciansCount}
+                    onChange={(e) => setTechniciansCount(e.target.value)}
+                    placeholder="Ex.: 3"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Responsável pela equipe
+                  </label>
+                  <Input
+                    value={technicalResponsible}
+                    onChange={(e) => setTechnicalResponsible(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Material a ser instalado
+                  </label>
+                  <textarea
+                    value={materialDescription}
+                    onChange={(e) => setMaterialDescription(e.target.value)}
+                    rows={2}
+                    placeholder="Ex.: Piso vinílico SPC clicado - Linha Premium; Cola de vedação"
+                    className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Garantia (meses)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={warrantyMonths}
+                    onChange={(e) => setWarrantyMonths(e.target.value)}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Escopo do servico (checklist) */}
+          <Card>
+            <CardContent className="space-y-3 p-4">
+              <h2 className="font-semibold">Escopo do serviço (incluso)</h2>
+              <p className="text-xs text-muted-foreground">
+                Marque tudo que está incluído no orçamento. Aparece como
+                checklist no PDF.
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  value={newScopeItem}
+                  onChange={(e) => setNewScopeItem(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const v = newScopeItem.trim();
+                      if (v && !scopeItems.includes(v)) {
+                        setScopeItems([...scopeItems, v]);
+                        setNewScopeItem("");
+                      }
+                    }
+                  }}
+                  placeholder="Ex.: Regularização de contrapiso"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    const v = newScopeItem.trim();
+                    if (v && !scopeItems.includes(v)) {
+                      setScopeItems([...scopeItems, v]);
+                      setNewScopeItem("");
+                    }
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              {scopeItems.length > 0 && (
+                <ul className="space-y-1">
+                  {scopeItems.map((item, idx) => (
+                    <li
+                      key={idx}
+                      className="flex items-center justify-between rounded-md border border-border px-3 py-1.5 text-sm"
+                    >
+                      <span className="text-foreground">✓ {item}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setScopeItems(scopeItems.filter((_, i) => i !== idx))
+                        }
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <Minus className="h-4 w-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Observacoes */}
+          <Card>
+            <CardContent className="space-y-3 p-4">
+              <h2 className="font-semibold">Observações</h2>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Observações importantes
+                </label>
+                <textarea
+                  value={importantNotes}
+                  onChange={(e) => setImportantNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Uma observação por linha. Ex.: Cliente responsável por liberar o ambiente."
+                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Observações gerais
+                </label>
+                <textarea
+                  value={generalNotes}
+                  onChange={(e) => setGeneralNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Comentários finais que ficam no rodapé do orçamento."
+                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                />
+              </div>
             </CardContent>
           </Card>
 

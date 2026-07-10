@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import PDFDocument from "pdfkit";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
-import { authenticateRequest } from "@/lib/api-helpers/auth";
+import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
 import { errorResponse } from "@/lib/api-helpers/response";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -61,7 +61,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await authenticateRequest(request);
+    const user = await authenticateRequest(request);
+    // Loja nao pode baixar relatorio da OS (Jessica 10/07 — PDF financeiro
+    // e' pra admin/tecnico; loja tem PDF do orcamento pra enviar ao cliente).
+    checkRole(user, ["admin", "gestor", "diretor", "supervisor", "operador", "technician", "manager"]);
     const { id } = await params;
 
     const supabase = getAdminClient();

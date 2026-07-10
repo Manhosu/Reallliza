@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
-import { authenticateRequest, AuthError } from "@/lib/api-helpers/auth";
+import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 
@@ -39,6 +39,16 @@ export async function PATCH(
 ) {
   try {
     const user = await authenticateRequest(request);
+    // Jessica 10/07: apenas equipe interna registra chegada
+    checkRole(user, [
+      "admin",
+      "manager",
+      "gestor",
+      "diretor",
+      "supervisor",
+      "operador",
+      "technician",
+    ]);
     const { id } = await params;
 
     const body = await request.json().catch(() => ({}));
