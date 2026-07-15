@@ -159,7 +159,12 @@ export async function GET(
     // ============================================================
     // Monta PDF
     // ============================================================
-    const doc = new PDFDocument({ size: "A4", margin: 30 });
+    // margins.bottom=0 previne que o rodape (desenhado em Y>792) gere
+    // pagina automatica extra. Layout controla o Y absoluto de cada bloco.
+    const doc = new PDFDocument({
+      size: "A4",
+      margins: { top: 30, left: 30, right: 30, bottom: 0 },
+    });
     const chunks: Buffer[] = [];
     doc.on("data", (c: Buffer) => chunks.push(c));
     const done = new Promise<Buffer>((resolve) => {
