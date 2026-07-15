@@ -385,7 +385,7 @@ export async function GET(
 
     let itemsTotal = 0;
     items.forEach((it, idx) => {
-      if (doc.y > pageH - 200) doc.addPage();
+      if (doc.y > pageH - 80) doc.addPage();
       const y = doc.y;
       const total = Number(it.quantity) * Number(it.unit_price);
       itemsTotal += total;
@@ -444,7 +444,8 @@ export async function GET(
     doc.y += 22 + 12;
 
     // ============ RESUMO DA CONTRATACAO (5 caixas) ============
-    if (doc.y > pageH - 250) doc.addPage();
+    // 5 caixas + label ocupam ~90px — quebra so se falta menos que isso
+    if (doc.y > pageH - 130) doc.addPage();
     const resumoY = doc.y;
     doc
       .fontSize(10)
@@ -511,7 +512,8 @@ export async function GET(
     doc.y = bY + 55 + 12;
 
     // ============ INFO EXECUCAO + ESCOPO + OBS IMPORTANTES (3 colunas) ============
-    if (doc.y > pageH - 250) doc.addPage();
+    // Bloco ~180px (6 items * 24 + header)
+    if (doc.y > pageH - 200) doc.addPage();
     const c3Y = doc.y;
     const c3W = (pageW - 20) / 3;
 
@@ -603,7 +605,8 @@ export async function GET(
     doc.y = Math.max(col1End, col2End, col3End) + 12;
 
     // ============ CONDICOES COMERCIAIS ============
-    if (doc.y > pageH - 150) doc.addPage();
+    // 3 caixas 70px + label 16px + rodape 50px reservado
+    if (doc.y > pageH - 130) doc.addPage();
     doc
       .fontSize(10)
       .font("Helvetica-Bold")
@@ -650,7 +653,8 @@ export async function GET(
 
     // ============ OBSERVACOES GERAIS ============
     if (quote.general_notes) {
-      if (doc.y > pageH - 100) doc.addPage();
+      // 3 linhas de texto + label + rodape 50px reservado
+      if (doc.y > pageH - 80) doc.addPage();
       doc
         .fontSize(10)
         .font("Helvetica-Bold")
