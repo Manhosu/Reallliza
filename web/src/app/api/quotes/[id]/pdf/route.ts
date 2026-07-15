@@ -669,25 +669,28 @@ export async function GET(
     }
 
     // ============ RODAPE PRETO ============
+    // Textos com lineBreak:false + width limitado pra nao gerar pagina extra
     const footerHeight = 34;
     const footerY = pageH - footerHeight;
     doc.rect(0, footerY, doc.page.width, footerHeight).fill(BLACK);
     doc
       .fontSize(8)
       .font("Helvetica-Bold")
-      .fillColor(YELLOW)
-      .text("R", leftX, footerY + 10, { continued: true })
       .fillColor("#FFFFFF")
-      .text("  QUALIDADE QUE SE VÊ. COMPROMISSO QUE SE SENTE.", {
-        continued: false,
-      });
+      .text(
+        "QUALIDADE QUE SE VÊ. COMPROMISSO QUE SE SENTE.",
+        leftX,
+        footerY + 12,
+        { width: pageW / 2, lineBreak: false }
+      );
     doc
       .fontSize(8)
       .font("Helvetica-Oblique")
       .fillColor(YELLOW_SOFT)
-      .text("Excelência em cada detalhe.", leftX, footerY + 10, {
-        width: pageW,
+      .text("Excelência em cada detalhe.", leftX + pageW / 2, footerY + 12, {
+        width: pageW / 2,
         align: "right",
+        lineBreak: false,
       });
 
     doc.end();
