@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { Suspense, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { formatDateBR as formatDate } from "@/lib/utils/format-date";
@@ -137,7 +137,17 @@ const ITEMS_PER_PAGE = 10;
 // OS Listing Page
 // ============================================================
 
-export default function OsListingPage() {
+// useSearchParams (na assinatura interna) exige Suspense boundary no build
+// prerender do Next 16. Exportamos wrapper com Suspense.
+export default function OsListingPageWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <OsListingPageInner />
+    </Suspense>
+  );
+}
+
+function OsListingPageInner() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const isPartner = user?.role === UserRole.PARTNER;

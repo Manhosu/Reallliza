@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -93,7 +93,16 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleDateString("pt-BR");
 }
 
-export default function GarantiasPage() {
+// useSearchParams exige Suspense boundary no prerender do Next 16
+export default function GarantiasPageWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <GarantiasPageInner />
+    </Suspense>
+  );
+}
+
+function GarantiasPageInner() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === UserRole.ADMIN;
 
