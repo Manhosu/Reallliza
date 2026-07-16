@@ -59,7 +59,10 @@ const safe = (v: string | null | undefined, fallback = "-"): string =>
   v && String(v).trim() ? String(v).trim() : fallback;
 
 function findLogoPath(): string | null {
+  // Jessica 16/07: enviou logo horizontal branca+amarela em fundo escuro
+  // (logo-reallliza-plataforma.png). Fallbacks mantidos por compatibilidade.
   const candidates = [
+    "public/logo-reallliza-plataforma.png",
     "public/logo-reallliza.png",
     "public/logo-reallliza.jpg",
     "public/logo.png",
@@ -179,9 +182,22 @@ export async function GET(
 
     // ============ HEADER ============
     // Coluna esquerda: logo (ou texto)
+    // Logo Jessica 16/07 e' branca+amarela em fundo escuro — desenha bloco
+    // preto arredondado atras pra ficar legivel no papel branco.
     if (logoPath) {
       try {
-        doc.image(logoPath, leftX, 30, { width: 160 });
+        const logoBoxX = leftX;
+        const logoBoxY = 24;
+        const logoBoxW = 200;
+        const logoBoxH = 70;
+        // Bloco preto arredondado
+        doc.roundedRect(logoBoxX, logoBoxY, logoBoxW, logoBoxH, 8).fill(BLACK);
+        // Logo dentro do bloco com margem
+        doc.image(logoPath, logoBoxX + 15, logoBoxY + 10, {
+          fit: [logoBoxW - 30, logoBoxH - 20],
+          align: "center",
+          valign: "center",
+        });
       } catch {
         renderLogoText(doc, leftX, 40);
       }

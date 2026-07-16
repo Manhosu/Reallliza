@@ -269,15 +269,32 @@ export default function OrcamentoDetailPage() {
                 Baixe o orçamento em PDF para enviar ao cliente final ou
                 arquivar.
               </p>
-              <a
-                href={`/api/quotes/${id}/pdf`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              <Button
+                onClick={async () => {
+                  try {
+                    const { getAccessToken } = await import("@/lib/api/client");
+                    const accessToken = await getAccessToken();
+                    const res = await fetch(`/api/quotes/${id}/pdf`, {
+                      headers: { Authorization: `Bearer ${accessToken}` },
+                    });
+                    if (!res.ok) throw new Error("Erro ao gerar PDF");
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    // Abre em nova aba (blob URL nao precisa de Authorization)
+                    window.open(url, "_blank");
+                    // Revoga depois de 1min pra liberar memoria
+                    setTimeout(() => URL.revokeObjectURL(url), 60000);
+                  } catch (err) {
+                    toast.error(
+                      err instanceof Error ? err.message : "Erro ao baixar PDF"
+                    );
+                  }
+                }}
+                className="w-full"
               >
                 <Download className="h-4 w-4" />
                 Baixar PDF do orçamento
-              </a>
+              </Button>
             </CardContent>
           </Card>
 
