@@ -150,6 +150,42 @@ export async function checkSpecialHour(
 }
 
 /**
+ * Centro geografico aproximado de cada UF brasileira.
+ * Fallback quando o endereco especifico do cliente nao geocodifica
+ * (Jessica 16/07 — orcamentos fora do estado base saindo com quilometragem
+ * zerada silenciosamente).
+ */
+const UF_CENTROIDS: Record<string, { lat: number; lng: number }> = {
+  AC: { lat: -8.77, lng: -70.55 },
+  AL: { lat: -9.62, lng: -36.82 },
+  AP: { lat: 1.41, lng: -51.77 },
+  AM: { lat: -3.47, lng: -65.1 },
+  BA: { lat: -12.96, lng: -38.51 },
+  CE: { lat: -3.71, lng: -38.54 },
+  DF: { lat: -15.83, lng: -47.86 },
+  ES: { lat: -19.19, lng: -40.34 },
+  GO: { lat: -16.64, lng: -49.31 },
+  MA: { lat: -2.55, lng: -44.3 },
+  MT: { lat: -12.64, lng: -55.42 },
+  MS: { lat: -20.51, lng: -54.54 },
+  MG: { lat: -18.1, lng: -44.38 },
+  PA: { lat: -3.79, lng: -52.48 },
+  PB: { lat: -7.06, lng: -35.55 },
+  PR: { lat: -24.89, lng: -51.55 },
+  PE: { lat: -8.28, lng: -35.07 },
+  PI: { lat: -8.28, lng: -43.68 },
+  RJ: { lat: -22.84, lng: -43.15 },
+  RN: { lat: -5.4, lng: -36.95 },
+  RS: { lat: -30.01, lng: -51.22 },
+  RO: { lat: -11.22, lng: -62.8 },
+  RR: { lat: 1.99, lng: -61.33 },
+  SC: { lat: -27.33, lng: -49.44 },
+  SP: { lat: -23.55, lng: -46.64 },
+  SE: { lat: -10.9, lng: -37.07 },
+  TO: { lat: -10.25, lng: -48.32 },
+};
+
+/**
  * Distancia Haversine em km — fallback se Google Maps falha ou nao temos lat/lng.
  */
 export function haversineKm(
@@ -281,14 +317,30 @@ export async function calculateQuote(
     settings.base_lng != null &&
     (input.service_address_zip ||
       input.service_address_city ||
-      input.service_address_street)
+      input.service_address_street ||
+      input.service_address_state)
   ) {
-    const dest = await geocodeAddress({
+    let dest = await geocodeAddress({
       zip: input.service_address_zip,
       street: input.service_address_street,
       city: input.service_address_city,
       state: input.service_address_state,
     });
+
+    // Jessica 16/07: se geocode falhou mas temos UF, cai no centro geografico
+    // da UF (fallback estatico). Evita orcamento sair com deslocamento zerado
+    // sem que ninguem perceba.
+    if (!dest && input.service_address_state) {
+      const uf = input.service_address_state.toUpperCase();
+      const centroid = UF_CENTROIDS[uf];
+      if (centroid) {
+        dest = { ...centroid, source: "uf_centroid" as const };
+        warnings.push(
+          `Nao foi possivel geocodificar o endereco exato — usando centro geografico de ${uf} como referencia.`
+        );
+      }
+    }
+
     if (dest) {
       travel_distance_km = await computeTravelDistance(
         settings.base_lat,

@@ -238,10 +238,11 @@ export async function GET(
       0
     );
     drawInfoRow("Data:", fmtDate(new Date().toISOString()), 14);
+    drawInfoRow("Validade:", "30 dias", 28);
     drawInfoRow(
       "Situação:",
       STATUS_LABELS[quote.status as string] ?? String(quote.status),
-      28
+      42
     );
 
     // Linha dourada
@@ -443,26 +444,78 @@ export async function GET(
       doc.y = y + 18;
     });
 
-    // Linha VALOR TOTAL DOS SERVICOS
-    doc.rect(leftX, doc.y, pageW, 22).fill(YELLOW);
-    doc
-      .fontSize(10)
-      .font("Helvetica-Bold")
-      .fillColor(BLACK)
-      .text("VALOR TOTAL DOS SERVIÇOS", leftX + 8, doc.y + 6, {
-        width: pageW - 100,
-      });
-    doc
-      .fontSize(11)
-      .font("Helvetica-Bold")
-      .fillColor(BLACK)
-      .text(
-        fmtBRL(quote.subtotal_services ?? itemsTotal),
-        rightX - 100 - 8,
-        doc.y - 15,
-        { width: 100, align: "right" }
+    // Linha TOTAL DOS SERVIÇOS (subtotal apenas dos itens)
+    const totalRow = (
+      label: string,
+      value: string,
+      opts: {
+        highlight?: boolean;
+        color?: string;
+        bg?: string;
+      } = {}
+    ) => {
+      const rowH = opts.highlight ? 26 : 20;
+      if (opts.bg) {
+        doc.rect(leftX, doc.y, pageW, rowH).fill(opts.bg);
+      }
+      const yRow = doc.y;
+      doc
+        .fontSize(opts.highlight ? 11 : 10)
+        .font(opts.highlight ? "Helvetica-Bold" : "Helvetica")
+        .fillColor(opts.color ?? BLACK)
+        .text(label, leftX + 8, yRow + (opts.highlight ? 7 : 5), {
+          width: pageW - 116,
+        });
+      doc
+        .fontSize(opts.highlight ? 12 : 10)
+        .font("Helvetica-Bold")
+        .fillColor(opts.color ?? BLACK)
+        .text(value, rightX - 100 - 8, yRow + (opts.highlight ? 7 : 5), {
+          width: 100,
+          align: "right",
+        });
+      doc.y = yRow + rowH;
+    };
+
+    doc.moveDown(0.2);
+    totalRow(
+      "TOTAL DOS SERVIÇOS",
+      fmtBRL(quote.subtotal_services ?? itemsTotal),
+      { bg: ZINC_100 }
+    );
+
+    // Adicionais (Jessica 16/07 — bug do PDF que nao mostrava esses valores)
+    if (Number(quote.travel_cost) > 0) {
+      const km =
+        Number(quote.travel_distance_km) > 0
+          ? ` (${Number(quote.travel_distance_km).toFixed(1)} km)`
+          : "";
+      totalRow(`Deslocamento${km}`, fmtBRL(quote.travel_cost));
+    }
+    if (Number(quote.stay_cost) > 0) {
+      const days =
+        Number(quote.stay_count) > 0
+          ? ` (${Number(quote.stay_count)} ${
+              Number(quote.stay_count) === 1 ? "diária" : "diárias"
+            })`
+          : "";
+      totalRow(`Estadia${days}`, fmtBRL(quote.stay_cost));
+    }
+    if (quote.is_special_hour && Number(quote.special_hour_extra) > 0) {
+      totalRow(
+        "Horário especial (+25%)",
+        fmtBRL(quote.special_hour_extra),
+        { color: "#D97706" }
       );
-    doc.y += 22 + 12;
+    }
+
+    // VALOR TOTAL destacado
+    doc.moveDown(0.2);
+    totalRow("VALOR TOTAL", fmtBRL(quote.total_amount), {
+      highlight: true,
+      bg: YELLOW,
+    });
+    doc.moveDown(0.4);
 
     // ============ RESUMO DA CONTRATACAO (5 caixas) ============
     // 5 caixas + label ocupam ~90px — quebra so se falta menos que isso
@@ -672,51 +725,94 @@ export async function GET(
     });
     doc.y = ccY + 70 + 12;
 
-    // ============ OBSERVACOES GERAIS ============
-    if (quote.general_notes) {
-      // 3 linhas de texto + label + rodape 50px reservado
-      if (doc.y > pageH - 80) doc.addPage();
+    // ============ CONDIÇÕES GERAIS + ACEITE (Jessica 16/07) ============
+    // Duas colunas: bullets padrao + espaco em branco pra data e assinatura
+    if (doc.y > pageH - 130) doc.addPage();
+    const cgY = doc.y;
+    const cgColW = (pageW - 20) / 2;
+
+    // Coluna esquerda: CONDIÇÕES GERAIS
+    doc
+      .fontSize(10)
+      .font("Helvetica-Bold")
+      .fillColor(BLACK)
+      .text("10. CONDIÇÕES GERAIS", leftX, cgY);
+    const cgBullets = [
+      "Este orçamento tem validade de 30 dias a partir da data de emissão.",
+      "Após aprovação, será emitida a ordem de serviço e agendamento da execução.",
+      "Pagamento conforme acordo comercial entre as partes.",
+      ...(quote.general_notes ? [String(quote.general_notes)] : []),
+    ];
+    let cgY2 = cgY + 16;
+    for (const b of cgBullets) {
       doc
-        .fontSize(10)
+        .fontSize(8)
         .font("Helvetica-Bold")
-        .fillColor(BLACK)
-        .text("10. OBSERVAÇÕES GERAIS", leftX, doc.y);
-      doc.y += 14;
-      doc
-        .fontSize(9)
-        .font("Helvetica")
+        .fillColor(YELLOW)
+        .text("•", leftX + 4, cgY2, { continued: true })
         .fillColor(ZINC_700)
-        .text(String(quote.general_notes), leftX, doc.y, {
-          width: pageW,
-          align: "justify",
-        });
-      doc.y += 6;
+        .font("Helvetica")
+        .text("  " + b, { width: cgColW - 10 });
+      cgY2 = doc.y + 4;
     }
 
-    // ============ RODAPE PRETO ============
-    // Textos com lineBreak:false + width limitado pra nao gerar pagina extra
-    const footerHeight = 34;
+    // Coluna direita: ACEITE DO CLIENTE
+    const acX = leftX + cgColW + 20;
+    doc
+      .fontSize(10)
+      .font("Helvetica-Bold")
+      .fillColor(BLACK)
+      .text("ACEITE DO CLIENTE", acX, cgY);
+    doc
+      .fontSize(9)
+      .font("Helvetica")
+      .fillColor(ZINC_700)
+      .text("_____/_____/_____", acX, cgY + 22, {
+        width: cgColW - 10,
+      });
+    doc.y = cgY + 60;
+    doc
+      .moveTo(acX, doc.y)
+      .lineTo(acX + cgColW - 10, doc.y)
+      .strokeColor(ZINC_500)
+      .lineWidth(0.5)
+      .stroke();
+    doc
+      .fontSize(8)
+      .font("Helvetica")
+      .fillColor(ZINC_500)
+      .text("Assinatura e Carimbo", acX, doc.y + 3, {
+        width: cgColW - 10,
+        align: "center",
+      });
+
+    doc.y = Math.max(cgY2, doc.y + 18);
+
+    // ============ RODAPE HORIZONTAL COM CONTATO ============
+    // 4 blocos horizontais (telefone / email / site / endereço) + slogan
+    const footerHeight = 40;
     const footerY = pageH - footerHeight;
     doc.rect(0, footerY, doc.page.width, footerHeight).fill(BLACK);
-    doc
-      .fontSize(8)
-      .font("Helvetica-Bold")
-      .fillColor("#FFFFFF")
-      .text(
-        "QUALIDADE QUE SE VÊ. COMPROMISSO QUE SE SENTE.",
-        leftX,
-        footerY + 12,
-        { width: pageW / 2, lineBreak: false }
-      );
-    doc
-      .fontSize(8)
-      .font("Helvetica-Oblique")
-      .fillColor(YELLOW_SOFT)
-      .text("Excelência em cada detalhe.", leftX + pageW / 2, footerY + 12, {
-        width: pageW / 2,
-        align: "right",
-        lineBreak: false,
-      });
+
+    const contatos = [
+      { label: safe(settings?.phone, "83 98714-5195") },
+      { label: safe(settings?.email, "comercial@reallliza.com.br") },
+      { label: "www.reallliza.com.br" },
+      { label: safe(settings?.base_address, "Av. Angola, 33 - Santa Rita - PB") },
+    ];
+    const blockW = pageW / contatos.length;
+    contatos.forEach((c, i) => {
+      doc
+        .fontSize(7)
+        .font("Helvetica")
+        .fillColor("#FFFFFF")
+        .text(c.label, leftX + i * blockW, footerY + 15, {
+          width: blockW - 8,
+          align: "center",
+          lineBreak: false,
+          ellipsis: true,
+        });
+    });
 
     doc.end();
     const pdfBuffer = await done;

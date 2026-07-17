@@ -11,6 +11,7 @@ export type NotificationType =
   | "schedule_reminder"
   | "tool_overdue"
   | "new_ticket"
+  | "warranty_opened"
   | "general";
 
 export type NotificationPriority = "low" | "normal" | "high" | "urgent";

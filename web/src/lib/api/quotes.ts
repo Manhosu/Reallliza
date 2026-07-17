@@ -124,6 +124,9 @@ export interface CreateQuotePayload {
   scope_items?: string[];
   important_notes?: string;
   general_notes?: string;
+  // Anexos Jessica 16/07
+  project_files?: Array<{ url: string; name: string; storage_path: string }>;
+  material_files?: Array<{ url: string; name: string; storage_path: string }>;
 }
 
 export interface PayQuoteResult {

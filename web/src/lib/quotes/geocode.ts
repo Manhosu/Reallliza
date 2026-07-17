@@ -17,7 +17,7 @@ export interface GeocodeInput {
 export interface GeocodeResult {
   lat: number;
   lng: number;
-  source: "google" | "awesomeapi";
+  source: "google" | "awesomeapi" | "uf_centroid";
 }
 
 function buildAddressString(input: GeocodeInput): string {

@@ -29,6 +29,22 @@ export async function GET(request: NextRequest) {
       const partnerId = (p as { id?: string } | null)?.id;
       if (!partnerId) throw new AuthError(404, "Parceiro nao encontrado");
       query = query.eq("partner_id", partnerId);
+    } else if (user.role === "technician") {
+      // Homologado (Jessica 16/07) — ve garantias das proprias OSs
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("professional_type, is_homologated")
+        .eq("id", user.id)
+        .maybeSingle();
+      const isHomologado =
+        (prof as { professional_type?: string; is_homologated?: boolean } | null)
+          ?.professional_type === "external" ||
+        (prof as { is_homologated?: boolean } | null)?.is_homologated === true;
+      if (isHomologado) {
+        query = query.eq("assigned_technician_id", user.id);
+      } else {
+        throw new AuthError(403, "Sem permissao");
+      }
     } else if (user.role !== "admin") {
       throw new AuthError(403, "Sem permissao");
     }
@@ -75,7 +91,7 @@ export async function POST(request: NextRequest) {
     // Valida OS + permissao
     const { data: os } = await supabase
       .from("service_orders")
-      .select("id, status, partner_id")
+      .select("id, status, partner_id, technician_id, order_number")
       .eq("id", body.service_order_id)
       .single();
 
@@ -124,6 +140,30 @@ export async function POST(request: NextRequest) {
         }));
     };
 
+    // Roteamento auto (Jessica 16/07): identifica executor da OS pra decidir
+    // pra qual fila a garantia vai (Reallliza vs homologado dono da execucao).
+    let executorType: "reallliza" | "homologado" = "reallliza";
+    let assignedTechnicianId: string | null = null;
+    const osFull = os as {
+      technician_id?: string | null;
+      order_number?: number | null;
+    };
+    if (osFull.technician_id) {
+      const { data: tech } = await supabase
+        .from("profiles")
+        .select("professional_type, is_homologated")
+        .eq("id", osFull.technician_id)
+        .maybeSingle();
+      const t = tech as {
+        professional_type?: string | null;
+        is_homologated?: boolean | null;
+      } | null;
+      const isHomologado =
+        t?.professional_type === "external" || t?.is_homologated === true;
+      executorType = isHomologado ? "homologado" : "reallliza";
+      assignedTechnicianId = osFull.technician_id;
+    }
+
     const { data: w, error } = await supabase
       .from("warranties")
       .insert({
@@ -135,6 +175,8 @@ export async function POST(request: NextRequest) {
         photos: sanitizeMedia(body.photos),
         videos: sanitizeMedia(body.videos),
         notes: body.notes ? String(body.notes).slice(0, 1000) : null,
+        executor_type: executorType,
+        assigned_technician_id: assignedTechnicianId,
       })
       .select()
       .single();
@@ -152,8 +194,26 @@ export async function POST(request: NextRequest) {
       newData: {
         service_order_id: body.service_order_id,
         partner_id: partnerId,
+        executor_type: executorType,
+        assigned_technician_id: assignedTechnicianId,
       },
     });
+
+    // Notifica o homologado dono da execucao (Jessica 16/07)
+    if (executorType === "homologado" && assignedTechnicianId) {
+      const { createNotification } = await import("@/lib/api-helpers/notifications");
+      createNotification(
+        assignedTechnicianId,
+        "Nova garantia aberta",
+        `A loja abriu uma solicitação de garantia sobre a OS #${osFull.order_number ?? ""}. Verifique detalhes e responda.`,
+        "warranty_opened",
+        {
+          warranty_id: (w as { id: string }).id,
+          service_order_id: body.service_order_id,
+        },
+        { priority: "high" }
+      ).catch(() => {});
+    }
 
     return jsonResponse(w, 201);
   } catch (error) {

@@ -303,6 +303,9 @@ export async function POST(request: NextRequest) {
       general_notes: body.general_notes
         ? String(body.general_notes).slice(0, 2000)
         : null,
+      // Anexos Jessica 16/07
+      project_files: Array.isArray(body.project_files) ? body.project_files : [],
+      material_files: Array.isArray(body.material_files) ? body.material_files : [],
     };
 
     if (calc) {
@@ -319,6 +322,8 @@ export async function POST(request: NextRequest) {
         platform_fee_pct: calc.platform_fee_pct,
         platform_fee_amount: calc.platform_fee_amount,
         payout_amount: calc.payout_amount,
+        // Warnings persistidos (transparencia Jessica 16/07)
+        calculator_warnings: (calc as { warnings?: string[] }).warnings ?? [],
       });
     }
 

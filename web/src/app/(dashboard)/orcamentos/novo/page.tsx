@@ -6,6 +6,8 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { Minus, Plus, ArrowLeft, AlertCircle, Package, Calculator, Building2, Users } from "lucide-react";
 import { toast } from "sonner";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -174,15 +176,18 @@ export default function NovoOrcamentoPage() {
   const [totalAreaM2, setTotalAreaM2] = useState("");
   const [rooms, setRooms] = useState("");
   const [scheduleTimeLabel, setScheduleTimeLabel] = useState("08h às 17h");
-  const [techniciansCount, setTechniciansCount] = useState("");
-  const [technicalResponsible, setTechnicalResponsible] = useState("Equipe Reallliza");
   const [materialDescription, setMaterialDescription] = useState("");
-  const [warrantyMonths, setWarrantyMonths] = useState("12");
   const [executionStartDate, setExecutionStartDate] = useState("");
-  const [scopeItems, setScopeItems] = useState<string[]>([]);
-  const [newScopeItem, setNewScopeItem] = useState("");
   const [importantNotes, setImportantNotes] = useState("");
   const [generalNotes, setGeneralNotes] = useState("");
+  // Anexos (Jessica 16/07)
+  type FileAttachment = { url: string; name: string; storage_path: string };
+  const [projectFiles, setProjectFiles] = useState<FileAttachment[]>([]);
+  const [materialFiles, setMaterialFiles] = useState<FileAttachment[]>([]);
+  const [uploadingProject, setUploadingProject] = useState(false);
+  const [uploadingMaterial, setUploadingMaterial] = useState(false);
+  // Filtro por categoria de servicos (Jessica 16/07)
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   // Calculo (preview)
   const [calc, setCalc] = useState<CalcResult | null>(null);
   const [calcLoading, setCalcLoading] = useState(false);
@@ -275,13 +280,11 @@ export default function NovoOrcamentoPage() {
         rooms?: string;
         executionStartDate?: string;
         scheduleTimeLabel?: string;
-        techniciansCount?: string;
-        technicalResponsible?: string;
         materialDescription?: string;
-        warrantyMonths?: string;
-        scopeItems?: string[];
         importantNotes?: string;
         generalNotes?: string;
+        projectFiles?: FileAttachment[];
+        materialFiles?: FileAttachment[];
       };
       if (d.clientName) setClientName(d.clientName);
       if (d.clientPhone) setClientPhone(d.clientPhone);
@@ -302,13 +305,11 @@ export default function NovoOrcamentoPage() {
       if (d.rooms) setRooms(d.rooms);
       if (d.executionStartDate) setExecutionStartDate(d.executionStartDate);
       if (d.scheduleTimeLabel) setScheduleTimeLabel(d.scheduleTimeLabel);
-      if (d.techniciansCount) setTechniciansCount(d.techniciansCount);
-      if (d.technicalResponsible) setTechnicalResponsible(d.technicalResponsible);
       if (d.materialDescription) setMaterialDescription(d.materialDescription);
-      if (d.warrantyMonths) setWarrantyMonths(d.warrantyMonths);
-      if (Array.isArray(d.scopeItems)) setScopeItems(d.scopeItems);
       if (d.importantNotes) setImportantNotes(d.importantNotes);
       if (d.generalNotes) setGeneralNotes(d.generalNotes);
+      if (Array.isArray(d.projectFiles)) setProjectFiles(d.projectFiles);
+      if (Array.isArray(d.materialFiles)) setMaterialFiles(d.materialFiles);
       toast.info("Rascunho restaurado", {
         description: "Continue de onde parou e clique em Gerar orçamento.",
         action: {
@@ -399,6 +400,34 @@ export default function NovoOrcamentoPage() {
     if (data.uf && !addressState) setAddressState(data.uf);
   }
 
+  // Upload de anexo pra bucket quote-files (Jessica 16/07 — planta e lista materiais)
+  async function uploadQuoteFile(
+    file: File,
+    kind: "project" | "material"
+  ): Promise<FileAttachment> {
+    const supabase = createSupabaseClient();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    const userId = authUser?.id ?? "anon";
+    const ext = file.name.split(".").pop()?.toLowerCase() || "bin";
+    const rand = Math.random().toString(36).slice(2, 8);
+    const path = `${userId}/${kind}/${Date.now()}-${rand}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from("quote-files")
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (upErr) throw new Error(upErr.message);
+    // Bucket privado — signed URL 1 ano
+    const { data: signed } = await supabase.storage
+      .from("quote-files")
+      .createSignedUrl(path, 60 * 60 * 24 * 365);
+    return {
+      url: signed?.signedUrl ?? "",
+      name: file.name,
+      storage_path: path,
+    };
+  }
+
   async function handleSubmit() {
     setError(null);
     if (!clientName.trim()) {
@@ -428,10 +457,9 @@ export default function NovoOrcamentoPage() {
           addressStreet, addressNumber, addressComplement, addressNeighborhood,
           addressCity, addressState, addressZip,
           notes, quantities,
-          // Campos PDF Jessica 10/07
           serviceType, totalAreaM2, rooms, executionStartDate, scheduleTimeLabel,
-          techniciansCount, technicalResponsible, materialDescription,
-          warrantyMonths, scopeItems, importantNotes, generalNotes,
+          materialDescription, importantNotes, generalNotes,
+          projectFiles, materialFiles,
           savedAt: new Date().toISOString(),
         })
       );
@@ -490,18 +518,17 @@ export default function NovoOrcamentoPage() {
           modality === "homologados" && manualTotal
             ? Number(manualTotal.replace(",", "."))
             : undefined,
-        // Campos PDF Jessica 10/07
+        // Campos PDF (Jessica 16/07 removeu qtd_tec, resp_equipe, garantia, escopo)
         service_type: serviceType.trim() || undefined,
         total_area_m2: totalAreaM2 ? Number(totalAreaM2.replace(",", ".")) : undefined,
         rooms: rooms.trim() || undefined,
-        technical_responsible: technicalResponsible.trim() || undefined,
-        technicians_count: techniciansCount ? Number(techniciansCount) : undefined,
         material_description: materialDescription.trim() || undefined,
-        warranty_months: warrantyMonths ? Number(warrantyMonths) : undefined,
         execution_start_date: executionStartDate || undefined,
-        scope_items: scopeItems.length > 0 ? scopeItems : undefined,
         important_notes: importantNotes.trim() || undefined,
         general_notes: generalNotes.trim() || undefined,
+        // Anexos (Jessica 16/07)
+        project_files: projectFiles.length > 0 ? projectFiles : undefined,
+        material_files: materialFiles.length > 0 ? materialFiles : undefined,
       });
       toast.success("Orçamento criado");
       try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
@@ -544,6 +571,48 @@ export default function NovoOrcamentoPage() {
         {/* Catálogo */}
         <div className="space-y-3 lg:col-span-2">
           <h2 className="font-semibold">Serviços</h2>
+          {/* Tabs de categoria (Jessica 16/07) */}
+          {(() => {
+            const cats = Array.from(
+              new Map(
+                services
+                  .filter((s) => s.category)
+                  .map((s) => [s.category!.id, s.category!])
+              ).values()
+            );
+            if (cats.length === 0) return null;
+            return (
+              <div className="flex flex-wrap gap-1 rounded-xl bg-secondary/50 p-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveCategoryId(null)}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                    activeCategoryId === null
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Todos
+                </button>
+                {cats.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setActiveCategoryId(c.id)}
+                    className={cn(
+                      "rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                      activeCategoryId === c.id
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
           {loading ? (
             <div className="space-y-2">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -559,7 +628,12 @@ export default function NovoOrcamentoPage() {
             </Card>
           ) : (
             <div className="space-y-2">
-              {services.map((s) => {
+              {services
+                .filter(
+                  (s) =>
+                    !activeCategoryId || s.category?.id === activeCategoryId
+                )
+                .map((s) => {
                 const qty = quantities[s.id] ?? 0;
                 const firstPhoto = s.photos?.[0];
                 return (
@@ -945,31 +1019,38 @@ export default function NovoOrcamentoPage() {
                     placeholder="08h às 17h"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Quantidade de técnicos
-                  </label>
-                  <Input
-                    type="number"
-                    min="1"
-                    value={techniciansCount}
-                    onChange={(e) => setTechniciansCount(e.target.value)}
-                    placeholder="Ex.: 3"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Responsável pela equipe
-                  </label>
-                  <Input
-                    value={technicalResponsible}
-                    onChange={(e) => setTechnicalResponsible(e.target.value)}
-                  />
-                </div>
+                {/* Material disponivel no local + anexo de lista (Jessica 16/07) */}
                 <div className="space-y-1 sm:col-span-2">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Material a ser instalado
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Material disponível no local
+                    </label>
+                    <label className="cursor-pointer text-xs font-medium text-primary hover:underline">
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.xls,.xlsx,.csv,.jpg,.jpeg,.png"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setUploadingMaterial(true);
+                          try {
+                            const uploaded = await uploadQuoteFile(file, "material");
+                            setMaterialFiles((prev) => [...prev, uploaded]);
+                            toast.success("Lista de materiais anexada");
+                          } catch (err) {
+                            toast.error(
+                              err instanceof Error ? err.message : "Erro no upload"
+                            );
+                          } finally {
+                            setUploadingMaterial(false);
+                            e.target.value = "";
+                          }
+                        }}
+                      />
+                      {uploadingMaterial ? "Enviando..." : "+ Anexar lista"}
+                    </label>
+                  </div>
                   <textarea
                     value={materialDescription}
                     onChange={(e) => setMaterialDescription(e.target.value)}
@@ -977,81 +1058,98 @@ export default function NovoOrcamentoPage() {
                     placeholder="Ex.: Piso vinílico SPC clicado - Linha Premium; Cola de vedação"
                     className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
                   />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Garantia (meses)
-                  </label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={warrantyMonths}
-                    onChange={(e) => setWarrantyMonths(e.target.value)}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Escopo do servico (checklist) */}
-          <Card>
-            <CardContent className="space-y-3 p-4">
-              <h2 className="font-semibold">Escopo do serviço (incluso)</h2>
-              <p className="text-xs text-muted-foreground">
-                Marque tudo que está incluído no orçamento. Aparece como
-                checklist no PDF.
-              </p>
-              <div className="flex gap-2">
-                <Input
-                  value={newScopeItem}
-                  onChange={(e) => setNewScopeItem(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      const v = newScopeItem.trim();
-                      if (v && !scopeItems.includes(v)) {
-                        setScopeItems([...scopeItems, v]);
-                        setNewScopeItem("");
-                      }
-                    }
-                  }}
-                  placeholder="Ex.: Regularização de contrapiso"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    const v = newScopeItem.trim();
-                    if (v && !scopeItems.includes(v)) {
-                      setScopeItems([...scopeItems, v]);
-                      setNewScopeItem("");
-                    }
-                  }}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              {scopeItems.length > 0 && (
-                <ul className="space-y-1">
-                  {scopeItems.map((item, idx) => (
-                    <li
+                  {materialFiles.map((f, idx) => (
+                    <div
                       key={idx}
-                      className="flex items-center justify-between rounded-md border border-border px-3 py-1.5 text-sm"
+                      className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-2 py-1 text-xs"
                     >
-                      <span className="text-foreground">✓ {item}</span>
+                      <a
+                        href={f.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate text-primary hover:underline"
+                      >
+                        📎 {f.name}
+                      </a>
                       <button
                         type="button"
                         onClick={() =>
-                          setScopeItems(scopeItems.filter((_, i) => i !== idx))
+                          setMaterialFiles((prev) =>
+                            prev.filter((_, i) => i !== idx)
+                          )
                         }
-                        className="text-muted-foreground hover:text-destructive"
+                        className="ml-2 text-muted-foreground hover:text-destructive"
                       >
-                        <Minus className="h-4 w-4" />
+                        <Minus className="h-3.5 w-3.5" />
                       </button>
-                    </li>
+                    </div>
                   ))}
-                </ul>
-              )}
+                </div>
+
+                {/* Anexar projeto da obra (Jessica 16/07) */}
+                <div className="space-y-1 sm:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Anexar projeto da obra (planta baixa)
+                    </label>
+                    <label className="cursor-pointer text-xs font-medium text-primary hover:underline">
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.dwg,.jpg,.jpeg,.png"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setUploadingProject(true);
+                          try {
+                            const uploaded = await uploadQuoteFile(file, "project");
+                            setProjectFiles((prev) => [...prev, uploaded]);
+                            toast.success("Projeto anexado");
+                          } catch (err) {
+                            toast.error(
+                              err instanceof Error ? err.message : "Erro no upload"
+                            );
+                          } finally {
+                            setUploadingProject(false);
+                            e.target.value = "";
+                          }
+                        }}
+                      />
+                      {uploadingProject ? "Enviando..." : "+ Anexar arquivo"}
+                    </label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Planta baixa ou arquivo do projeto pra equipe técnica analisar
+                    previamente.
+                  </p>
+                  {projectFiles.map((f, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-2 py-1 text-xs"
+                    >
+                      <a
+                        href={f.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate text-primary hover:underline"
+                      >
+                        📎 {f.name}
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setProjectFiles((prev) =>
+                            prev.filter((_, i) => i !== idx)
+                          )
+                        }
+                        className="ml-2 text-muted-foreground hover:text-destructive"
+                      >
+                        <Minus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </CardContent>
           </Card>
 

@@ -57,7 +57,33 @@ export async function PATCH(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    // Admin sempre; homologado apenas se for o assigned_technician_id (Jessica 16/07)
+    if (user.role !== "admin") {
+      if (user.role !== "technician") {
+        throw new AuthError(403, "Sem permissao");
+      }
+      const supabaseCheck = getAdminClient();
+      const { id: warrantyId } = await params;
+      const { data: w } = await supabaseCheck
+        .from("warranties")
+        .select("assigned_technician_id, executor_type")
+        .eq("id", warrantyId)
+        .maybeSingle();
+      const wRow = w as {
+        assigned_technician_id?: string | null;
+        executor_type?: string | null;
+      } | null;
+      if (
+        !wRow ||
+        wRow.executor_type !== "homologado" ||
+        wRow.assigned_technician_id !== user.id
+      ) {
+        throw new AuthError(
+          403,
+          "Sem permissao pra alterar esta garantia"
+        );
+      }
+    }
 
     const { id } = await params;
     const body = await request.json();
