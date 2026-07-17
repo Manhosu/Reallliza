@@ -86,11 +86,84 @@ export async function GET(request: NextRequest) {
       throw new Error(`Failed to fetch dashboard stats: ${msg}`);
     }
 
+    // Jessica 17/07: admin ganha KPIs segregados Reallliza vs Homologados.
+    // Reusa a mesma regra (professional_type='external' OR is_homologated).
+    let homologadosStats:
+      | { openOs: number; inProgressOs: number; completedOs: number; overdueOs: number }
+      | null = null;
+    if (user.role === "admin" || user.role === "manager") {
+      const { data: homs } = await supabase
+        .from("profiles")
+        .select("id")
+        .or("professional_type.eq.external,is_homologated.eq.true");
+      const homIds = ((homs as { id: string }[]) || []).map((p) => p.id);
+      if (homIds.length > 0) {
+        const inHomFilter = (q: any) => q.in("technician_id", homIds);
+        const [oH, iH, cH, ovH] = await Promise.all([
+          inHomFilter(
+            supabase
+              .from("service_orders")
+              .select("id", { count: "exact", head: true })
+              .in("status", ["draft", "pending", "assigned"])
+          ),
+          inHomFilter(
+            supabase
+              .from("service_orders")
+              .select("id", { count: "exact", head: true })
+              .eq("status", "in_progress")
+          ),
+          inHomFilter(
+            supabase
+              .from("service_orders")
+              .select("id", { count: "exact", head: true })
+              .eq("status", "completed")
+          ),
+          inHomFilter(
+            supabase
+              .from("service_orders")
+              .select("id", { count: "exact", head: true })
+              .in("status", ["pending", "assigned", "in_progress"])
+              .lt("scheduled_date", today)
+          ),
+        ]);
+        homologadosStats = {
+          openOs: oH.count ?? 0,
+          inProgressOs: iH.count ?? 0,
+          completedOs: cH.count ?? 0,
+          overdueOs: ovH.count ?? 0,
+        };
+      } else {
+        homologadosStats = {
+          openOs: 0,
+          inProgressOs: 0,
+          completedOs: 0,
+          overdueOs: 0,
+        };
+      }
+    }
+
+    // Reallliza = total - homologados (evita nova query)
+    const reallizaStats =
+      homologadosStats && (user.role === "admin" || user.role === "manager")
+        ? {
+            openOs: (openRes.count ?? 0) - homologadosStats.openOs,
+            inProgressOs:
+              (inProgressRes.count ?? 0) - homologadosStats.inProgressOs,
+            completedOs:
+              (completedRes.count ?? 0) - homologadosStats.completedOs,
+            overdueOs: (overdueRes.count ?? 0) - homologadosStats.overdueOs,
+          }
+        : null;
+
     return jsonResponse({
+      // Totais (backward compat pra partner/technician)
       openOs: openRes.count ?? 0,
       inProgressOs: inProgressRes.count ?? 0,
       completedOs: completedRes.count ?? 0,
       overdueOs: overdueRes.count ?? 0,
+      // Segregado admin (Jessica 17/07)
+      reallliza: reallizaStats,
+      homologados: homologadosStats,
     });
   } catch (error) {
     return errorResponse(error);

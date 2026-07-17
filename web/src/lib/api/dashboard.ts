@@ -5,11 +5,17 @@ import type { OsStatusHistory, Schedule } from "@/lib/types";
 // Response types
 // ============================================================
 
-export interface DashboardStats {
+export interface OsBucketStats {
   openOs: number;
   inProgressOs: number;
   completedOs: number;
   overdueOs: number;
+}
+
+export interface DashboardStats extends OsBucketStats {
+  // Segregado por executor (admin) — Jessica 17/07
+  reallliza?: OsBucketStats | null;
+  homologados?: OsBucketStats | null;
 }
 
 export interface OsPerMonth {

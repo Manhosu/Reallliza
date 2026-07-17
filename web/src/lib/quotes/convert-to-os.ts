@@ -147,7 +147,117 @@ export async function convertQuoteToServiceOrder(
     });
   }
 
+  // 7. Fanout automatico de proposta pra homologados (Jessica 17/07):
+  // "Somente apos a confirmacao do pagamento o processo poderá continuar.
+  //  Com o pagamento confirmado, o sistema devera disponibilizar
+  //  automaticamente a proposta para todos os homologados cadastrados
+  //  na regiao de atendimento da obra."
+  if (quote.modality === "homologados") {
+    fanoutHomologadoProposal(supabase, {
+      service_order_id: os.id,
+      partner_id: (quote.partner_id as string | null) ?? null,
+      target_state: (quote.region_state ?? quote.address_state) as
+        | string
+        | null,
+      quote_number: quote.quote_number as string | number,
+      client_name: quote.client_name as string,
+      payout_amount: Number(quote.payout_amount ?? quote.total_amount ?? 0),
+    }).catch((err) => {
+      console.error(
+        `convertQuote: fanout homologado failed: ${err?.message ?? err}`
+      );
+    });
+  }
+
   return { ok: true, service_order_id: os.id };
+}
+
+/**
+ * Cria proposta broadcast pra homologados da UF alvo assim que o
+ * orcamento modalidade='homologados' e pago (Jessica 17/07).
+ *
+ * - 1 registro em service_proposals com partner_id=null (broadcast)
+ * - Notifica TODOS profiles.role='technician' + is_homologated=true
+ *   com operating_region contendo a UF
+ * - Fire-and-forget — falha nao bloqueia webhook Asaas
+ */
+async function fanoutHomologadoProposal(
+  supabase: SupabaseClient,
+  input: {
+    service_order_id: string;
+    partner_id: string | null;
+    target_state: string | null;
+    quote_number: string | number;
+    client_name: string;
+    payout_amount: number;
+  }
+): Promise<void> {
+  if (!input.target_state) {
+    console.warn(
+      `fanoutHomologado: OS ${input.service_order_id} sem UF alvo — sem broadcast.`
+    );
+    return;
+  }
+  const uf = input.target_state.toUpperCase();
+
+  // Cria proposta broadcast (partner_id=null)
+  const { data: proposal, error: pErr } = await supabase
+    .from("service_proposals")
+    .insert({
+      service_order_id: input.service_order_id,
+      partner_id: null,
+      status: "pending",
+      target_state: uf,
+      offered_amount: input.payout_amount,
+    })
+    .select("id")
+    .single();
+
+  if (pErr || !proposal) {
+    console.error(
+      `fanoutHomologado: falha criar proposal: ${pErr?.message ?? "unknown"}`
+    );
+    return;
+  }
+
+  // Busca todos homologados da UF com operating_region conteudo
+  const { data: homologados } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .eq("role", "technician")
+    .eq("status", "active")
+    .eq("is_homologated", true)
+    .ilike("operating_region", `%${uf}%`);
+
+  const list = (homologados as Array<{ id: string; full_name: string }>) || [];
+  if (list.length === 0) {
+    console.warn(
+      `fanoutHomologado: 0 homologados encontrados em ${uf} — proposta ${proposal.id} sem destinatarios.`
+    );
+    return;
+  }
+
+  const { createNotification } = await import(
+    "@/lib/api-helpers/notifications"
+  );
+
+  await Promise.allSettled(
+    list.map((h) =>
+      createNotification(
+        h.id,
+        "Nova proposta disponível",
+        `Um serviço está disponível na região ${uf}. Primeiro homologado a aceitar leva.`,
+        "proposal_available",
+        {
+          proposal_id: proposal.id,
+          service_order_id: input.service_order_id,
+          quote_number: input.quote_number,
+          target_state: uf,
+        },
+        { priority: "high" }
+      )
+    )
+  );
 }
 
 /**

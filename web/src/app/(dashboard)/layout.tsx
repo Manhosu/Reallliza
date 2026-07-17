@@ -87,6 +87,14 @@ const allNavItems = [
     badgeKey: "awaiting_assignment",
   },
   {
+    label: "OSs Homologados",
+    href: "/os/homologados",
+    icon: UserCheck,
+    // Jessica 17/07: tela dedicada de consulta das OSs executadas pela
+    // rede homologada — separadas da tela principal /os pra nao poluir.
+    roles: [UserRole.ADMIN],
+  },
+  {
     label: "Orçamentos",
     href: "/orcamentos",
     icon: FileText,

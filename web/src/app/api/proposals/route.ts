@@ -118,12 +118,15 @@ export async function GET(request: NextRequest) {
         partnerOwnId = partnerData?.id ?? null;
       }
 
+      // Jessica 17/07: broadcasts aceitas devem sumir da tela dos demais
+      // homologados. So mostra broadcasts pending OU broadcast aceita por mim.
       const orParts: string[] = [];
       if (partnerOwnId) {
         orParts.push(`partner_id.eq.${partnerOwnId}`);
       }
-      // Broadcast pendente para qualquer technician/partner ativo.
-      orParts.push(`partner_id.is.null`);
+      // Broadcast pendente pra todos + broadcast aceita/reservada por mim
+      orParts.push(`and(partner_id.is.null,status.eq.pending)`);
+      orParts.push(`and(partner_id.is.null,accepted_by.eq.${user.id})`);
 
       query = query.or(orParts.join(","));
     } else {

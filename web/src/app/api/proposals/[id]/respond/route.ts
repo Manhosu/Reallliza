@@ -212,6 +212,66 @@ export async function POST(
       } catch (err) {
         console.warn("auto-schedule on proposal accept failed:", err);
       }
+
+      // Notifica a loja dona da OS (Jessica 17/07)
+      // "Assim que um homologado aceitar a proposta, a loja devera receber
+      //  uma notificacao informando que a proposta foi aceita e exibindo os
+      //  dados do homologado responsavel pela execucao do servico."
+      try {
+        const { data: os } = await supabase
+          .from("service_orders")
+          .select("partner_id, order_number, client_name")
+          .eq("id", proposal.service_order_id)
+          .maybeSingle();
+        const osRow = os as {
+          partner_id?: string | null;
+          order_number?: number | null;
+          client_name?: string | null;
+        } | null;
+        if (osRow?.partner_id) {
+          const { data: partnerRow } = await supabase
+            .from("partners")
+            .select("user_id")
+            .eq("id", osRow.partner_id)
+            .maybeSingle();
+          const partnerUserId = (partnerRow as { user_id?: string | null } | null)
+            ?.user_id;
+          if (partnerUserId) {
+            const { data: techProfile } = await supabase
+              .from("profiles")
+              .select("full_name, email, phone")
+              .eq("id", user.id)
+              .maybeSingle();
+            const t = techProfile as {
+              full_name?: string;
+              email?: string;
+              phone?: string;
+            } | null;
+            const techName = t?.full_name || user.email || "Homologado";
+            const techPhone = t?.phone ? ` · ${t.phone}` : "";
+            const { createNotification } = await import(
+              "@/lib/api-helpers/notifications"
+            );
+            await createNotification(
+              partnerUserId,
+              "Homologado aceitou a proposta",
+              `${techName}${techPhone} aceitou a proposta da OS #${osRow.order_number ?? ""} — ${osRow.client_name ?? ""}.`,
+              "proposal_available",
+              {
+                proposal_id: id,
+                service_order_id: proposal.service_order_id,
+                accepted_by_technician_id: user.id,
+                technician_name: techName,
+                technician_email: t?.email ?? null,
+                technician_phone: t?.phone ?? null,
+              },
+              { priority: "high" }
+            );
+          }
+        }
+      } catch (err) {
+        console.warn("notify partner on proposal accept failed:", err);
+      }
     }
 
     logAudit({

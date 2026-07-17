@@ -26,6 +26,10 @@ export async function GET(request: NextRequest) {
     const date_to = searchParams.get("date_to");
     const search = searchParams.get("search");
     const priority = searchParams.get("priority");
+    // Jessica 17/07: separacao Reallliza vs homologados nas telas de gestao.
+    // ?executor_type=reallliza|homologado|all
+    // Default: admin/manager => "reallliza"; demais => "all"
+    const executorTypeParam = searchParams.get("executor_type");
 
     const offset = (page - 1) * limit;
 
@@ -68,6 +72,48 @@ export async function GET(request: NextRequest) {
       query = query.or(orParts.join(","));
     }
     // admin / manager can see all
+
+    // Executor filter (Jessica 17/07)
+    // Reusa a regra ja existente em warranties: professional_type='external'
+    // OR is_homologated=true => homologado; caso contrario => reallliza (interno).
+    // OS sem technician_id (pending/awaiting_assignment) sao consideradas
+    // Reallliza por padrao — sao designadas pra equipe interna.
+    const executorType =
+      executorTypeParam &&
+      ["reallliza", "homologado", "all"].includes(executorTypeParam)
+        ? executorTypeParam
+        : user.role === "admin" || user.role === "manager"
+          ? "reallliza"
+          : "all";
+
+    if (executorType !== "all") {
+      const { data: homologadosProfiles } = await supabase
+        .from("profiles")
+        .select("id")
+        .or("professional_type.eq.external,is_homologated.eq.true");
+      const homologadoIds = ((homologadosProfiles as { id: string }[]) || []).map(
+        (p) => p.id
+      );
+
+      if (executorType === "homologado") {
+        if (homologadoIds.length === 0) {
+          // Nenhum homologado — retornar vazio
+          query = query.eq("id", "00000000-0000-0000-0000-000000000000");
+        } else {
+          query = query.in("technician_id", homologadoIds);
+        }
+      } else if (executorType === "reallliza") {
+        // Reallliza = sem technician_id (fila) OU technician_id NOT IN homologados
+        if (homologadoIds.length > 0) {
+          const orParts = [
+            "technician_id.is.null",
+            `technician_id.not.in.(${homologadoIds.join(",")})`,
+          ];
+          query = query.or(orParts.join(","));
+        }
+        // Sem homologados: nao filtra nada — todas sao Reallliza
+      }
+    }
 
     // Apply filters
     if (status) {

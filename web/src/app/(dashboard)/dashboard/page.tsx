@@ -406,10 +406,11 @@ export default function DashboardPage() {
           </>
         ) : (
           <>
+            {/* Jessica 17/07 — KPIs mostram exclusivamente OSs Reallliza (equipe interna) */}
             <MetricCard
               title="OS Abertas"
-              value={String(stats?.openOs ?? 0)}
-              change="Total atual"
+              value={String(stats?.reallliza?.openOs ?? stats?.openOs ?? 0)}
+              change="Equipe Reallliza"
               changeType="neutral"
               icon={
                 <ClipboardList className="h-5 w-5" style={{ color: "#EAB308" }} />
@@ -419,8 +420,10 @@ export default function DashboardPage() {
             />
             <MetricCard
               title="Em Andamento"
-              value={String(stats?.inProgressOs ?? 0)}
-              change="Total atual"
+              value={String(
+                stats?.reallliza?.inProgressOs ?? stats?.inProgressOs ?? 0
+              )}
+              change="Equipe Reallliza"
               changeType="neutral"
               icon={<Clock className="h-5 w-5" style={{ color: "#3B82F6" }} />}
               accentColor="#3B82F6"
@@ -428,8 +431,10 @@ export default function DashboardPage() {
             />
             <MetricCard
               title="Concluídas"
-              value={String(stats?.completedOs ?? 0)}
-              change="Total geral"
+              value={String(
+                stats?.reallliza?.completedOs ?? stats?.completedOs ?? 0
+              )}
+              change="Equipe Reallliza"
               changeType="up"
               icon={
                 <CheckCircle2
@@ -442,9 +447,19 @@ export default function DashboardPage() {
             />
             <MetricCard
               title="Atrasadas"
-              value={String(stats?.overdueOs ?? 0)}
-              change={stats?.overdueOs ? "Requer atenção" : "Tudo em dia"}
-              changeType={stats?.overdueOs ? "down" : "neutral"}
+              value={String(
+                stats?.reallliza?.overdueOs ?? stats?.overdueOs ?? 0
+              )}
+              change={
+                (stats?.reallliza?.overdueOs ?? stats?.overdueOs ?? 0) > 0
+                  ? "Requer atenção"
+                  : "Tudo em dia"
+              }
+              changeType={
+                (stats?.reallliza?.overdueOs ?? stats?.overdueOs ?? 0) > 0
+                  ? "down"
+                  : "neutral"
+              }
               icon={
                 <AlertTriangle
                   className="h-5 w-5"
@@ -457,6 +472,83 @@ export default function DashboardPage() {
           </>
         )}
       </div>
+
+      {/* Bloco Homologados — admin/manager only (Jessica 17/07) */}
+      {!isPartner && stats?.homologados && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">
+                OSs Homologados
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Serviços executados pela rede homologada — clique pra abrir a
+                consulta completa.
+              </p>
+            </div>
+            <Link
+              href="/os/homologados"
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              Ver todas →
+            </Link>
+          </div>
+          <div className="grid gap-3 md:grid-cols-4">
+            <MetricCard
+              title="OS Abertas"
+              value={String(stats.homologados.openOs)}
+              change="Rede homologada"
+              changeType="neutral"
+              icon={
+                <ClipboardList className="h-5 w-5" style={{ color: "#8B5CF6" }} />
+              }
+              accentColor="#8B5CF6"
+              delay={0}
+              href="/os/homologados?status=pending"
+            />
+            <MetricCard
+              title="Em Andamento"
+              value={String(stats.homologados.inProgressOs)}
+              change="Rede homologada"
+              changeType="neutral"
+              icon={<Clock className="h-5 w-5" style={{ color: "#8B5CF6" }} />}
+              accentColor="#8B5CF6"
+              delay={0.05}
+              href="/os/homologados?status=in_progress"
+            />
+            <MetricCard
+              title="Concluídas"
+              value={String(stats.homologados.completedOs)}
+              change="Rede homologada"
+              changeType="up"
+              icon={
+                <CheckCircle2 className="h-5 w-5" style={{ color: "#22C55E" }} />
+              }
+              accentColor="#22C55E"
+              delay={0.1}
+              href="/os/homologados?status=completed"
+            />
+            <MetricCard
+              title="Atrasadas"
+              value={String(stats.homologados.overdueOs)}
+              change={
+                stats.homologados.overdueOs > 0
+                  ? "Requer atenção"
+                  : "Tudo em dia"
+              }
+              changeType={
+                stats.homologados.overdueOs > 0 ? "down" : "neutral"
+              }
+              icon={
+                <AlertTriangle className="h-5 w-5" style={{ color: "#EF4444" }} />
+              }
+              accentColor="#EF4444"
+              delay={0.15}
+              href="/os/homologados"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Charts & Lists - Bento Grid */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
