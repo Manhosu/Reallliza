@@ -116,7 +116,8 @@ const allNavItems = [
     label: "Garantias",
     href: "/garantias",
     icon: ShieldCheck,
-    roles: [UserRole.PARTNER],
+    // Technician tambem — homologados que executaram OSs veem as proprias (Jessica 16/07)
+    roles: [UserRole.PARTNER, UserRole.TECHNICIAN, UserRole.ADMIN],
   },
   {
     label: "Relatórios",

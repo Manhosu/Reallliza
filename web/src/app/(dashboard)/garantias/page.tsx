@@ -130,25 +130,28 @@ function GarantiasPageInner() {
 
   const load = useCallback(async () => {
     setIsLoading(true);
+    // Warranties + quotes sao independentes — homologado nao tem acesso a quotes,
+    // entao usamos allSettled pra nao perder a lista de garantias por causa de
+    // um 403 no quotes.
     try {
-      const [w, q] = await Promise.all([
+      const [wRes, qRes] = await Promise.allSettled([
         apiClient.get<Warranty[]>("/warranties"),
         quotesApi.list() as Promise<QuoteWithOs[]>,
       ]);
-      setWarranties(w);
-      // OSs concluidas elegíveis pra garantia
-      setCompletedOs(
-        q.filter((qq) => {
-          const os = qq.service_order_status ?? qq.service_order?.status;
-          return (
-            qq.service_order_id &&
-            os &&
-            ["completed", "approved", "invoiced"].includes(os)
-          );
-        })
-      );
-    } catch (err) {
-      console.error("Failed to load warranties:", err);
+      if (wRes.status === "fulfilled") setWarranties(wRes.value);
+      else console.error("Failed to load warranties:", wRes.reason);
+      if (qRes.status === "fulfilled") {
+        setCompletedOs(
+          qRes.value.filter((qq) => {
+            const os = qq.service_order_status ?? qq.service_order?.status;
+            return (
+              qq.service_order_id &&
+              os &&
+              ["completed", "approved", "invoiced"].includes(os)
+            );
+          })
+        );
+      }
     } finally {
       setIsLoading(false);
     }
