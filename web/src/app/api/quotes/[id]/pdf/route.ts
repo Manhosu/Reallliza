@@ -585,11 +585,11 @@ export async function GET(
     });
     doc.y = bY + 55 + 12;
 
-    // ============ INFO EXECUCAO + ESCOPO + OBS IMPORTANTES (3 colunas) ============
-    // Bloco ~180px (6 items * 24 + header)
+    // ============ INFO EXECUCAO + OBS IMPORTANTES (2 colunas) ============
+    // Jessica 16/07: removida coluna Escopo pois o card do form saiu.
     if (doc.y > pageH - 200) doc.addPage();
     const c3Y = doc.y;
-    const c3W = (pageW - 20) / 3;
+    const c3W = (pageW - 10) / 2;
 
     // Coluna 1: Info execucao
     drawSectionHeader(
@@ -600,13 +600,13 @@ export async function GET(
       c3W
     );
     let cy = c3Y + 22;
+    // Jessica 16/07: removidas linhas Qtd tecnicos, Responsavel; renomeado
+    // material a ser instalado -> material disponivel no local.
     const infoItems = [
       { label: "Data prevista da execução:", value: fmtDate((quote.execution_start_date ?? quote.service_date) as string | null) },
       { label: "Horário previsto:", value: quote.service_time ? String(quote.service_time).slice(0, 5) : "-" },
       { label: "Tempo estimado:", value: quote.total_days ? `${quote.total_days} ${Number(quote.total_days) === 1 ? "dia" : "dias"}` : "-" },
-      { label: "Quantidade de técnicos:", value: quote.technicians_count ? `${quote.technicians_count} profissionais` : "-" },
-      { label: "Responsável pela equipe:", value: safe(quote.technical_responsible as string, "Equipe Reallliza") },
-      { label: "Material a ser instalado:", value: safe(quote.material_description as string) },
+      { label: "Material disponível no local:", value: safe(quote.material_description as string) },
     ];
     for (const it of infoItems) {
       doc
@@ -623,37 +623,10 @@ export async function GET(
     }
     const col1End = cy;
 
-    // Coluna 2: Escopo
-    const c2X = leftX + c3W + 10;
-    drawSectionHeader(doc, "7. ESCOPO DOS SERVIÇOS (INCLUSO)", c2X, c3Y, c3W);
-    cy = c3Y + 22;
-    const scopeArr = Array.isArray(quote.scope_items)
-      ? (quote.scope_items as string[])
-      : [];
-    if (scopeArr.length === 0) {
-      doc
-        .fontSize(8)
-        .font("Helvetica-Oblique")
-        .fillColor(ZINC_500)
-        .text("Nenhum item de escopo cadastrado.", c2X + 4, cy, { width: c3W - 8 });
-    } else {
-      for (const item of scopeArr) {
-        doc
-          .fontSize(9)
-          .font("Helvetica-Bold")
-          .fillColor(GREEN)
-          .text("✓", c2X + 4, cy, { continued: true })
-          .font("Helvetica")
-          .fillColor(ZINC_900)
-          .text("  " + item, { width: c3W - 20 });
-        cy += 15;
-      }
-    }
-    const col2End = cy;
-
-    // Coluna 3: Obs importantes
-    const c3X = leftX + 2 * (c3W + 10);
-    drawSectionHeader(doc, "8. OBSERVAÇÕES IMPORTANTES", c3X, c3Y, c3W);
+    // Coluna 2: Obs importantes (Jessica 16/07 — Escopo removido)
+    const col2End = c3Y + 22;
+    const c3X = leftX + c3W + 10;
+    drawSectionHeader(doc, "7. OBSERVAÇÕES IMPORTANTES", c3X, c3Y, c3W);
     cy = c3Y + 22;
     const importantArr = quote.important_notes
       ? String(quote.important_notes).split("\n").filter((l) => l.trim())
@@ -685,7 +658,7 @@ export async function GET(
       .fontSize(10)
       .font("Helvetica-Bold")
       .fillColor(BLACK)
-      .text("9. CONDIÇÕES COMERCIAIS", leftX, doc.y);
+      .text("8. CONDIÇÕES COMERCIAIS", leftX, doc.y);
     doc.y += 16;
 
     const ccY = doc.y;
@@ -736,7 +709,7 @@ export async function GET(
       .fontSize(10)
       .font("Helvetica-Bold")
       .fillColor(BLACK)
-      .text("10. CONDIÇÕES GERAIS", leftX, cgY);
+      .text("9. CONDIÇÕES GERAIS", leftX, cgY);
     const cgBullets = [
       "Este orçamento tem validade de 30 dias a partir da data de emissão.",
       "Após aprovação, será emitida a ordem de serviço e agendamento da execução.",
