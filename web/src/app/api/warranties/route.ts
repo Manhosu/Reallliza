@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("warranties")
       .select(
-        "*, service_order:service_orders(id, order_number, title, client_name, completed_at)"
+        "*, service_order:service_orders!warranties_service_order_id_fkey(id, order_number, title, client_name, completed_at)"
       )
       .order("opened_at", { ascending: false });
 
