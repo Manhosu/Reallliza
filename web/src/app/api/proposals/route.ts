@@ -139,7 +139,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (status) {
-      query = query.eq("status", status);
+      if (status === "rejected_or_expired") {
+        query = query.in("status", ["rejected", "expired"]);
+      } else {
+        query = query.eq("status", status);
+      }
     }
 
     // Pagination and ordering

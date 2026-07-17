@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Plus,
@@ -128,13 +129,23 @@ function ProposalCardSkeleton() {
 // Proposals Page
 // ============================================================
 
-export default function PropostasPage() {
+export default function PropostasPageWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <PropostasPage />
+    </Suspense>
+  );
+}
+
+function PropostasPage() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === UserRole.ADMIN;
   const isPartner = user?.role === UserRole.PARTNER;
 
-  // Filters
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  // Filters (Jessica 20/07: deep-link do dashboard via ?status=)
+  const searchParams = useSearchParams();
+  const initialStatus = searchParams.get("status") ?? "";
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
 
   // Create modal state
   const [showCreateModal, setShowCreateModal] = useState(false);

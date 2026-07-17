@@ -358,8 +358,158 @@ export default function OrcamentoDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Editar Proposta (Jessica 20/07) — so pra modalidade homologados
+              e enquanto ninguem aceitou. */}
+          {quote.modality === "homologados" &&
+            (quote.status === "paid" || quote.status === "converted") && (
+              <EditProposalCard
+                quoteId={id}
+                currentAmount={Number(quote.payout_amount ?? quote.total_amount ?? 0)}
+                onEdited={load}
+              />
+            )}
         </div>
       </div>
     </div>
+  );
+}
+
+// ============================================================
+// Editar Proposta (Jessica 20/07)
+// ============================================================
+
+function EditProposalCard({
+  quoteId,
+  currentAmount,
+  onEdited,
+}: {
+  quoteId: string;
+  currentAmount: number;
+  onEdited: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [newAmount, setNewAmount] = useState(String(currentAmount.toFixed(2)));
+  const [submitting, setSubmitting] = useState(false);
+
+  const parsedNew = Number(newAmount.replace(",", "."));
+  const diff = Math.max(0, Math.round((parsedNew - currentAmount) * 100) / 100);
+
+  async function handleSubmit() {
+    const value = Number(newAmount.replace(",", "."));
+    if (!Number.isFinite(value) || value <= 0) {
+      toast.error("Informe um valor válido");
+      return;
+    }
+    if (value < currentAmount) {
+      toast.error("Novo valor não pode ser menor que o atual");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { apiClient } = await import("@/lib/api/client");
+      const res = await apiClient.post<{
+        ok: boolean;
+        checkout_url: string | null;
+        needs_payment: boolean;
+        new_amount: number;
+        diff: number;
+      }>(`/quotes/${quoteId}/edit-proposal`, { new_amount: value });
+      if (res.checkout_url) {
+        toast.success(
+          "Redirecionando pro pagamento do valor adicional. Após confirmar, a proposta será republicada automaticamente."
+        );
+        window.location.href = res.checkout_url;
+        return;
+      }
+      if (res.needs_payment) {
+        toast.info(
+          "Pagamento adicional registrado. Aguarde confirmação da Reallliza."
+        );
+      } else {
+        toast.success("Proposta republicada aos homologados da região.");
+      }
+      setOpen(false);
+      onEdited();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao editar proposta");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-5">
+        <h2 className="font-semibold">Editar proposta</h2>
+        <p className="text-xs text-muted-foreground">
+          Ninguém aceitou ainda? Aumente o valor pra tornar a proposta mais
+          atrativa. Você paga só a diferença antes da republicação.
+        </p>
+        {!open ? (
+          <Button
+            onClick={() => setOpen(true)}
+            variant="outline"
+            className="w-full"
+          >
+            Editar valor da proposta
+          </Button>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-lg bg-muted/40 p-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Valor atual</span>
+                <span className="font-medium">
+                  {currentAmount.toLocaleString("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  })}
+                </span>
+              </div>
+              {diff > 0 && (
+                <div className="mt-1 flex justify-between text-primary">
+                  <span>Diferença a pagar</span>
+                  <span className="font-semibold">
+                    {diff.toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    })}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                Novo valor da proposta
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min={currentAmount}
+                value={newAmount}
+                onChange={(e) => setNewAmount(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleSubmit}
+                isLoading={submitting}
+                className="flex-1"
+              >
+                {diff > 0 ? "Ir pro pagamento" : "Republicar"}
+              </Button>
+              <Button
+                onClick={() => setOpen(false)}
+                variant="outline"
+                disabled={submitting}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

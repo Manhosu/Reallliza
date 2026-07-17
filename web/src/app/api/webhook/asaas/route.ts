@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     const { data: payment } = await supabase
       .from("payments")
-      .select("id, status, quote_id, amount")
+      .select("id, status, quote_id, amount, kind")
       .eq("id", externalReference)
       .maybeSingle();
 
@@ -50,6 +50,57 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
+    const paymentKind =
+      (payment as { kind?: string }).kind ?? "primary";
+
+    // Topup de proposta (Jessica 20/07): confirma o pagamento adicional
+    // e dispara refanout da proposta com o novo valor.
+    if (paymentKind === "proposal_topup") {
+      await supabase
+        .from("payments")
+        .update({ status: "confirmed", paid_at: now })
+        .eq("id", payment.id);
+
+      if (payment.quote_id) {
+        const { data: q } = await supabase
+          .from("quotes")
+          .select(
+            "quote_number, client_name, service_order_id, region_state, address_state, payout_amount, total_amount"
+          )
+          .eq("id", payment.quote_id)
+          .maybeSingle();
+        const qRow = q as {
+          quote_number?: string | number;
+          client_name?: string;
+          service_order_id?: string;
+          region_state?: string | null;
+          address_state?: string | null;
+          payout_amount?: number;
+          total_amount?: number;
+        } | null;
+        if (qRow?.service_order_id) {
+          const { refanoutHomologadoProposal } = await import(
+            "@/lib/quotes/fanout-homologados"
+          );
+          await refanoutHomologadoProposal(supabase, {
+            service_order_id: qRow.service_order_id,
+            target_state: (qRow.region_state ?? qRow.address_state) ?? null,
+            quote_number: qRow.quote_number ?? "",
+            client_name: qRow.client_name ?? "",
+            offered_amount: Number(qRow.payout_amount ?? qRow.total_amount ?? 0),
+          });
+        }
+      }
+
+      logAudit({
+        userId: SYSTEM_USER_ID,
+        action: "payment.topup_confirmed_refanout",
+        entityType: "payment",
+        entityId: payment.id,
+        newData: { event },
+      });
+      return jsonResponse({ success: true, topup: true });
+    }
 
     // Carrega quote pra determinar modalidade (custodia vs direto)
     let modality: "reallliza" | "homologados" | null = null;

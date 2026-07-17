@@ -15,6 +15,7 @@ import {
   CalendarClock,
   ShieldCheck,
   Banknote,
+  Send,
 } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
 import { useEffect, useState } from "react";
@@ -217,6 +218,22 @@ export default function DashboardPage() {
       .get<PartnerExtras>("/dashboard/partner-extras")
       .then(setPartnerExtras)
       .catch(() => setPartnerExtras(null));
+  }, [isPartner]);
+
+  // KPIs de propostas (admin — Jessica 20/07)
+  const [proposalsStats, setProposalsStats] = useState<{
+    launched: number;
+    accepted: number;
+    rejected: number;
+  } | null>(null);
+  useEffect(() => {
+    if (isPartner) return;
+    apiClient
+      .get<{ launched: number; accepted: number; rejected: number }>(
+        "/dashboard/proposals-stats"
+      )
+      .then(setProposalsStats)
+      .catch(() => setProposalsStats(null));
   }, [isPartner]);
 
   // Fetch dashboard stats
@@ -545,6 +562,67 @@ export default function DashboardPage() {
               accentColor="#EF4444"
               delay={0.15}
               href="/os/homologados"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Bloco Propostas Homologados — admin only (Jessica 20/07) */}
+      {!isPartner && proposalsStats && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">
+                Propostas Homologados
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Acompanhamento das propostas broadcast enviadas à rede.
+              </p>
+            </div>
+            <Link
+              href="/propostas"
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              Ver todas →
+            </Link>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <MetricCard
+              title="Propostas Lançadas"
+              value={String(proposalsStats.launched)}
+              change="Total broadcast"
+              changeType="neutral"
+              icon={<Send className="h-5 w-5" style={{ color: "#EAB308" }} />}
+              accentColor="#EAB308"
+              delay={0}
+              href="/propostas"
+            />
+            <MetricCard
+              title="Propostas Aceitas"
+              value={String(proposalsStats.accepted)}
+              change="Homologado assumiu"
+              changeType="up"
+              icon={
+                <CheckCircle2 className="h-5 w-5" style={{ color: "#22C55E" }} />
+              }
+              accentColor="#22C55E"
+              delay={0.05}
+              href="/propostas?status=accepted"
+            />
+            <MetricCard
+              title="Rejeitadas / Expiradas"
+              value={String(proposalsStats.rejected)}
+              change="Sem interessados"
+              changeType="down"
+              icon={
+                <AlertTriangle
+                  className="h-5 w-5"
+                  style={{ color: "#EF4444" }}
+                />
+              }
+              accentColor="#EF4444"
+              delay={0.1}
+              href="/propostas?status=rejected_or_expired"
             />
           </div>
         </div>
