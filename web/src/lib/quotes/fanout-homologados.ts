@@ -36,7 +36,7 @@ export async function refanoutHomologadoProposal(
       partner_id: null,
       status: "pending",
       target_state: uf,
-      offered_amount: input.offered_amount,
+      proposed_value: input.offered_amount,
     })
     .select("id")
     .single();
