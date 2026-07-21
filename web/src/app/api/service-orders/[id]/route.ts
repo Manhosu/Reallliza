@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/api-helpers/audit";
 import { createNotification } from "@/lib/api-helpers/notifications";
 import { createScheduleFromOs } from "@/lib/api-helpers/schedules";
 import { redactOsForRole } from "@/lib/api-helpers/redact";
+import { isUserHomologado } from "@/lib/api-helpers/user-context";
 
 /**
  * GET /api/service-orders/[id]
@@ -100,7 +101,9 @@ export async function GET(
       payments = paymentsData || [];
     }
 
-    // Loja nao pode ver valores (Jessica 10/07) — server-side redaction
+    // Loja + homologado nao veem valores (Jessica 10/07 + 20/07) — server-side redaction
+    const isHomologado =
+      user.role === "technician" ? await isUserHomologado(supabase, user.id) : false;
     const payload = redactOsForRole(
       {
         ...order,
@@ -109,7 +112,7 @@ export async function GET(
         items: items || [],
         payments,
       } as Record<string, unknown>,
-      user.role
+      { role: user.role, isHomologado }
     );
 
     return jsonResponse(payload);

@@ -1212,7 +1212,7 @@ export default function NovoOrcamentoPage() {
                 <div className="space-y-1 border-t pt-2 text-sm">
                   {calc.travel_cost > 0 && (
                     <div className="flex justify-between text-muted-foreground">
-                      <span>Deslocamento ({calc.travel_distance_km.toFixed(1)} km)</span>
+                      <span>Deslocamento ({calc.travel_distance_km.toFixed(1)} km · ida+volta)</span>
                       <span>{formatBRL(calc.travel_cost)}</span>
                     </div>
                   )}

@@ -488,7 +488,7 @@ export async function GET(
     if (Number(quote.travel_cost) > 0) {
       const km =
         Number(quote.travel_distance_km) > 0
-          ? ` (${Number(quote.travel_distance_km).toFixed(1)} km)`
+          ? ` (${Number(quote.travel_distance_km).toFixed(1)} km · ida+volta)`
           : "";
       totalRow(`Deslocamento${km}`, fmtBRL(quote.travel_cost));
     }
@@ -549,16 +549,10 @@ export async function GET(
           ? `${quote.address_city} / ${quote.address_state ?? "-"}`
           : "-",
       },
-      {
-        label: "RESPONSÁVEL TÉCNICO",
-        value: safe(
-          quote.technical_responsible as string,
-          "Equipe Reallliza"
-        ),
-      },
     ];
     const bY = doc.y;
-    const bW = pageW / 5;
+    // Jessica 20/07: 4 caixas (removida "Responsavel Tecnico")
+    const bW = pageW / 4;
     boxes.forEach((b, i) => {
       const x = leftX + i * bW;
       doc
@@ -651,52 +645,9 @@ export async function GET(
 
     doc.y = Math.max(col1End, col2End, col3End) + 12;
 
-    // ============ CONDICOES COMERCIAIS ============
-    // 3 caixas 70px + label 16px + rodape 50px reservado
-    if (doc.y > pageH - 130) doc.addPage();
-    doc
-      .fontSize(10)
-      .font("Helvetica-Bold")
-      .fillColor(BLACK)
-      .text("8. CONDIÇÕES COMERCIAIS", leftX, doc.y);
-    doc.y += 16;
-
-    const ccY = doc.y;
-    const ccW = (pageW - 20) / 3;
-    const warrantyMonths = Number(quote.warranty_months ?? 12);
-    const ccBoxes = [
-      {
-        title: "GARANTIA",
-        body: `${warrantyMonths} meses contra defeitos de instalação, conforme termo de garantia da Reallliza Revestimento Vinílico.`,
-      },
-      {
-        title: "INÍCIO DO SERVIÇO",
-        body: `O serviço será iniciado a partir da data de ${fmtDate((quote.execution_start_date ?? quote.service_date) as string | null)}, mediante confirmação e liberação do ambiente.`,
-      },
-      {
-        title: "PRAZO DE EXECUÇÃO",
-        body: `O prazo estimado para execução dos serviços é de ${quote.total_days ?? "-"} ${Number(quote.total_days ?? 0) === 1 ? "dia" : "dias"}.`,
-      },
-    ];
-    ccBoxes.forEach((b, i) => {
-      const x = leftX + i * (ccW + 10);
-      doc
-        .rect(x, ccY, ccW, 70)
-        .lineWidth(0.5)
-        .strokeColor(ZINC_300)
-        .stroke();
-      doc
-        .fontSize(9)
-        .font("Helvetica-Bold")
-        .fillColor(YELLOW)
-        .text(b.title, x + 8, ccY + 8, { width: ccW - 16 });
-      doc
-        .fontSize(8)
-        .font("Helvetica")
-        .fillColor(ZINC_900)
-        .text(b.body, x + 8, ccY + 24, { width: ccW - 16 });
-    });
-    doc.y = ccY + 70 + 12;
+    // Jessica 20/07: removida secao CONDIÇÕES COMERCIAIS (Garantia +
+    // Inicio + Prazo) — nao consta no modelo novo. Fica so CONDIÇÕES
+    // GERAIS + ACEITE DO CLIENTE abaixo.
 
     // ============ CONDIÇÕES GERAIS + ACEITE (Jessica 16/07) ============
     // Duas colunas: bullets padrao + espaco em branco pra data e assinatura
@@ -709,7 +660,7 @@ export async function GET(
       .fontSize(10)
       .font("Helvetica-Bold")
       .fillColor(BLACK)
-      .text("9. CONDIÇÕES GERAIS", leftX, cgY);
+      .text("8. CONDIÇÕES GERAIS", leftX, cgY);
     const cgBullets = [
       "Este orçamento tem validade de 30 dias a partir da data de emissão.",
       "Após aprovação, será emitida a ordem de serviço e agendamento da execução.",

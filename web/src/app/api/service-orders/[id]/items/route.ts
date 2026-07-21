@@ -4,6 +4,7 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { redactItemsForRole } from "@/lib/api-helpers/redact";
+import { isUserHomologado } from "@/lib/api-helpers/user-context";
 
 /**
  * GET /api/service-orders/[id]/items
@@ -58,10 +59,12 @@ export async function GET(
       throw new Error("Failed to fetch service order items");
     }
 
-    // Loja nao ve valores (Jessica 10/07)
+    // Loja + homologado nao veem valores (Jessica 10/07 + 20/07)
+    const isHomologado =
+      user.role === "technician" ? await isUserHomologado(supabase, user.id) : false;
     const redacted = redactItemsForRole(
       (items ?? []) as Record<string, unknown>[],
-      user.role
+      { role: user.role, isHomologado }
     );
 
     return jsonResponse(redacted);

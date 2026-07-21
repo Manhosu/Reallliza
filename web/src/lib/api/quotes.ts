@@ -83,7 +83,30 @@ export interface Quote {
   scope_items?: string[] | null;
   important_notes?: string | null;
   general_notes?: string | null;
-  partner?: { id: string; company_name: string; user_id?: string } | null;
+  partner?: {
+    id: string;
+    company_name: string;
+    trading_name?: string | null;
+    cnpj?: string | null;
+    contact_name?: string | null;
+    contact_email?: string | null;
+    contact_phone?: string | null;
+    address?: {
+      street?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+    } | null;
+    user_id?: string;
+  } | null;
+  // Dados institucionais Reallliza (Jessica 20/07)
+  company_settings?: {
+    legal_name?: string | null;
+    cnpj?: string | null;
+    base_address?: string | null;
+    phone?: string | null;
+    email?: string | null;
+  } | null;
   items?: QuoteItem[];
   payments?: QuotePayment[];
 }

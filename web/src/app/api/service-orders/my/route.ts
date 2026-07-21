@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { redactOsListForRole } from "@/lib/api-helpers/redact";
+import { isUserHomologado } from "@/lib/api-helpers/user-context";
 
 /**
  * GET /api/service-orders/my
@@ -79,10 +80,12 @@ export async function GET(request: NextRequest) {
       throw new Error("Failed to fetch service orders");
     }
 
-    // Loja nao pode ver valores (Jessica 10/07)
+    // Loja + homologado nao veem valores (Jessica 10/07 + 20/07)
+    const isHomologado =
+      user.role === "technician" ? await isUserHomologado(supabase, user.id) : false;
     const redacted = redactOsListForRole(
       (data ?? []) as Record<string, unknown>[],
-      user.role
+      { role: user.role, isHomologado }
     );
 
     return jsonResponse({

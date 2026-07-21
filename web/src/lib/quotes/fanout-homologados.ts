@@ -48,15 +48,28 @@ export async function refanoutHomologadoProposal(
     return { proposal_id: null, recipients: 0 };
   }
 
-  const { data: homologados } = await supabase
+  // Jessica 20/07: fanout automatico so notificava homologados com
+  // operating_region contendo a UF. Homologados com operating_region
+  // NULL/vazio (comum no cadastro) eram silenciosamente excluidos. Mesma
+  // logica tolerante do admin manual em /api/proposals: se region esta
+  // vazio, inclui; se preenchido, precisa bater com a UF.
+  const { data: allHomologados } = await supabase
     .from("profiles")
-    .select("id, full_name")
+    .select("id, full_name, operating_region")
     .eq("role", "technician")
     .eq("status", "active")
-    .eq("is_homologated", true)
-    .ilike("operating_region", `%${uf}%`);
+    .eq("is_homologated", true);
 
-  const list = (homologados as Array<{ id: string; full_name: string }>) || [];
+  const list = (
+    (allHomologados as Array<{
+      id: string;
+      full_name: string;
+      operating_region: string | null;
+    }>) || []
+  ).filter((h) => {
+    const region = (h.operating_region || "").toUpperCase().trim();
+    return !region || region.includes(uf);
+  });
   if (list.length === 0) {
     console.warn(
       `refanoutHomologado: 0 homologados encontrados em ${uf} — proposta ${(proposal as { id: string }).id} sem destinatarios.`

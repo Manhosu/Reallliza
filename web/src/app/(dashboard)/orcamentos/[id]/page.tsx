@@ -152,29 +152,102 @@ export default function OrcamentoDetailPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
-          {/* Cliente */}
+          {/* Jessica 20/07: tela mostra o orçamento completo, igual ao PDF */}
+
+          {/* Dados da Contratada + Contratante (lado a lado) */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardContent className="space-y-1 p-5">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-primary">
+                  Dados da Contratada
+                </h2>
+                <p className="pt-1 font-semibold">
+                  {quote.company_settings?.legal_name ??
+                    "Reallliza Revestimento Vinílico"}
+                </p>
+                {quote.company_settings?.cnpj && (
+                  <p className="text-xs text-muted-foreground">
+                    CNPJ: {quote.company_settings.cnpj}
+                  </p>
+                )}
+                {quote.company_settings?.base_address && (
+                  <p className="text-xs text-muted-foreground">
+                    {quote.company_settings.base_address}
+                  </p>
+                )}
+                {quote.company_settings?.phone && (
+                  <p className="text-xs text-muted-foreground">
+                    {quote.company_settings.phone}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {quote.company_settings?.email ??
+                    "comercial@reallliza.com.br"}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="space-y-1 p-5">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-primary">
+                  Dados da Contratante
+                </h2>
+                <p className="pt-1 font-semibold">
+                  {quote.partner?.company_name ?? "—"}
+                </p>
+                {quote.partner?.cnpj && (
+                  <p className="text-xs text-muted-foreground">
+                    CNPJ: {quote.partner.cnpj}
+                  </p>
+                )}
+                {quote.partner?.contact_phone && (
+                  <p className="text-xs text-muted-foreground">
+                    {quote.partner.contact_phone}
+                  </p>
+                )}
+                {quote.partner?.contact_email && (
+                  <p className="text-xs text-muted-foreground">
+                    {quote.partner.contact_email}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Tomador dos Serviços (Cliente Final) */}
           <Card>
-            <CardContent className="space-y-2 p-5">
-              <h2 className="font-semibold">Cliente</h2>
-              <p className="text-sm">{quote.client_name}</p>
-              {quote.client_phone && (
-                <p className="text-sm text-muted-foreground">
-                  {quote.client_phone}
+            <CardContent className="space-y-1 p-5">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-primary">
+                Dados do Tomador dos Serviços (Cliente Final)
+              </h2>
+              <p className="pt-1 font-semibold">{quote.client_name}</p>
+              {quote.client_document && (
+                <p className="text-xs text-muted-foreground">
+                  CPF/CNPJ: {quote.client_document}
                 </p>
               )}
               {(quote.address_street || quote.address_city) && (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   {[
                     quote.address_street,
+                    quote.address_number,
+                    quote.address_neighborhood,
                     quote.address_city,
                     quote.address_state,
+                    quote.address_zip,
                   ]
                     .filter(Boolean)
                     .join(", ")}
                 </p>
               )}
+              {quote.client_phone && (
+                <p className="text-xs text-muted-foreground">
+                  Telefone: {quote.client_phone}
+                </p>
+              )}
               {quote.notes && (
-                <p className="text-sm text-muted-foreground">{quote.notes}</p>
+                <p className="text-xs text-muted-foreground">
+                  Obs: {quote.notes}
+                </p>
               )}
             </CardContent>
           </Card>
@@ -219,7 +292,7 @@ export default function OrcamentoDetailPage() {
                         {(quote.travel_distance_km ?? 0) > 0 && (
                           <span className="text-xs">
                             {" "}
-                            ({(quote.travel_distance_km ?? 0).toFixed(1)} km)
+                            ({(quote.travel_distance_km ?? 0).toFixed(1)} km · ida+volta)
                           </span>
                         )}
                       </span>
@@ -255,6 +328,194 @@ export default function OrcamentoDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Resumo da Contratação (4 caixas) — Jessica 20/07 */}
+          {(quote.service_type ||
+            quote.total_area_m2 ||
+            quote.rooms ||
+            quote.address_city) && (
+            <Card>
+              <CardContent className="space-y-3 p-5">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-primary">
+                  Resumo da Contratação
+                </h2>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-lg border border-border p-3 text-center">
+                    <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                      Tipo de Serviço
+                    </p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {quote.service_type ?? "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3 text-center">
+                    <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                      Área Total
+                    </p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {quote.total_area_m2
+                        ? `${Number(quote.total_area_m2).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`
+                        : "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3 text-center">
+                    <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                      Ambientes
+                    </p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {quote.rooms ?? "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3 text-center">
+                    <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                      Cidade
+                    </p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {quote.address_city
+                        ? `${quote.address_city}/${quote.address_state ?? "-"}`
+                        : "—"}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Informações da Execução + Observações Importantes */}
+          {(quote.service_date ||
+            quote.execution_start_date ||
+            quote.total_days ||
+            quote.material_description ||
+            quote.important_notes) && (
+            <div className="grid gap-4 md:grid-cols-2">
+              {(quote.service_date ||
+                quote.execution_start_date ||
+                quote.total_days ||
+                quote.material_description) && (
+                <Card>
+                  <CardContent className="space-y-2 p-5">
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-primary">
+                      Informações da Execução
+                    </h2>
+                    {(quote.execution_start_date || quote.service_date) && (
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                          Data prevista
+                        </p>
+                        <p className="text-sm">
+                          {new Date(
+                            (quote.execution_start_date ??
+                              quote.service_date) + "T00:00:00"
+                          ).toLocaleDateString("pt-BR")}
+                        </p>
+                      </div>
+                    )}
+                    {quote.service_time && (
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                          Horário previsto
+                        </p>
+                        <p className="text-sm">
+                          {String(quote.service_time).slice(0, 5)}
+                        </p>
+                      </div>
+                    )}
+                    {(quote.total_days ?? 0) > 0 && (
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                          Tempo estimado
+                        </p>
+                        <p className="text-sm">
+                          {quote.total_days}{" "}
+                          {Number(quote.total_days) === 1 ? "dia" : "dias"}
+                        </p>
+                      </div>
+                    )}
+                    {quote.material_description && (
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                          Material disponível no local
+                        </p>
+                        <p className="whitespace-pre-line text-sm">
+                          {quote.material_description}
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+              {quote.important_notes && (
+                <Card>
+                  <CardContent className="space-y-2 p-5">
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-primary">
+                      Observações Importantes
+                    </h2>
+                    <ul className="space-y-1 text-sm">
+                      {String(quote.important_notes)
+                        .split("\n")
+                        .filter((l) => l.trim())
+                        .map((line, i) => (
+                          <li key={i} className="flex gap-2">
+                            <span className="text-primary">•</span>
+                            <span>{line}</span>
+                          </li>
+                        ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* Condições Gerais + Aceite */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardContent className="space-y-2 p-5">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-primary">
+                  Condições Gerais
+                </h2>
+                <ul className="space-y-1 text-sm">
+                  <li className="flex gap-2">
+                    <span className="text-primary">•</span>
+                    <span>
+                      Este orçamento tem validade de 30 dias a partir da data
+                      de emissão.
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-primary">•</span>
+                    <span>
+                      Após aprovação, será emitida a ordem de serviço e
+                      agendamento da execução.
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-primary">•</span>
+                    <span>
+                      Pagamento conforme acordo comercial entre as partes.
+                    </span>
+                  </li>
+                  {quote.general_notes && (
+                    <li className="flex gap-2">
+                      <span className="text-primary">•</span>
+                      <span>{quote.general_notes}</span>
+                    </li>
+                  )}
+                </ul>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="space-y-3 p-5">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-primary">
+                  Aceite do Cliente
+                </h2>
+                <p className="pt-2 text-sm">____/____/______</p>
+                <div className="mt-8 border-t border-muted-foreground/50 pt-1 text-center text-[10px] text-muted-foreground">
+                  Assinatura e Carimbo
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* Pagamento + PDF */}

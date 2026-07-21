@@ -220,21 +220,20 @@ export default function DashboardPage() {
       .catch(() => setPartnerExtras(null));
   }, [isPartner]);
 
-  // KPIs de propostas (admin — Jessica 20/07)
+  // KPIs de propostas (Jessica 20/07 — admin ve tudo, loja ve as proprias)
   const [proposalsStats, setProposalsStats] = useState<{
     launched: number;
     accepted: number;
     rejected: number;
   } | null>(null);
   useEffect(() => {
-    if (isPartner) return;
     apiClient
       .get<{ launched: number; accepted: number; rejected: number }>(
         "/dashboard/proposals-stats"
       )
       .then(setProposalsStats)
       .catch(() => setProposalsStats(null));
-  }, [isPartner]);
+  }, []);
 
   // Fetch dashboard stats
   const {
@@ -567,24 +566,31 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Bloco Propostas Homologados — admin only (Jessica 20/07) */}
-      {!isPartner && proposalsStats && (
+      {/* Bloco Propostas Homologados (Jessica 20/07)
+          Admin: KPIs globais · Loja: KPIs so das suas propostas */}
+      {proposalsStats && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold tracking-tight">
-                Propostas Homologados
+                {isPartner
+                  ? "Propostas enviadas aos homologados"
+                  : "Propostas Homologados"}
               </h2>
               <p className="text-sm text-muted-foreground">
-                Acompanhamento das propostas broadcast enviadas à rede.
+                {isPartner
+                  ? "Acompanhe as propostas dos seus orçamentos que foram publicadas pra rede."
+                  : "Acompanhamento das propostas broadcast enviadas à rede."}
               </p>
             </div>
-            <Link
-              href="/propostas"
-              className="text-xs font-medium text-primary hover:underline"
-            >
-              Ver todas →
-            </Link>
+            {!isPartner && (
+              <Link
+                href="/propostas"
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                Ver todas →
+              </Link>
+            )}
           </div>
           <div className="grid gap-3 md:grid-cols-3">
             <MetricCard

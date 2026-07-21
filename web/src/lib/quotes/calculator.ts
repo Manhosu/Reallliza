@@ -342,25 +342,33 @@ export async function calculateQuote(
     }
 
     if (dest) {
-      travel_distance_km = await computeTravelDistance(
+      // Distancia unica (ida) — usada pro raio de cobertura
+      const oneWayKm = await computeTravelDistance(
         settings.base_lat,
         settings.base_lng,
         dest.lat,
         dest.lng
       );
 
-      // Regra de cobertura: dentro da UF base + dentro do raio -> sem deslocamento
+      // Jessica 20/07: cobrar ida + volta. travel_distance_km armazenada
+      // e' a distancia TOTAL percorrida (2x one-way) — assim UI e PDF
+      // mostram o numero certo direto.
+      travel_distance_km = Math.round(oneWayKm * 2 * 100) / 100;
+
+      // Regra de cobertura compara com a distancia unica (ida) — raio =
+      // distancia da base ate o cliente, nao ida+volta.
       const withinCoverageRadius =
         sameStateAsBase &&
         coverageRadius > 0 &&
-        travel_distance_km <= coverageRadius;
+        oneWayKm <= coverageRadius;
 
       if (withinCoverageRadius) {
         travel_cost = 0;
         warnings.push(
-          `Atendimento a ${travel_distance_km.toFixed(1)} km — dentro do raio de cobertura de ${coverageRadius} km na UF base. Deslocamento nao cobrado.`
+          `Atendimento a ${oneWayKm.toFixed(1)} km — dentro do raio de cobertura de ${coverageRadius} km na UF base. Deslocamento nao cobrado.`
         );
       } else {
+        // Custo = distancia total (ida + volta) * R$/km
         travel_cost =
           Math.round(travel_distance_km * settings.price_per_km * 100) / 100;
       }

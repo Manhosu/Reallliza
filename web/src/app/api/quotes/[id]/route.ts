@@ -24,7 +24,7 @@ export async function GET(
       .select(
         `
         *,
-        partner:partners(id, company_name, user_id),
+        partner:partners(id, company_name, trading_name, cnpj, contact_name, contact_email, contact_phone, address, user_id),
         items:quote_items(*),
         payments(id, status, method, amount, checkout_url, created_at, paid_at)
       `
@@ -35,6 +35,16 @@ export async function GET(
     if (error || !data) {
       throw new AuthError(404, "Orçamento não encontrado");
     }
+
+    // Dados institucionais Reallliza (contratada) — Jessica 20/07: tela
+    // /orcamentos/[id] deve mostrar mesmo conteudo do PDF, incluindo bloco
+    // "Dados da Contratada".
+    const { data: settings } = await supabase
+      .from("company_settings")
+      .select("legal_name, cnpj, base_address, phone, email")
+      .limit(1)
+      .maybeSingle();
+    (data as Record<string, unknown>).company_settings = settings ?? null;
 
     // Isolamento: partner só acessa orçamentos da própria loja.
     if (user.role === "partner") {
