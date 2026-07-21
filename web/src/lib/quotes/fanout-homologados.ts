@@ -29,11 +29,14 @@ export async function refanoutHomologadoProposal(
   }
   const uf = input.target_state.toUpperCase();
 
+  // proposed_by e' NOT NULL — usa o system user pra broadcast automatico
+  const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
   const { data: proposal, error: pErr } = await supabase
     .from("service_proposals")
     .insert({
       service_order_id: input.service_order_id,
       partner_id: null,
+      proposed_by: SYSTEM_USER_ID,
       status: "pending",
       target_state: uf,
       proposed_value: input.offered_amount,
