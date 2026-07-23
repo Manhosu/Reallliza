@@ -35,6 +35,13 @@ export async function PATCH(
     if (body.is_active !== undefined) {
       update.is_active = !!body.is_active;
     }
+    // Jessica 20/07 Fase 2: vinculo com templates de checklist e steps
+    if (body.checklist_template_id !== undefined) {
+      update.checklist_template_id = body.checklist_template_id || null;
+    }
+    if (body.step_template_group_id !== undefined) {
+      update.step_template_group_id = body.step_template_group_id || null;
+    }
 
     if (Object.keys(update).length === 0) {
       throw new AuthError(400, "Nada para atualizar");

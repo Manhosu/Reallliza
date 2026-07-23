@@ -16,6 +16,7 @@ import { apiClient } from "@/lib/api/client";
 import type { Service } from "@/lib/api/services";
 import { ApiError } from "@/lib/api/client";
 import { assertFreshSession } from "@/lib/api/session-guard";
+import { AvailabilityDatePicker } from "@/components/quotes/availability-date-picker";
 
 type Modality = "reallliza" | "homologados";
 
@@ -883,10 +884,10 @@ export default function NovoOrcamentoPage() {
                     Quando executar
                   </p>
                   <div className="grid grid-cols-2 gap-2">
-                    <Input
-                      type="date"
+                    <AvailabilityDatePicker
                       value={serviceDate}
-                      onChange={(e) => setServiceDate(e.target.value)}
+                      onChange={setServiceDate}
+                      placeholder="Ver agenda"
                     />
                     <Input
                       type="time"
@@ -895,7 +896,8 @@ export default function NovoOrcamentoPage() {
                     />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Noite/sábado/domingo/feriado: +25% sobre os serviços.
+                    Só mostra datas com vaga. Sábado destacado (+25% sobre
+                    serviços). Domingo/feriado bloqueados.
                   </p>
                 </div>
               )}

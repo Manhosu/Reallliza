@@ -27,6 +27,8 @@ export type {
   CreateServicePayload,
   UpdateServicePayload,
 } from "./services";
+export { teamsApi } from "./teams";
+export type { Team, TeamMember, TeamCalendarEvent, TeamCalendarResponse } from "./teams";
 export { regionsApi } from "./regions";
 export type {
   Region,

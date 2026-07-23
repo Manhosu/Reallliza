@@ -44,6 +44,9 @@ COMMENT ON COLUMN public.warranties.assigned_technician_id IS
 CREATE INDEX IF NOT EXISTS idx_warranties_assigned_technician
   ON public.warranties (assigned_technician_id) WHERE assigned_technician_id IS NOT NULL;
 
+-- Novo tipo de notificacao pra homologado ser avisado
+ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'warranty_opened';
+
 -- ============================================
 -- 3) Bucket quote-files
 -- ============================================

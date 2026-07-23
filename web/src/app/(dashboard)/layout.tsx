@@ -170,6 +170,12 @@ const allNavItems = [
     roles: [UserRole.ADMIN],
   },
   {
+    label: "Equipes",
+    href: "/equipes",
+    icon: Users,
+    roles: [UserRole.ADMIN],
+  },
+  {
     label: "Homologação",
     href: "/homologacao",
     icon: UserCheck,

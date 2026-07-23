@@ -214,6 +214,29 @@ export async function PATCH(
       }
     }
 
+    // Jessica 20/07 Fase 2: automacao por categoria — cria checklist + steps
+    // do template vinculado a service_categories quando OS entra in_progress.
+    // COEXISTE com specialty_checklist_items. Idempotente via auto_execution_applied.
+    if (newStatus === "in_progress") {
+      try {
+        const { applyCategoryAutomation } = await import(
+          "@/lib/service-orders/category-automation"
+        );
+        const result = await applyCategoryAutomation(supabase, id);
+        if (result.warnings.length > 0) {
+          console.warn(
+            `Category automation warnings for ${id}:`,
+            result.warnings.join("; ")
+          );
+        }
+      } catch (err) {
+        console.warn(
+          `Category automation skipped for ${id}:`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+
     // Audit log
     logAudit({
       userId: user.id,
