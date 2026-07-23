@@ -26,7 +26,7 @@ export async function applyCategoryAutomation(
 
   const { data: os, error: osErr } = await supabase
     .from("service_orders")
-    .select("id, auto_execution_applied, status, step_template_group_id")
+    .select("id, auto_execution_applied, status, step_template_group_id, technician_id")
     .eq("id", serviceOrderId)
     .single();
 
@@ -143,11 +143,19 @@ export async function applyCategoryAutomation(
         fields?: unknown;
       };
       const itemsSnapshot = Array.isArray(tplRow.items) ? tplRow.items : [];
+      const techId = (os as { technician_id: string | null }).technician_id;
+      if (!techId) {
+        warnings.push(
+          `Skip checklist ${c.name}: OS sem technician_id (checklists.technician_id e' NOT NULL)`
+        );
+        continue;
+      }
       const { error: clErr } = await supabase
         .from("checklists")
         .insert({
           service_order_id: serviceOrderId,
           template_id: c.checklist_template_id,
+          technician_id: techId,
           title: `${tplRow.name} — ${c.name}`,
           items: itemsSnapshot,
           data: {},
