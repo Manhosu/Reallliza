@@ -124,6 +124,20 @@ export async function applyCategoryAutomation(
       continue;
     }
 
+    // Idempotencia extra: checklist auto ja criado antes (origin='auto_from_category')
+    const { data: alreadyAuto } = await supabase
+      .from("checklists")
+      .select("id")
+      .eq("service_order_id", serviceOrderId)
+      .eq("origin", "auto_from_category")
+      .eq("template_id", c.checklist_template_id)
+      .limit(1)
+      .maybeSingle();
+    if (alreadyAuto) {
+      applied.push(`checklist:${c.name}:existing_auto`);
+      continue;
+    }
+
     const { data: tpl, error: tplErr } = await supabase
       .from("checklist_templates")
       .select("id, name, items, fields")
@@ -143,13 +157,10 @@ export async function applyCategoryAutomation(
         fields?: unknown;
       };
       const itemsSnapshot = Array.isArray(tplRow.items) ? tplRow.items : [];
-      const techId = (os as { technician_id: string | null }).technician_id;
-      if (!techId) {
-        warnings.push(
-          `Skip checklist ${c.name}: OS sem technician_id (checklists.technician_id e' NOT NULL)`
-        );
-        continue;
-      }
+      // Jessica 27/07 D3: technician_id agora nullable (migration 051).
+      // Se OS foi auto-assigned pra equipe sem tecnico individual, cria checklist
+      // sem tecnico — equipe distribui internamente.
+      const techId = (os as { technician_id: string | null }).technician_id ?? null;
       const { error: clErr } = await supabase
         .from("checklists")
         .insert({
@@ -160,6 +171,7 @@ export async function applyCategoryAutomation(
           items: itemsSnapshot,
           data: {},
           is_completed: false,
+          origin: "auto_from_category",
         })
         .select("id")
         .single();

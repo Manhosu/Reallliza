@@ -214,10 +214,9 @@ export async function PATCH(
       }
     }
 
-    // Jessica 20/07 Fase 2: automacao por categoria — cria checklist + steps
-    // do template vinculado a service_categories quando OS entra in_progress.
-    // COEXISTE com specialty_checklist_items. Idempotente via auto_execution_applied.
-    if (newStatus === "in_progress") {
+    // Jessica 20/07 Fase 2 + 27/07 D3: automacao por categoria roda em
+    // 'assigned' (novo) e 'in_progress' (seguranca). Idempotente.
+    if (newStatus === "assigned" || newStatus === "in_progress") {
       try {
         const { applyCategoryAutomation } = await import(
           "@/lib/service-orders/category-automation"

@@ -7,6 +7,8 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { pickDominantSpecialty } from "./dominant-specialty";
+import { computeTeamAvailability } from "@/lib/teams/team-availability";
 
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -45,18 +47,69 @@ export async function convertQuoteToServiceOrder(
 
   const createdBy = (quote.created_by as string | null) || SYSTEM_USER_ID;
 
-  // 1. Cria a Ordem de Serviço.
-  // Jessica 24/06: modalidade reallliza entra em 'awaiting_assignment' —
-  // Jessica designa tecnico + template antes do tecnico ver. Homologados
-  // continua no fluxo proprio (proposal + aceite).
+  // Jessica 27/07 D2: tenta auto-assign a equipe qualificada quando modalidade
+  // reallliza + service_date + categorias vinculadas a specialty. Fallback:
+  // status 'awaiting_assignment' pra admin resolver manual.
+  let autoAssignedTeamId: string | null = null;
+  if (
+    quote.modality === "reallliza" &&
+    quote.service_date &&
+    Array.isArray(quote.items)
+  ) {
+    try {
+      const { specialty_id } = await pickDominantSpecialty(
+        supabase,
+        (quote.items as QuoteItemRow[]).map((it) => ({
+          service_id: it.service_id,
+          quantity: Number(it.quantity),
+        }))
+      );
+      if (specialty_id) {
+        const daysNeeded = Math.max(
+          1,
+          Math.ceil(Number(quote.total_hours ?? 0) / 8)
+        );
+        const teams = await computeTeamAvailability(supabase, {
+          specialty_id,
+          days_needed: daysNeeded,
+          from: quote.service_date as string,
+          horizon: 60,
+        });
+        const matched = teams.find(
+          (t) => t.available_windows[0]?.start === (quote.service_date as string)
+        );
+        if (matched) {
+          autoAssignedTeamId = matched.team_id;
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `convertQuote: auto-assign failed: ${err instanceof Error ? err.message : err}`
+      );
+    }
+  }
+
   const initialStatus =
-    quote.modality === "reallliza" ? "awaiting_assignment" : "pending";
+    quote.modality === "reallliza"
+      ? autoAssignedTeamId
+        ? "assigned"
+        : "awaiting_assignment"
+      : "pending";
+  // Jessica 27/07 D4: copia anexos da quote pra OS (materiais + planta baixa)
+  const materialFiles = Array.isArray(quote.material_files)
+    ? quote.material_files
+    : [];
+  const projectFiles = Array.isArray(quote.project_files)
+    ? quote.project_files
+    : [];
+
   const { data: os, error: osErr } = await supabase
     .from("service_orders")
     .insert({
       title: `Orçamento #${quote.quote_number} — ${quote.client_name}`,
       status: initialStatus,
       partner_id: quote.partner_id,
+      team_id: autoAssignedTeamId,
       client_name: quote.client_name,
       client_phone: quote.client_phone,
       client_email: quote.client_email,
@@ -65,6 +118,8 @@ export async function convertQuoteToServiceOrder(
       address_state: quote.address_state,
       address_zip: quote.address_zip,
       notes: quote.notes,
+      material_files: materialFiles,
+      project_files: projectFiles,
       created_by: createdBy,
     })
     .select("id")
@@ -131,7 +186,23 @@ export async function convertQuoteToServiceOrder(
       service_time: (quote.service_time as string | null) ?? "08:00",
       total_hours: Number(quote.total_hours),
       partner_id: (quote.partner_id as string | null) ?? null,
+      team_id: autoAssignedTeamId,
     });
+  }
+
+  // 5.5. Jessica 27/07 D2+D3: se auto-assigned, dispara category automation
+  // ja com status='assigned' (checklist + steps criados sem tecnico individual).
+  if (initialStatus === "assigned") {
+    try {
+      const { applyCategoryAutomation } = await import(
+        "@/lib/service-orders/category-automation"
+      );
+      await applyCategoryAutomation(supabase, os.id);
+    } catch (err) {
+      console.warn(
+        `convertQuote: category automation on auto-assign failed: ${err instanceof Error ? err.message : err}`
+      );
+    }
   }
 
   // 6. Notifica admins quando modalidade reallliza cai na fila de designacao
@@ -185,7 +256,7 @@ async function notifyAdminsOfAwaitingAssignment(
     .from("profiles")
     .select("id")
     .eq("role", "admin")
-    .eq("is_active", true);
+    .eq("status", "active");
 
   if (!admins || admins.length === 0) return;
 
@@ -219,6 +290,7 @@ async function scheduleReallizaJobs(
     service_time: string;
     total_hours: number;
     partner_id: string | null;
+    team_id?: string | null;
   }
 ): Promise<void> {
   const totalDays = Math.ceil(opts.total_hours / 8);
@@ -245,6 +317,7 @@ async function scheduleReallizaJobs(
   const inserts: Array<{
     service_order_id: string;
     technician_id: string | null;
+    team_id: string | null;
     date: string;
     start_time: string;
     end_time: string;
@@ -265,7 +338,8 @@ async function scheduleReallizaJobs(
     if (!isSunday && !isHoliday) {
       inserts.push({
         service_order_id: serviceOrderId,
-        technician_id: null, // admin distribui depois
+        technician_id: null, // equipe distribui internamente
+        team_id: opts.team_id ?? null,
         date: dateStr,
         start_time: startTime,
         end_time: endTime,
