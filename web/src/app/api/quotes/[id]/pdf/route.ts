@@ -25,14 +25,23 @@ import { errorResponse } from "@/lib/api-helpers/response";
  * partner ve so os proprios (partners.user_id = auth.uid()).
  */
 
-const YELLOW = "#EAB308";
-const YELLOW_SOFT = "#F5D020";
-const BLACK = "#111111";
+// Jessica 27/07 D5: redesign PDF pra bater com mockup — cores mais suaves,
+// menos fill amarelo cheio, logo vetorial sobre branco (sem caixa preta).
+const YELLOW = "#F5D020";       // Dourado suave (mockup)
+const YELLOW_BG = "#FEF3C7";    // amber-100 pra bandas de secao
+const YELLOW_STRONG = "#EAB308"; // reservado pra faixa VALOR TOTAL (unico fill amarelo forte)
+const INK = "#111827";           // texto principal
+const BLACK = "#111827";         // colapsa em INK (rodape)
 const ZINC_900 = "#18181B";
 const ZINC_700 = "#374151";
+const ZINC_600 = "#4B5563";
 const ZINC_500 = "#6B7280";
 const ZINC_300 = "#D1D5DB";
+const ZINC_200 = "#E5E7EB";
 const ZINC_100 = "#F3F4F6";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const YELLOW_SOFT = "#F5D020";   // legacy alias
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const GREEN = "#10B981";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -181,29 +190,10 @@ export async function GET(
     const logoPath = findLogoPath();
 
     // ============ HEADER ============
-    // Coluna esquerda: logo (ou texto)
-    // Logo Jessica 16/07 e' branca+amarela em fundo escuro — desenha bloco
-    // preto arredondado atras pra ficar legivel no papel branco.
-    if (logoPath) {
-      try {
-        const logoBoxX = leftX;
-        const logoBoxY = 24;
-        const logoBoxW = 200;
-        const logoBoxH = 70;
-        // Bloco preto arredondado
-        doc.roundedRect(logoBoxX, logoBoxY, logoBoxW, logoBoxH, 8).fill(BLACK);
-        // Logo dentro do bloco com margem
-        doc.image(logoPath, logoBoxX + 15, logoBoxY + 10, {
-          fit: [logoBoxW - 30, logoBoxH - 20],
-          align: "center",
-          valign: "center",
-        });
-      } catch {
-        renderLogoText(doc, leftX, 40);
-      }
-    } else {
-      renderLogoText(doc, leftX, 40);
-    }
+    // Jessica 27/07 D5: usa render vetorial sobre fundo branco.
+    // Sem caixa preta, sem PNG (logo PNG tem fundo escuro embutido).
+    void logoPath;
+    renderLogoText(doc, leftX, 40);
 
     // Coluna direita: ORCAMENTO + info
     const rightBlockX = leftX + pageW - 180;
@@ -265,12 +255,13 @@ export async function GET(
       lines: Array<{ label: string; value: string }>
     ) => {
       const boxHeight = 20 + lines.length * 14;
-      // Titulo em barra dourada
-      doc.rect(x, y, w, 18).fill(YELLOW);
+      // Jessica 27/07 D5: titulo em barra suave (fundo creme + borda dourada)
+      doc.rect(x, y, w, 18).fill(YELLOW_BG);
+      doc.rect(x, y, w, 18).lineWidth(0.5).stroke(YELLOW);
       doc
         .fontSize(9)
         .font("Helvetica-Bold")
-        .fillColor(BLACK)
+        .fillColor(INK)
         .text(title.toUpperCase(), x + 8, y + 5, { width: w - 16 });
       // Caixa
       doc
@@ -360,17 +351,18 @@ export async function GET(
 
     // ============ DESCRICAO DOS SERVICOS (tabela) ============
     const tableY = doc.y;
-    // Titulo em barra dourada
-    doc.rect(leftX, tableY, pageW, 20).fill(YELLOW);
+    // Jessica 27/07 D5: titulo suave (creme + borda) em vez de fill amarelo cheio
+    doc.rect(leftX, tableY, pageW, 22).fill(YELLOW_BG);
+    doc.rect(leftX, tableY, pageW, 22).lineWidth(0.5).stroke(YELLOW);
     doc
       .fontSize(10)
       .font("Helvetica-Bold")
-      .fillColor(BLACK)
-      .text("DESCRIÇÃO DOS SERVIÇOS", leftX + 8, tableY + 6, {
+      .fillColor(INK)
+      .text("DESCRIÇÃO DOS SERVIÇOS", leftX + 8, tableY + 7, {
         width: pageW - 16,
         align: "center",
       });
-    doc.y = tableY + 20;
+    doc.y = tableY + 22;
 
     // Header da tabela
     const cols = [
@@ -509,11 +501,11 @@ export async function GET(
       );
     }
 
-    // VALOR TOTAL destacado
+    // VALOR TOTAL destacado — Jessica 27/07 D5: unica banda amarela forte
     doc.moveDown(0.2);
     totalRow("VALOR TOTAL", fmtBRL(quote.total_amount), {
       highlight: true,
-      bg: YELLOW,
+      bg: YELLOW_STRONG,
     });
     doc.moveDown(0.4);
 
@@ -758,18 +750,19 @@ function renderLogoText(
   x: number,
   y: number
 ): void {
+  // Jessica 27/07 D5: logo suave, sobre fundo branco, sem caixa preta
   doc
-    .fontSize(28)
+    .fontSize(34)
     .font("Helvetica-Bold")
     .fillColor(YELLOW)
     .text("R", x, y, { continued: true })
-    .fillColor(BLACK)
+    .fillColor(INK)
     .text("EALLLIZA");
   doc
     .fontSize(7)
     .font("Helvetica")
     .fillColor(ZINC_500)
-    .text("REVESTIMENTO VINÍLICO", x, y + 32);
+    .text("REVESTIMENTOS VINÍLICOS", x, y + 38);
 }
 
 function drawSectionHeader(
@@ -779,10 +772,12 @@ function drawSectionHeader(
   y: number,
   w: number
 ): void {
-  doc.rect(x, y, w, 18).fill(YELLOW);
+  // Jessica 27/07 D5: banda de secao suave (amber-100 fill + borda amarela)
+  doc.rect(x, y, w, 20).fill(YELLOW_BG);
+  doc.rect(x, y, w, 20).lineWidth(0.5).stroke(YELLOW);
   doc
     .fontSize(9)
     .font("Helvetica-Bold")
-    .fillColor(BLACK)
-    .text(title, x + 6, y + 5, { width: w - 12 });
+    .fillColor(INK)
+    .text(title, x + 8, y + 6, { width: w - 16 });
 }
