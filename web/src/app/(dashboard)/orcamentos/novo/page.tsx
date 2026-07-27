@@ -17,6 +17,7 @@ import type { Service } from "@/lib/api/services";
 import { ApiError } from "@/lib/api/client";
 import { assertFreshSession } from "@/lib/api/session-guard";
 import { AvailabilityDatePicker } from "@/components/quotes/availability-date-picker";
+import { QuantityInput } from "@/components/quotes/quantity-input";
 
 type Modality = "reallliza" | "homologados";
 
@@ -670,28 +671,11 @@ export default function NovoOrcamentoPage() {
                           )}
                         </p>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="outline"
-                          onClick={() => setQty(s.id, qty - 1)}
-                          disabled={qty <= 0}
-                        >
-                          <Minus className="h-4 w-4" />
-                        </Button>
-                        <span className="w-8 text-center text-sm font-medium">
-                          {qty}
-                        </span>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="outline"
-                          onClick={() => setQty(s.id, qty + 1)}
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      <QuantityInput
+                        value={qty}
+                        onChange={(n) => setQty(s.id, n)}
+                        step={s.unit === "un" || s.unit === "unidade" ? 1 : 0.5}
+                      />
                     </CardContent>
                   </Card>
                 );
@@ -878,29 +862,60 @@ export default function NovoOrcamentoPage() {
                 </button>
               </div>
 
-              {modality === "reallliza" && (
-                <div className="space-y-2 pt-2 border-t">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Quando executar
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <AvailabilityDatePicker
-                      value={serviceDate}
-                      onChange={setServiceDate}
-                      placeholder="Ver agenda"
-                    />
-                    <Input
-                      type="time"
-                      value={serviceTime}
-                      onChange={(e) => setServiceTime(e.target.value)}
-                    />
+              {modality === "reallliza" && (() => {
+                // Jessica 27/07 D2: deriva specialty dominante e days_needed
+                // pra passar pro picker (auto-assign a equipe qualificada)
+                const specWeights = new Map<string, number>();
+                for (const [svcId, q] of Object.entries(quantities)) {
+                  if (!q || q <= 0) continue;
+                  const svc = services.find((s) => s.id === svcId);
+                  const specId = svc?.category?.specialty_id;
+                  if (!specId) continue;
+                  const w = Number(svc?.estimated_time_hours ?? 0.1) * q;
+                  specWeights.set(specId, (specWeights.get(specId) ?? 0) + w);
+                }
+                let dominantSpecId: string | null = null;
+                let maxW = 0;
+                for (const [id, w] of specWeights) {
+                  if (w > maxW) {
+                    maxW = w;
+                    dominantSpecId = id;
+                  }
+                }
+                const daysNeeded = calc?.total_days ?? 1;
+                return (
+                  <div className="space-y-2 pt-2 border-t">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Quando executar {daysNeeded > 1 && `(${daysNeeded} dias)`}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <AvailabilityDatePicker
+                        value={serviceDate}
+                        onChange={(val) => {
+                          if (Array.isArray(val)) {
+                            setServiceDate(val[0] ?? "");
+                          } else {
+                            setServiceDate(val);
+                          }
+                        }}
+                        daysNeeded={daysNeeded}
+                        specialtyId={dominantSpecId}
+                        placeholder="Ver agenda"
+                      />
+                      <Input
+                        type="time"
+                        value={serviceTime}
+                        onChange={(e) => setServiceTime(e.target.value)}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {dominantSpecId
+                        ? "Só equipes qualificadas na especialidade dominante. Clique num dia livre pra reservar o bloco completo."
+                        : "Só mostra datas com vaga. Sábado destacado (+25% sobre serviços). Domingo/feriado bloqueados."}
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Só mostra datas com vaga. Sábado destacado (+25% sobre
-                    serviços). Domingo/feriado bloqueados.
-                  </p>
-                </div>
-              )}
+                );
+              })()}
 
               {modality === "homologados" && (
                 <div className="space-y-2 pt-2 border-t">

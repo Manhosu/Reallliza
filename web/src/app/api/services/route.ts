@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("services")
-      .select("*, category:service_categories(id, name)")
+      .select("*, category:service_categories(id, name, specialty_id)")
       .order("name", { ascending: true });
 
     if (!includeInactive) {
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
         is_active: body.is_active !== undefined ? !!body.is_active : true,
         created_by: user.id,
       })
-      .select("*, category:service_categories(id, name)")
+      .select("*, category:service_categories(id, name, specialty_id)")
       .single();
 
     if (error) {

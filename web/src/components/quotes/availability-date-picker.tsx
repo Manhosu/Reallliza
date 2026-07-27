@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, X, Users } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
-interface DayInfo {
+// Compat: modo legado (single date) chamando /calendar/availability
+interface LegacyDayInfo {
   available: boolean;
   is_weekend: boolean;
   is_holiday: boolean;
@@ -16,16 +16,39 @@ interface DayInfo {
   booked_slots: number;
   busy_full: boolean;
 }
-
-interface AvailabilityResponse {
+interface LegacyResponse {
   from: string;
   to: string;
-  days: Record<string, DayInfo>;
+  days: Record<string, LegacyDayInfo>;
+}
+
+// Modo novo (multi-day + team-aware) chamando /calendar/team-availability
+interface AvailableWindow {
+  start: string;
+  end: string;
+  workdays: string[];
+}
+interface TeamAvailability {
+  team_id: string;
+  name: string;
+  color: string;
+  member_count: number;
+  blocked_days: string[];
+  available_windows: AvailableWindow[];
+}
+interface TeamAvailResponse {
+  specialty_id: string | null;
+  days_needed: number;
+  from: string;
+  horizon: number;
+  teams: TeamAvailability[];
 }
 
 interface Props {
-  value: string; // yyyy-mm-dd
-  onChange: (date: string) => void;
+  value: string | string[]; // legado: 'yyyy-mm-dd'; novo: array de N ISOs
+  onChange: (block: string | string[], teamId?: string) => void;
+  daysNeeded?: number;
+  specialtyId?: string | null;
   placeholder?: string;
   disabled?: boolean;
 }
@@ -37,6 +60,12 @@ function fmtISO(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
+}
+
+function isWeekend(iso: string): boolean {
+  const d = new Date(`${iso}T00:00:00`);
+  const dow = d.getDay();
+  return dow === 0 || dow === 6;
 }
 
 function daysGrid(anchor: Date) {
@@ -53,17 +82,52 @@ function daysGrid(anchor: Date) {
   return { grid, first };
 }
 
+/**
+ * Constroi bloco de N dias uteis consecutivos a partir de startISO,
+ * pulando fim de semana, feriados e dias bloqueados.
+ */
+function tryBuildBlock(
+  startISO: string,
+  daysNeeded: number,
+  holidays: Set<string>,
+  blocked: Set<string>
+): string[] | null {
+  const days: string[] = [];
+  const cursor = new Date(`${startISO}T00:00:00`);
+  let safety = 0;
+  while (days.length < daysNeeded && safety < 120) {
+    const iso = fmtISO(cursor);
+    if (!isWeekend(iso) && !holidays.has(iso) && !blocked.has(iso)) {
+      days.push(iso);
+    }
+    cursor.setDate(cursor.getDate() + 1);
+    safety++;
+  }
+  return days.length === daysNeeded ? days : null;
+}
+
 export function AvailabilityDatePicker({
   value,
   onChange,
+  daysNeeded = 1,
+  specialtyId,
   placeholder = "Escolha a data",
   disabled,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const isMulti = daysNeeded > 1 || Array.isArray(value);
+  const currentBlock: string[] = Array.isArray(value)
+    ? value
+    : value
+      ? [value]
+      : [];
+  const firstDate = currentBlock[0] ?? "";
   const [anchor, setAnchor] = useState(() =>
-    value ? new Date(`${value}T00:00:00`) : new Date()
+    firstDate ? new Date(`${firstDate}T00:00:00`) : new Date()
   );
-  const [data, setData] = useState<AvailabilityResponse | null>(null);
+  const [legacyData, setLegacyData] = useState<LegacyResponse | null>(null);
+  const [teamData, setTeamData] = useState<TeamAvailResponse | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -71,16 +135,27 @@ export function AvailabilityDatePicker({
     try {
       const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
       const from = fmtISO(first);
-      const res = await apiClient.get<AvailabilityResponse>(
-        `/calendar/availability?from=${from}&days=42`
-      );
-      setData(res);
+      if (specialtyId) {
+        const res = await apiClient.get<TeamAvailResponse>(
+          `/calendar/team-availability?specialty_id=${specialtyId}&days_needed=${daysNeeded}&from=${from}&horizon=60`
+        );
+        setTeamData(res);
+        if (res.teams.length > 0 && !selectedTeamId) {
+          setSelectedTeamId(res.teams[0].team_id);
+        }
+      } else {
+        const res = await apiClient.get<LegacyResponse>(
+          `/calendar/availability?from=${from}&days=42`
+        );
+        setLegacyData(res);
+      }
     } catch (err) {
       console.error("availability load failed", err);
     } finally {
       setLoading(false);
     }
-  }, [anchor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchor, specialtyId, daysNeeded]);
 
   useEffect(() => {
     if (open) load();
@@ -92,9 +167,45 @@ export function AvailabilityDatePicker({
     year: "numeric",
   });
 
-  const displayValue = value
-    ? new Date(`${value}T00:00:00`).toLocaleDateString("pt-BR")
-    : "";
+  const displayValue = (() => {
+    if (currentBlock.length === 0) return "";
+    if (currentBlock.length === 1) {
+      return new Date(`${currentBlock[0]}T00:00:00`).toLocaleDateString(
+        "pt-BR"
+      );
+    }
+    const start = new Date(`${currentBlock[0]}T00:00:00`).toLocaleDateString(
+      "pt-BR"
+    );
+    const end = new Date(
+      `${currentBlock[currentBlock.length - 1]}T00:00:00`
+    ).toLocaleDateString("pt-BR");
+    return `${start} → ${end}`;
+  })();
+
+  // Prepara sets de bloqueio para o mes atual
+  const activeTeam = specialtyId
+    ? teamData?.teams.find((t) => t.team_id === selectedTeamId)
+    : null;
+  const blocked = new Set<string>(activeTeam?.blocked_days ?? []);
+  const holidays = new Set<string>(); // team-availability ja considera na janela
+
+  const selectedSet = new Set<string>(currentBlock);
+
+  const handleClick = (d: Date) => {
+    const iso = fmtISO(d);
+    if (specialtyId) {
+      // Modo novo: monta bloco de N dias
+      const block = tryBuildBlock(iso, daysNeeded, holidays, blocked);
+      if (!block) return;
+      onChange(daysNeeded === 1 && isMulti === false ? block[0] : block, selectedTeamId);
+      setOpen(false);
+    } else {
+      // Modo legado: 1 clique = 1 dia
+      onChange(iso);
+      setOpen(false);
+    }
+  };
 
   return (
     <div className="relative">
@@ -107,7 +218,7 @@ export function AvailabilityDatePicker({
         <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span
           className={cn(
-            "flex-1 text-left",
+            "flex-1 text-left truncate",
             !displayValue && "text-muted-foreground"
           )}
         >
@@ -126,8 +237,49 @@ export function AvailabilityDatePicker({
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
-              className="absolute left-0 top-full z-50 mt-1 w-[320px] rounded-lg border bg-background p-3 shadow-lg"
+              className="absolute left-0 top-full z-50 mt-1 w-[340px] rounded-lg border bg-background p-3 shadow-lg"
             >
+              {specialtyId && teamData && (
+                <div className="mb-2 border-b pb-2">
+                  <div className="mb-1 text-[10px] uppercase text-muted-foreground flex items-center gap-1">
+                    <Users className="h-3 w-3" /> Equipe
+                  </div>
+                  {teamData.teams.length === 0 ? (
+                    <div className="text-xs text-destructive py-2">
+                      Nenhuma equipe qualificada nessa especialidade.
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {teamData.teams.map((t) => (
+                        <button
+                          key={t.team_id}
+                          type="button"
+                          onClick={() => setSelectedTeamId(t.team_id)}
+                          className={cn(
+                            "text-xs px-2 py-1 rounded-md border transition",
+                            selectedTeamId === t.team_id
+                              ? "border-primary"
+                              : "border-transparent hover:border-input"
+                          )}
+                          style={{
+                            background:
+                              selectedTeamId === t.team_id
+                                ? `${t.color}22`
+                                : undefined,
+                          }}
+                        >
+                          <span
+                            className="inline-block h-2 w-2 rounded-full mr-1"
+                            style={{ background: t.color }}
+                          />
+                          {t.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium capitalize">
                   {monthLabel}
@@ -191,44 +343,61 @@ export function AvailabilityDatePicker({
                   {grid.map((d) => {
                     const iso = fmtISO(d);
                     const inMonth = d.getMonth() === first.getMonth();
-                    const info = data?.days[iso];
-                    const isSelected = iso === value;
                     const isPast = iso < fmtISO(new Date());
-                    const busy =
-                      info?.is_holiday || info?.busy_full || isPast;
-                    const weekend = info?.is_weekend;
+                    const isSelected = selectedSet.has(iso);
+                    const isBlockedByTeam = blocked.has(iso);
+
+                    // Modo legado
+                    const legacyInfo = legacyData?.days[iso];
+                    const legacyBusy = specialtyId
+                      ? false
+                      : legacyInfo?.is_holiday ||
+                        legacyInfo?.busy_full ||
+                        isPast;
+                    const legacyWeekend = specialtyId
+                      ? false
+                      : legacyInfo?.is_weekend;
+
+                    // Modo novo (team)
+                    const teamWeekend = specialtyId ? isWeekend(iso) : false;
+                    const teamBusy =
+                      specialtyId && (isPast || isBlockedByTeam || teamWeekend);
+
+                    const busy = specialtyId ? teamBusy : legacyBusy;
+                    const weekend = specialtyId ? teamWeekend : legacyWeekend;
+
                     return (
                       <button
                         key={iso}
                         type="button"
-                        disabled={busy || !inMonth}
-                        onClick={() => {
-                          onChange(iso);
-                          setOpen(false);
-                        }}
+                        disabled={!!busy || !inMonth}
+                        onClick={() => handleClick(d)}
                         title={
-                          info?.holiday_name ??
-                          (info?.busy_full
-                            ? "Sem vagas neste dia"
+                          isBlockedByTeam
+                            ? `Equipe ${activeTeam?.name ?? ""} ocupada`
                             : weekend
-                            ? "Fim de semana — +25% sobre serviços"
-                            : "")
+                              ? "Fim de semana"
+                              : legacyInfo?.holiday_name ?? ""
                         }
                         className={cn(
                           "aspect-square rounded-md text-xs font-medium transition relative",
                           !inMonth && "invisible",
                           !busy && "hover:bg-primary/10 cursor-pointer",
                           busy && "opacity-40 cursor-not-allowed line-through",
-                          !busy && !weekend && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-                          !busy && weekend && "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                          !busy &&
+                            !weekend &&
+                            "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                          !busy &&
+                            weekend &&
+                            "bg-amber-500/10 text-amber-700 dark:text-amber-400",
                           isSelected &&
                             "ring-2 ring-primary bg-primary text-primary-foreground"
                         )}
                       >
                         {d.getDate()}
-                        {info?.booked_slots ? (
-                          <span className="absolute bottom-0.5 right-0.5 h-1 w-1 rounded-full bg-current opacity-60" />
-                        ) : null}
+                        {isBlockedByTeam && (
+                          <span className="absolute bottom-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-destructive" />
+                        )}
                       </button>
                     );
                   })}
@@ -241,19 +410,19 @@ export function AvailabilityDatePicker({
                 </div>
                 <div className="flex items-center gap-1">
                   <span className="inline-block h-2 w-2 rounded-full bg-amber-500/60" />
-                  +25%
+                  Fim de semana
                 </div>
                 <div className="flex items-center gap-1">
                   <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground/40" />
                   Ocupado
                 </div>
-                {value && (
+                {currentBlock.length > 0 && (
                   <Button
                     size="sm"
                     variant="ghost"
                     className="ml-auto h-6 text-xs"
                     onClick={() => {
-                      onChange("");
+                      onChange(isMulti ? [] : "", selectedTeamId);
                       setOpen(false);
                     }}
                   >
@@ -261,6 +430,43 @@ export function AvailabilityDatePicker({
                   </Button>
                 )}
               </div>
+              {specialtyId &&
+                daysNeeded > 1 &&
+                activeTeam &&
+                activeTeam.available_windows.length > 0 && (
+                  <div className="mt-2 pt-2 border-t">
+                    <div className="text-[10px] uppercase text-muted-foreground mb-1">
+                      Próximas janelas ({daysNeeded} dias)
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {activeTeam.available_windows.slice(0, 3).map((w) => (
+                        <button
+                          key={w.start}
+                          type="button"
+                          onClick={() => {
+                            onChange(w.workdays, selectedTeamId);
+                            setOpen(false);
+                          }}
+                          className="text-[10px] px-2 py-1 rounded-md border hover:bg-primary/10"
+                        >
+                          {new Date(
+                            `${w.start}T00:00:00`
+                          ).toLocaleDateString("pt-BR", {
+                            day: "2-digit",
+                            month: "short",
+                          })}{" "}
+                          →{" "}
+                          {new Date(
+                            `${w.end}T00:00:00`
+                          ).toLocaleDateString("pt-BR", {
+                            day: "2-digit",
+                            month: "short",
+                          })}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
             </motion.div>
           </>
         )}

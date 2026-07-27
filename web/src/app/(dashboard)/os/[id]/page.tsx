@@ -2031,11 +2031,31 @@ export default function OsDetailPage() {
                       <p className="text-xs text-muted-foreground">Técnico</p>
                     </div>
                   </div>
+                ) : (order as any).team_id ? (
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold"
+                      style={{
+                        background: `${(order as any).team?.color ?? "#EAB308"}22`,
+                        color: (order as any).team?.color ?? "#EAB308",
+                      }}
+                    >
+                      E
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">
+                        Equipe {(order as any).team?.name ?? "designada"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Equipe distribui técnico internamente
+                      </p>
+                    </div>
+                  </div>
                 ) : (
                   <div className="flex items-center gap-3 rounded-xl border border-dashed p-3">
                     <User className="h-5 w-5 text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">
-                      Nenhum técnico atribuído
+                      Nenhum técnico ou equipe atribuído
                     </span>
                   </div>
                 )}
@@ -2075,6 +2095,85 @@ export default function OsDetailPage() {
               </CardContent>
             </Card>
           </motion.div>
+
+          {/* Anexos do orçamento (Jessica 27/07 D4) */}
+          {(() => {
+            const materialFiles = (order as any).material_files as Array<{
+              url: string;
+              name: string;
+              storage_path?: string;
+            }> | null;
+            const projectFiles = (order as any).project_files as Array<{
+              url: string;
+              name: string;
+              storage_path?: string;
+            }> | null;
+            const hasFiles =
+              (materialFiles && materialFiles.length > 0) ||
+              (projectFiles && projectFiles.length > 0);
+            if (!hasFiles) return null;
+            return (
+              <motion.div variants={itemVariants}>
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                      Anexos do orçamento
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {projectFiles && projectFiles.length > 0 && (
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">
+                          Projeto / planta baixa
+                        </p>
+                        <div className="space-y-1">
+                          {projectFiles.map((f, i) => (
+                            <a
+                              key={i}
+                              href={f.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 rounded-md border p-2 text-sm hover:bg-secondary/50"
+                            >
+                              <span>📎</span>
+                              <span className="truncate flex-1">{f.name}</span>
+                              <span className="text-xs text-primary">
+                                Baixar
+                              </span>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {materialFiles && materialFiles.length > 0 && (
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">
+                          Lista de materiais
+                        </p>
+                        <div className="space-y-1">
+                          {materialFiles.map((f, i) => (
+                            <a
+                              key={i}
+                              href={f.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 rounded-md border p-2 text-sm hover:bg-secondary/50"
+                            >
+                              <span>📎</span>
+                              <span className="truncate flex-1">{f.name}</span>
+                              <span className="text-xs text-primary">
+                                Baixar
+                              </span>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })()}
 
           {/* Datas */}
           <motion.div variants={itemVariants}>

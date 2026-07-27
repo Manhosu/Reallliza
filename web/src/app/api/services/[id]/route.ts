@@ -58,7 +58,7 @@ export async function GET(
 
     const { data, error } = await supabase
       .from("services")
-      .select("*, category:service_categories(id, name)")
+      .select("*, category:service_categories(id, name, specialty_id)")
       .eq("id", id)
       .single();
 
@@ -128,7 +128,7 @@ export async function PATCH(
       .from("services")
       .update(update)
       .eq("id", id)
-      .select("*, category:service_categories(id, name)")
+      .select("*, category:service_categories(id, name, specialty_id)")
       .single();
 
     if (error) {

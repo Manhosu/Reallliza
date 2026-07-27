@@ -12,6 +12,9 @@ export interface ServiceCategory {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  specialty_id?: string | null;
+  checklist_template_id?: string | null;
+  step_template_group_id?: string | null;
 }
 
 export interface CreateServiceCategoryPayload {
@@ -69,7 +72,7 @@ export interface Service {
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  category: { id: string; name: string } | null;
+  category: { id: string; name: string; specialty_id?: string | null } | null;
 }
 
 export interface CreateServicePayload {

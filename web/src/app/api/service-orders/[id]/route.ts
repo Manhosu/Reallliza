@@ -30,6 +30,7 @@ export async function GET(
         *,
         technician:profiles!service_orders_technician_id_fkey(id, full_name, email, phone, avatar_url, specialties),
         partner:partners!service_orders_partner_id_fkey(id, company_name, trading_name, contact_name, contact_phone, contact_email),
+        team:teams(id, name, color),
         creator:profiles!service_orders_created_by_fkey(id, full_name, email)
       `
       )
