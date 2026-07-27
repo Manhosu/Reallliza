@@ -52,6 +52,8 @@ export default function EquipesPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Team | null>(null);
   const [managingMembers, setManagingMembers] = useState<Team | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,16 +74,19 @@ export default function EquipesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             Equipes Operacionais
           </h1>
           <p className="text-sm text-muted-foreground">
-            Central de calendário por equipe Alfa / Beta / Gama / Delta.
-            Especialidades são herdadas dos membros.
+            Central de calendário por equipe. Especialidades são herdadas dos
+            membros.
           </p>
         </div>
+        <Button onClick={() => setCreating(true)}>
+          <Plus className="h-4 w-4 mr-1" /> Nova equipe
+        </Button>
       </div>
 
       {loading ? (
@@ -108,9 +113,38 @@ export default function EquipesPage() {
             <TeamCard
               key={t.id}
               team={t}
+              deactivating={deactivatingId === t.id}
               onEdit={() => setEditing(t)}
               onManageMembers={() => setManagingMembers(t)}
               onOpenCalendar={() => router.push(`/equipes/${t.id}/calendario`)}
+              onDeactivate={async () => {
+                const label = t.is_active ? "excluir" : "reativar";
+                const ok = window.confirm(
+                  t.is_active
+                    ? `Excluir a equipe ${t.name}? Ela deixa de aparecer na lista, mas o histórico é preservado.`
+                    : `Reativar a equipe ${t.name}?`
+                );
+                if (!ok) return;
+                setDeactivatingId(t.id);
+                try {
+                  if (t.is_active) {
+                    await teamsApi.deactivate(t.id);
+                    toast.success("Equipe excluída");
+                  } else {
+                    await teamsApi.update(t.id, { is_active: true });
+                    toast.success("Equipe reativada");
+                  }
+                  await load();
+                } catch (err) {
+                  toast.error(
+                    err instanceof Error
+                      ? err.message
+                      : `Falha ao ${label} equipe`
+                  );
+                } finally {
+                  setDeactivatingId(null);
+                }
+              }}
             />
           ))}
         </div>
@@ -136,20 +170,34 @@ export default function EquipesPage() {
           }}
         />
       )}
+
+      {creating && (
+        <CreateTeamDialog
+          onClose={() => setCreating(false)}
+          onCreated={async () => {
+            setCreating(false);
+            await load();
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function TeamCard({
   team,
+  deactivating,
   onEdit,
   onManageMembers,
   onOpenCalendar,
+  onDeactivate,
 }: {
   team: Team;
+  deactivating: boolean;
   onEdit: () => void;
   onManageMembers: () => void;
   onOpenCalendar: () => void;
+  onDeactivate: () => void | Promise<void>;
 }) {
   return (
     <motion.div
@@ -183,9 +231,25 @@ function TeamCard({
                 </p>
               )}
             </div>
-            <Button size="sm" variant="ghost" onClick={onEdit}>
-              <Edit className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-0.5">
+              <Button size="sm" variant="ghost" onClick={onEdit} title="Editar">
+                <Edit className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onDeactivate}
+                disabled={deactivating}
+                title={team.is_active ? "Excluir equipe" : "Reativar equipe"}
+              >
+                <Trash2
+                  className={cn(
+                    "h-4 w-4",
+                    team.is_active ? "text-destructive" : "text-muted-foreground"
+                  )}
+                />
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -543,6 +607,122 @@ function ManageMembersDialog({
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+function CreateTeamDialog({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [color, setColor] = useState(TEAM_COLORS[0]);
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!name.trim()) {
+      toast.error("Nome da equipe é obrigatório");
+      return;
+    }
+    setSaving(true);
+    try {
+      await teamsApi.create({
+        name: name.trim(),
+        color,
+        description: description.trim() || undefined,
+      });
+      toast.success("Equipe criada");
+      await onCreated();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao criar equipe");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm p-4"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.95, opacity: 0 }}
+          className="w-full max-w-md"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Nova equipe</CardTitle>
+              <Button size="sm" variant="ghost" onClick={onClose}>
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Nome</label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Ex.: Épsilon"
+                  className="mt-1"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Cor</label>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {TEAM_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setColor(c)}
+                      className={cn(
+                        "h-8 w-8 rounded-full border-2 transition",
+                        color === c
+                          ? "border-foreground scale-110"
+                          : "border-transparent"
+                      )}
+                      style={{ background: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">
+                  Descrição (opcional)
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                    setDescription(e.target.value)
+                  }
+                  className="mt-1 flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  rows={3}
+                  placeholder="Ex.: Equipe operacional Épsilon"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={onClose}>
+                  Cancelar
+                </Button>
+                <Button onClick={save} disabled={saving}>
+                  {saving ? "Criando..." : "Criar equipe"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </motion.div>
