@@ -58,14 +58,20 @@ export async function POST(
       );
     }
 
-    // Valida tecnico ativo
+    // Valida tecnico ativo (profiles usa enum status, nao is_active)
     const { data: tech } = await supabase
       .from("profiles")
-      .select("id, full_name, is_active")
+      .select("id, full_name, status, role")
       .eq("id", body.technician_id)
       .maybeSingle();
-    if (!tech || !tech.is_active) {
-      throw new AuthError(400, "Tecnico invalido ou inativo");
+    if (!tech) {
+      throw new AuthError(400, "Tecnico nao encontrado");
+    }
+    if (tech.status !== "active") {
+      throw new AuthError(400, `Tecnico esta com status '${tech.status}' — nao pode ser designado`);
+    }
+    if (tech.role !== "technician") {
+      throw new AuthError(400, `Usuario nao e' tecnico (role='${tech.role}')`);
     }
 
     // Valida template
