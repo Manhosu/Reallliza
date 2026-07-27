@@ -21,6 +21,16 @@ export async function refanoutHomologadoProposal(
     offered_amount: number;
   }
 ): Promise<{ proposal_id: string | null; recipients: number }> {
+  // Jessica 27/07 D7: fallback pra address_state da OS se region_state
+  // nao veio da quote. Defesa em profundidade.
+  if (!input.target_state) {
+    const { data: os } = await supabase
+      .from("service_orders")
+      .select("address_state")
+      .eq("id", input.service_order_id)
+      .maybeSingle();
+    input.target_state = (os as { address_state: string | null } | null)?.address_state ?? null;
+  }
   if (!input.target_state) {
     console.warn(
       `refanoutHomologado: OS ${input.service_order_id} sem UF alvo — sem broadcast.`
@@ -56,10 +66,11 @@ export async function refanoutHomologadoProposal(
   // NULL/vazio (comum no cadastro) eram silenciosamente excluidos. Mesma
   // logica tolerante do admin manual em /api/proposals: se region esta
   // vazio, inclui; se preenchido, precisa bater com a UF.
+  // Jessica 27/07 D7: inclui homologados PJ cadastrados como role='partner'
   const { data: allHomologados } = await supabase
     .from("profiles")
-    .select("id, full_name, operating_region")
-    .eq("role", "technician")
+    .select("id, full_name, operating_region, role")
+    .in("role", ["technician", "partner"])
     .eq("status", "active")
     .eq("is_homologated", true);
 
@@ -68,6 +79,7 @@ export async function refanoutHomologadoProposal(
       id: string;
       full_name: string;
       operating_region: string | null;
+      role: string;
     }>) || []
   ).filter((h) => {
     const region = (h.operating_region || "").toUpperCase().trim();

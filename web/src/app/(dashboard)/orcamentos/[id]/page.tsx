@@ -121,8 +121,29 @@ export default function OrcamentoDetailPage() {
   const isAdmin = user?.role === "admin";
   const canPay = quote.status === "draft" || quote.status === "awaiting_payment";
 
+  const isHomologadosAwaiting =
+    quote.modality === "homologados" &&
+    (quote.status === "draft" || quote.status === "awaiting_payment");
+
   return (
     <div className="space-y-6">
+      {isHomologadosAwaiting && (
+        <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-4 text-sm">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">⏳</span>
+            <div>
+              <p className="font-medium text-amber-700 dark:text-amber-400">
+                Proposta aguardando pagamento
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Assim que o pagamento for confirmado, sua proposta é publicada
+                aos homologados da região automaticamente. Antes disso, nenhum
+                profissional vê o serviço.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}

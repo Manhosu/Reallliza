@@ -957,6 +957,13 @@ export default function NovoOrcamentoPage() {
                   <p className="text-xs text-muted-foreground">
                     Publica pra homologados da região. Primeiro a aceitar pega a OS.
                   </p>
+                  {/* Jessica 27/07 D7: banner explicando custodia */}
+                  <div className="mt-2 rounded-md border border-amber-400/40 bg-amber-500/10 p-3 text-xs">
+                    <strong className="text-amber-700 dark:text-amber-400">⏳ Sua proposta é enviada aos homologados APÓS a confirmação do pagamento.</strong>
+                    <p className="mt-1 text-muted-foreground">
+                      Isso garante custódia do valor. Antes do pagamento, nenhum profissional recebe a proposta.
+                    </p>
+                  </div>
                 </div>
               )}
 
