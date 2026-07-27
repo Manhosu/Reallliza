@@ -75,6 +75,11 @@ export const teamsApi = {
   deactivate(id: string) {
     return apiClient.delete<{ id: string; name: string }>(`/teams/${id}`);
   },
+  purge(id: string) {
+    return apiClient.delete<{ success: true; id: string }>(
+      `/teams/${id}/purge`
+    );
+  },
   addMember(
     teamId: string,
     data: { technician_id: string; is_leader?: boolean }

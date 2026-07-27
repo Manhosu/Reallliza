@@ -53,4 +53,9 @@ export const partnersApi = {
   deactivate(id: string) {
     return apiClient.patch<Partner>(`/partners/${id}/deactivate`);
   },
+  purge(id: string) {
+    return apiClient.delete<{ success: true; id: string }>(
+      `/partners/${id}/purge`
+    );
+  },
 };

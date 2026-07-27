@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Star,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,6 +36,7 @@ import {
   type Profile,
 } from "@/lib/types";
 import { usersApi, apiClient, specialtiesApi } from "@/lib/api";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 import type { Specialty } from "@/lib/api/specialties";
 import { usePaginatedApi } from "@/hooks/use-api";
 import { useAuthStore } from "@/stores/auth-store";
@@ -134,6 +136,7 @@ export default function UsuariosPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState<string | null>(null);
+  const [purgingUser, setPurgingUser] = useState<Profile | null>(null);
 
   // Especialidades carregadas dinamicamente do CMS (admin gerencia em /especialidades).
   const [specialtyOptions, setSpecialtyOptions] = useState<Specialty[]>([]);
@@ -644,12 +647,19 @@ export default function UsuariosPage() {
                                 <button
                                   onClick={() => handleToggleStatus(user)}
                                   disabled={isTogglingStatus === user.id}
-                                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+                                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-amber-600 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
                                 >
                                   <UserX className="h-4 w-4" />
                                   {user.status === UserStatus.ACTIVE
                                     ? "Desativar"
                                     : "Ativar"}
+                                </button>
+                                <button
+                                  onClick={() => setPurgingUser(user)}
+                                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  Excluir permanentemente
                                 </button>
                               </div>
                             )}
@@ -952,6 +962,18 @@ export default function UsuariosPage() {
           </div>
         </div>
       )}
+
+      <HardDeleteDialog
+        open={!!purgingUser}
+        entityLabel="usuário"
+        entityName={purgingUser?.full_name ?? purgingUser?.email ?? ""}
+        onClose={() => setPurgingUser(null)}
+        onConfirm={async () => {
+          if (!purgingUser) return;
+          await usersApi.purge(purgingUser.id);
+          mutate();
+        }}
+      />
     </div>
   );
 }

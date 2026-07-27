@@ -45,4 +45,9 @@ export const usersApi = {
   updateStatus(id: string, status: UserStatus) {
     return apiClient.patch<Profile>(`/users/${id}/status`, { status });
   },
+  purge(id: string) {
+    return apiClient.delete<{ success: true; id: string }>(
+      `/users/${id}/purge`
+    );
+  },
 };

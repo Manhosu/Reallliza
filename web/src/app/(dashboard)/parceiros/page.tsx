@@ -15,6 +15,7 @@ import {
   Edit,
   Ban,
   CheckCircle2,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
 import { UserRole, type Partner } from "@/lib/types";
 import { partnersApi } from "@/lib/api";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 import { useAuthStore } from "@/stores/auth-store";
 import { usePaginatedApi } from "@/hooks/use-api";
 
@@ -111,6 +113,7 @@ export default function ParceirosPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isTogglingActive, setIsTogglingActive] = useState<string | null>(null);
+  const [purgingPartner, setPurgingPartner] = useState<Partner | null>(null);
 
   // Create form
   const [createForm, setCreateForm] = useState({
@@ -477,7 +480,7 @@ export default function ParceirosPage() {
                         className={cn(
                           "flex items-center gap-1 text-xs font-medium transition-colors disabled:opacity-50",
                           partner.is_active
-                            ? "text-destructive hover:text-destructive/80"
+                            ? "text-amber-600 hover:text-amber-600/80"
                             : "text-green-600 hover:text-green-500"
                         )}
                       >
@@ -492,6 +495,14 @@ export default function ParceirosPage() {
                             Ativar
                           </>
                         )}
+                      </button>
+                      <button
+                        onClick={() => setPurgingPartner(partner)}
+                        className="flex items-center gap-1 text-xs font-medium text-destructive transition-colors hover:text-destructive/80"
+                        title="Excluir permanentemente"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Excluir
                       </button>
                     </div>
                   </div>
@@ -665,6 +676,18 @@ export default function ParceirosPage() {
           </div>
         </div>
       )}
+
+      <HardDeleteDialog
+        open={!!purgingPartner}
+        entityLabel="parceiro"
+        entityName={purgingPartner?.company_name ?? ""}
+        onClose={() => setPurgingPartner(null)}
+        onConfirm={async () => {
+          if (!purgingPartner) return;
+          await partnersApi.purge(purgingPartner.id);
+          mutate();
+        }}
+      />
     </div>
   );
 }

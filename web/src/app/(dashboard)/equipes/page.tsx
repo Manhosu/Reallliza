@@ -22,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { teamsApi, usersApi } from "@/lib/api";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 import type { Team } from "@/lib/api/teams";
 import type { Profile } from "@/lib/types";
 import { UserRole } from "@/lib/types";
@@ -54,6 +55,7 @@ export default function EquipesPage() {
   const [managingMembers, setManagingMembers] = useState<Team | null>(null);
   const [creating, setCreating] = useState(false);
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
+  const [purging, setPurging] = useState<Team | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,10 +120,10 @@ export default function EquipesPage() {
               onManageMembers={() => setManagingMembers(t)}
               onOpenCalendar={() => router.push(`/equipes/${t.id}/calendario`)}
               onDeactivate={async () => {
-                const label = t.is_active ? "excluir" : "reativar";
+                const label = t.is_active ? "desativar" : "reativar";
                 const ok = window.confirm(
                   t.is_active
-                    ? `Excluir a equipe ${t.name}? Ela deixa de aparecer na lista, mas o histórico é preservado.`
+                    ? `Desativar a equipe ${t.name}? Ela some da lista mas o histórico é preservado (pode reativar depois).`
                     : `Reativar a equipe ${t.name}?`
                 );
                 if (!ok) return;
@@ -129,7 +131,7 @@ export default function EquipesPage() {
                 try {
                   if (t.is_active) {
                     await teamsApi.deactivate(t.id);
-                    toast.success("Equipe excluída");
+                    toast.success("Equipe desativada");
                   } else {
                     await teamsApi.update(t.id, { is_active: true });
                     toast.success("Equipe reativada");
@@ -145,6 +147,7 @@ export default function EquipesPage() {
                   setDeactivatingId(null);
                 }
               }}
+              onPurge={() => setPurging(t)}
             />
           ))}
         </div>
@@ -180,6 +183,18 @@ export default function EquipesPage() {
           }}
         />
       )}
+
+      <HardDeleteDialog
+        open={!!purging}
+        entityLabel="equipe"
+        entityName={purging?.name ?? ""}
+        onClose={() => setPurging(null)}
+        onConfirm={async () => {
+          if (!purging) return;
+          await teamsApi.purge(purging.id);
+          await load();
+        }}
+      />
     </div>
   );
 }
@@ -191,6 +206,7 @@ function TeamCard({
   onManageMembers,
   onOpenCalendar,
   onDeactivate,
+  onPurge,
 }: {
   team: Team;
   deactivating: boolean;
@@ -198,6 +214,7 @@ function TeamCard({
   onManageMembers: () => void;
   onOpenCalendar: () => void;
   onDeactivate: () => void | Promise<void>;
+  onPurge: () => void;
 }) {
   return (
     <motion.div
@@ -240,14 +257,22 @@ function TeamCard({
                 variant="ghost"
                 onClick={onDeactivate}
                 disabled={deactivating}
-                title={team.is_active ? "Excluir equipe" : "Reativar equipe"}
+                title={team.is_active ? "Desativar equipe" : "Reativar equipe"}
               >
                 <Trash2
                   className={cn(
                     "h-4 w-4",
-                    team.is_active ? "text-destructive" : "text-muted-foreground"
+                    team.is_active ? "text-amber-600" : "text-muted-foreground"
                   )}
                 />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onPurge}
+                title="Excluir permanentemente"
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
               </Button>
             </div>
           </div>

@@ -42,6 +42,11 @@ export const serviceCategoriesApi = {
   remove(id: string) {
     return apiClient.delete<{ success: true }>(`/service-categories/${id}`);
   },
+  purge(id: string) {
+    return apiClient.delete<{ success: true; id: string }>(
+      `/service-categories/${id}/purge`
+    );
+  },
 };
 
 // ============================================================
@@ -111,6 +116,11 @@ export const servicesApi = {
   },
   remove(id: string) {
     return apiClient.delete<{ success: true }>(`/services/${id}`);
+  },
+  purge(id: string) {
+    return apiClient.delete<{ success: true; id: string }>(
+      `/services/${id}/purge`
+    );
   },
   uploadPhoto(id: string, file: File) {
     const form = new FormData();
