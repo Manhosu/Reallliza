@@ -42,6 +42,17 @@ export async function PATCH(
     if (body.step_template_group_id !== undefined) {
       update.step_template_group_id = body.step_template_group_id || null;
     }
+    // Aditivo Marco 4: array de cursos obrigatorios pra receber OS
+    if (body.required_course_ids !== undefined) {
+      update.required_course_ids = Array.isArray(body.required_course_ids)
+        ? body.required_course_ids.filter(
+            (id: unknown) => typeof id === "string" && id.length > 0
+          )
+        : [];
+    }
+    if (body.specialty_id !== undefined) {
+      update.specialty_id = body.specialty_id || null;
+    }
 
     if (Object.keys(update).length === 0) {
       throw new AuthError(400, "Nada para atualizar");

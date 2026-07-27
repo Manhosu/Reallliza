@@ -82,6 +82,24 @@ export async function POST(
       .maybeSingle();
     if (!tmpl) throw new AuthError(400, "Template de etapas invalido");
 
+    // Aditivo Marco 4: valida cursos obrigatorios das categorias da OS.
+    // Bloqueia se tecnico nao completou algum curso pre-requisito.
+    const { validateCoursePrerequisites } = await import(
+      "@/lib/service-orders/course-prerequisites"
+    );
+    const prereq = await validateCoursePrerequisites(
+      supabase,
+      osId,
+      body.technician_id
+    );
+    if (!prereq.ok) {
+      const list = prereq.missing.map((c) => c.title).join(", ");
+      throw new AuthError(
+        400,
+        `Tecnico nao completou cursos obrigatorios: ${list}`
+      );
+    }
+
     // Provisiona etapas (throws em 409 se ja iniciou — nao deveria em
     // awaiting_assignment mas defensivo).
     await provisionSteps(supabase, osId, body.step_template_group_id);

@@ -190,9 +190,57 @@ export async function convertQuoteToServiceOrder(
     });
   }
 
+  // 5.4. Aditivo Marco 4: se auto-assigned, valida cursos obrigatorios
+  // das categorias contra os membros da equipe. Se nenhum membro cumpre,
+  // downgrade pra awaiting_assignment (admin resolve manual).
+  if (initialStatus === "assigned" && autoAssignedTeamId) {
+    try {
+      const { validateCoursePrerequisites } = await import(
+        "@/lib/service-orders/course-prerequisites"
+      );
+      const { data: members } = await supabase
+        .from("team_members")
+        .select("technician_id")
+        .eq("team_id", autoAssignedTeamId);
+      const memberIds = ((members ?? []) as Array<{ technician_id: string }>)
+        .map((m) => m.technician_id);
+      let anyMemberValid = memberIds.length === 0;
+      for (const mid of memberIds) {
+        const r = await validateCoursePrerequisites(supabase, os.id, mid);
+        if (r.ok) {
+          anyMemberValid = true;
+          break;
+        }
+      }
+      if (!anyMemberValid) {
+        await supabase
+          .from("service_orders")
+          .update({ status: "awaiting_assignment", team_id: null })
+          .eq("id", os.id);
+        await supabase
+          .from("schedules")
+          .update({ team_id: null })
+          .eq("service_order_id", os.id);
+        console.warn(
+          `convertQuote: OS ${os.id} downgrade pra awaiting_assignment — nenhum membro da equipe cumpre cursos obrigatorios`
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `convertQuote: course prereq check failed: ${err instanceof Error ? err.message : err}`
+      );
+    }
+  }
+
   // 5.5. Jessica 27/07 D2+D3: se auto-assigned, dispara category automation
   // ja com status='assigned' (checklist + steps criados sem tecnico individual).
-  if (initialStatus === "assigned") {
+  // Re-le status pra respeitar eventual downgrade acima.
+  const { data: latestOs } = await supabase
+    .from("service_orders")
+    .select("status")
+    .eq("id", os.id)
+    .maybeSingle();
+  if ((latestOs as { status?: string } | null)?.status === "assigned") {
     try {
       const { applyCategoryAutomation } = await import(
         "@/lib/service-orders/category-automation"
