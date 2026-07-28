@@ -18,6 +18,9 @@ import {
   Trash2,
 } from "lucide-react";
 import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
+import { PedidosPanel } from "@/components/ferramentas/pedidos-panel";
+import { ManutencaoPanel } from "@/components/ferramentas/manutencao-panel";
+import { BaixaPanel } from "@/components/ferramentas/baixa-panel";
 import { apiClient } from "@/lib/api/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -93,7 +96,7 @@ const TOOL_CONDITION_COLORS: Record<ToolCondition, string> = {
 // Tab Type
 // ============================================================
 
-type Tab = "inventario" | "custodia";
+type Tab = "inventario" | "custodia" | "pedidos" | "manutencao" | "baixa";
 
 // ============================================================
 // Status Badge Component
@@ -564,6 +567,57 @@ export default function FerramentasPage() {
             )}
           </span>
         </button>
+        <button
+          onClick={() => setActiveTab("pedidos")}
+          className={cn(
+            "relative flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200",
+            activeTab === "pedidos"
+              ? "text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {activeTab === "pedidos" && (
+            <motion.div layoutId="activeToolTab" className="absolute inset-0 rounded-lg bg-background shadow-sm" transition={{ type: "spring", stiffness: 300, damping: 30 }} />
+          )}
+          <span className="relative z-10 flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Pedidos
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab("manutencao")}
+          className={cn(
+            "relative flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200",
+            activeTab === "manutencao"
+              ? "text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {activeTab === "manutencao" && (
+            <motion.div layoutId="activeToolTab" className="absolute inset-0 rounded-lg bg-background shadow-sm" transition={{ type: "spring", stiffness: 300, damping: 30 }} />
+          )}
+          <span className="relative z-10 flex items-center gap-2">
+            <Settings className="h-4 w-4" />
+            Manutenção
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab("baixa")}
+          className={cn(
+            "relative flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200",
+            activeTab === "baixa"
+              ? "text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {activeTab === "baixa" && (
+            <motion.div layoutId="activeToolTab" className="absolute inset-0 rounded-lg bg-background shadow-sm" transition={{ type: "spring", stiffness: 300, damping: 30 }} />
+          )}
+          <span className="relative z-10 flex items-center gap-2">
+            <XCircle className="h-4 w-4" />
+            Baixa
+          </span>
+        </button>
       </motion.div>
 
       {/* Tab Content */}
@@ -946,6 +1000,27 @@ export default function FerramentasPage() {
                 </CardContent>
               </Card>
             )}
+          </motion.div>
+        )}
+
+        {/* Pedidos Operador (Jessica 28/07) */}
+        {activeTab === "pedidos" && (
+          <motion.div key="pedidos" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.3 }}>
+            <PedidosPanel tools={tools ?? []} onChanged={mutateTools} />
+          </motion.div>
+        )}
+
+        {/* Manutenção (Jessica 28/07) */}
+        {activeTab === "manutencao" && (
+          <motion.div key="manutencao" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.3 }}>
+            <ManutencaoPanel tools={tools ?? []} onChanged={mutateTools} />
+          </motion.div>
+        )}
+
+        {/* Baixa/Aposentadoria (Jessica 28/07) */}
+        {activeTab === "baixa" && (
+          <motion.div key="baixa" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.3 }}>
+            <BaixaPanel tools={tools ?? []} onChanged={mutateTools} />
           </motion.div>
         )}
       </AnimatePresence>

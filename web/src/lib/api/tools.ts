@@ -70,6 +70,89 @@ export const toolsApi = {
     );
   },
 
+  // Aditivo Jessica 28/07: fluxo do operador
+  patchRequest(
+    id: string,
+    body: {
+      action:
+        | "approve"
+        | "reject"
+        | "separate"
+        | "ready"
+        | "deliver"
+        | "cancel";
+      rejection_reason?: string;
+      tool_id?: string;
+    }
+  ) {
+    return apiClient.patch<{ request: unknown }>(
+      `/tools/requests/${id}`,
+      body
+    );
+  },
+
+  listMaintenance(params?: { tool_id?: string; pending?: boolean }) {
+    const qs = new URLSearchParams();
+    if (params?.tool_id) qs.set("tool_id", params.tool_id);
+    if (params?.pending) qs.set("pending", "1");
+    const q = qs.toString();
+    return apiClient.get<
+      Array<{
+        id: string;
+        tool_id: string;
+        reason: string;
+        sent_at: string;
+        expected_return_at: string | null;
+        actual_return_at: string | null;
+        estimated_cost: number | null;
+        final_cost: number | null;
+        notes: string | null;
+        outcome: string | null;
+        tool?: { id: string; name: string; serial_number?: string };
+        responsible?: { id: string; full_name: string };
+      }>
+    >(`/tools/maintenance${q ? "?" + q : ""}`);
+  },
+
+  sendToMaintenance(body: {
+    tool_id: string;
+    reason: string;
+    expected_return_at?: string;
+    estimated_cost?: number;
+    notes?: string;
+  }) {
+    return apiClient.post("/tools/maintenance", body);
+  },
+
+  finishMaintenance(
+    id: string,
+    body: {
+      outcome: "returned_available" | "retired";
+      final_cost?: number;
+      outcome_notes?: string;
+    }
+  ) {
+    return apiClient.patch(`/tools/maintenance/${id}`, body);
+  },
+
+  listRetirements() {
+    return apiClient.get<
+      Array<{
+        id: string;
+        tool_id: string;
+        reason: string;
+        notes: string | null;
+        retired_at: string;
+        tool?: { id: string; name: string; serial_number?: string };
+        responsible?: { id: string; full_name: string };
+      }>
+    >("/tools/retirements");
+  },
+
+  retire(body: { tool_id: string; reason: string; notes?: string }) {
+    return apiClient.post("/tools/retirements", body);
+  },
+
   checkout(toolId: string, data: CheckoutToolPayload) {
     return apiClient.post<ToolCustody>(
       `/tools/${toolId}/checkout`,

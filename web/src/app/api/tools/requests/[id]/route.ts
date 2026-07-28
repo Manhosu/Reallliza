@@ -6,8 +6,12 @@ import { logAudit } from "@/lib/api-helpers/audit";
 
 /**
  * PATCH /api/tools/requests/[id]
- * Aprova / rejeita uma solicitacao de ferramenta.
- * Body: { action: 'approve' | 'reject', rejection_reason?: string }
+ * Aprova/rejeita ou avança pelo fluxo do operador (Jessica 28/07):
+ *   pending -> separating -> awaiting_pickup -> delivered
+ * ou pending -> rejected (recusada) ou cancelled.
+ *
+ * Body: { action: 'approve' | 'reject' | 'separate' | 'ready' | 'deliver' | 'cancel',
+ *         rejection_reason?, tool_id? (obrigatorio no deliver) }
  */
 export async function PATCH(
   request: NextRequest,
@@ -17,12 +21,24 @@ export async function PATCH(
     const user = await authenticateRequest(request);
     const { id } = await params;
     const body = (await request.json()) as {
-      action?: "approve" | "reject";
+      action?: string;
       rejection_reason?: string;
+      tool_id?: string;
     };
 
-    if (!body.action || !["approve", "reject"].includes(body.action)) {
-      throw new AuthError(400, "action must be 'approve' or 'reject'");
+    const VALID_ACTIONS = [
+      "approve",
+      "reject",
+      "separate",
+      "ready",
+      "deliver",
+      "cancel",
+    ];
+    if (!body.action || !VALID_ACTIONS.includes(body.action)) {
+      throw new AuthError(
+        400,
+        `action must be one of: ${VALID_ACTIONS.join(", ")}`
+      );
     }
 
     const supabase = getAdminClient();
@@ -40,7 +56,7 @@ export async function PATCH(
 
     const { data: current, error: fetchError } = await supabase
       .from("tool_requests")
-      .select("id, status, requester_id, tool_name, quantity, priority")
+      .select("id, status, requester_id, tool_name, quantity, priority, tool_id")
       .eq("id", id)
       .single();
 
@@ -48,27 +64,73 @@ export async function PATCH(
       throw new AuthError(404, "Solicitacao nao encontrada");
     }
 
-    if (current.status !== "pending") {
+    // State machine simples
+    const ALLOWED: Record<string, string[]> = {
+      pending: ["approve", "separate", "reject", "cancel"],
+      approved: ["separate", "reject", "cancel"],
+      separating: ["ready", "cancel"],
+      awaiting_pickup: ["deliver", "cancel"],
+      delivered: [],
+      released: [],
+      rejected: [],
+      cancelled: [],
+    };
+    const allowed = ALLOWED[current.status] || [];
+    if (!allowed.includes(body.action)) {
       throw new AuthError(
         400,
-        `Solicitacao ja esta em status '${current.status}'; nao pode mudar.`
+        `Acao '${body.action}' nao permitida em status '${current.status}'.`
       );
     }
 
     const nowIso = new Date().toISOString();
-    const update =
-      body.action === "approve"
-        ? {
-            status: "approved",
-            approved_by: user.id,
-            approved_at: nowIso,
-          }
-        : {
-            status: "rejected",
-            rejected_by: user.id,
-            rejected_at: nowIso,
-            rejection_reason: body.rejection_reason?.trim() || null,
-          };
+    let update: Record<string, unknown> = {};
+    if (body.action === "approve") {
+      update = { status: "approved", approved_by: user.id, approved_at: nowIso };
+    } else if (body.action === "separate") {
+      update = { status: "separating" };
+    } else if (body.action === "ready") {
+      update = { status: "awaiting_pickup" };
+    } else if (body.action === "deliver") {
+      // Cria custody + move pra delivered
+      if (!body.tool_id && !current.tool_id) {
+        throw new AuthError(400, "tool_id obrigatorio no deliver");
+      }
+      const toolId = body.tool_id || (current.tool_id as string);
+      const { data: cust, error: cErr } = await supabase
+        .from("tool_custody")
+        .insert({
+          tool_id: toolId,
+          user_id: current.requester_id,
+          checked_out_at: nowIso,
+          condition_out: "good",
+          delivered_by: user.id,
+        })
+        .select("id")
+        .single();
+      if (cErr || !cust) {
+        throw new Error(`Falha criar custody: ${cErr?.message}`);
+      }
+      await supabase
+        .from("tool_inventory")
+        .update({ status: "in_custody" })
+        .eq("id", toolId);
+      update = {
+        status: "delivered",
+        released_by: user.id,
+        released_at: nowIso,
+        custody_id: (cust as { id: string }).id,
+      };
+    } else if (body.action === "reject") {
+      update = {
+        status: "rejected",
+        rejected_by: user.id,
+        rejected_at: nowIso,
+        rejection_reason: body.rejection_reason?.trim() || null,
+      };
+    } else if (body.action === "cancel") {
+      update = { status: "cancelled" };
+    }
 
     const { data: updated, error: updateError } = await supabase
       .from("tool_requests")
