@@ -117,6 +117,20 @@ export async function POST(
       throw new Error(`Falha update service_orders: ${updateErr.message}`);
     }
 
+    // Aditivo Marco 4: dispara category automation apos assign manual
+    // (o hook em /status route so' dispara em 'assigned'|'in_progress',
+    // mas o /assign passa direto pra 'pending' via state machine).
+    try {
+      const { applyCategoryAutomation } = await import(
+        "@/lib/service-orders/category-automation"
+      );
+      await applyCategoryAutomation(supabase, osId);
+    } catch (err) {
+      console.warn(
+        `assign: category automation failed: ${err instanceof Error ? err.message : err}`
+      );
+    }
+
     // Historico de status
     await supabase.from("os_status_history").insert({
       service_order_id: osId,
