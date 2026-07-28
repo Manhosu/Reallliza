@@ -186,16 +186,7 @@ export function ToolsScreen() {
           </View>
         ) : tab === 'custody' ? (
           <>
-            <TouchableOpacity
-              style={styles.requestButton}
-              onPress={() =>
-                (navigation as any).getParent()?.navigate('ToolRequest')
-              }
-            >
-              <Ionicons name="add-circle" size={20} color={colors.black} />
-              <Text style={styles.requestButtonText}>Solicitar Ferramenta</Text>
-            </TouchableOpacity>
-
+            {/* Jessica 28/07: Custodia so' visualiza. Botao solicitar fica em Pedidos. */}
             {custodies.length === 0 ? (
               <EmptyState
                 icon="hammer-outline"
@@ -239,9 +230,11 @@ export function ToolsScreen() {
           <>
             <TouchableOpacity
               style={styles.requestButton}
-              onPress={() =>
-                (navigation as any).getParent()?.navigate('ToolRequest')
-              }
+              onPress={() => {
+                // Jessica 28/07 bug fix: navega direto no ToolsStack.
+                // getParent() ia pro main-tabs (que nao conhece ToolRequest).
+                (navigation as any).navigate('ToolRequest');
+              }}
             >
               <Ionicons name="add-circle" size={20} color={colors.black} />
               <Text style={styles.requestButtonText}>Nova solicitação</Text>

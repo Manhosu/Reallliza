@@ -64,6 +64,12 @@ export const toolsApi = {
     return apiClient.put<ToolInventory>(`/tools/${id}`, data);
   },
 
+  purge(id: string) {
+    return apiClient.delete<{ success: true; id: string }>(
+      `/tools/${id}/purge`
+    );
+  },
+
   checkout(toolId: string, data: CheckoutToolPayload) {
     return apiClient.post<ToolCustody>(
       `/tools/${toolId}/checkout`,

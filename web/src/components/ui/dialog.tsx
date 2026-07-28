@@ -65,6 +65,9 @@ function Dialog({ open, onClose, children, size = "md" }: DialogProps) {
         className={cn(
           "relative z-10 w-full rounded-xl border bg-card text-card-foreground shadow-lg",
           "animate-in fade-in-0 zoom-in-95 duration-200",
+          // Jessica 28/07 fix: scroll interno pra dialog long (cadastro
+          // de template com muitas etapas nao rolava e cortava o botao salvar)
+          "max-h-[90vh] overflow-y-auto",
           sizeClasses[size]
         )}
       >

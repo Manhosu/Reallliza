@@ -14,7 +14,10 @@ import {
   CheckCircle2,
   Settings,
   XCircle,
+  Edit,
+  Trash2,
 } from "lucide-react";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 import { apiClient } from "@/lib/api/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -343,6 +346,10 @@ export default function FerramentasPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  // Jessica 28/07: modal editar + hard delete + status change
+  const [editingTool, setEditingTool] = useState<ToolInventory | null>(null);
+  const [purgingTool, setPurgingTool] = useState<ToolInventory | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [createForm, setCreateForm] = useState({
     name: "",
     description: "",
@@ -707,6 +714,27 @@ export default function FerramentasPage() {
                               {tool.description}
                             </p>
                           )}
+
+                          {/* Actions (Jessica 28/07 D6) */}
+                          <div className="flex items-center gap-1 border-t pt-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="flex-1"
+                              onClick={() => setEditingTool(tool)}
+                            >
+                              <Edit className="h-3.5 w-3.5 mr-1" />
+                              Editar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setPurgingTool(tool)}
+                              title="Excluir permanentemente"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -1057,6 +1085,177 @@ export default function FerramentasPage() {
           </div>
         </div>
       )}
+
+      {/* Modal Editar (Jessica 28/07) */}
+      {editingTool && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setEditingTool(null)}
+          />
+          <div className="relative z-10 w-full max-w-lg rounded-xl bg-card border p-6 shadow-xl mx-4 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg font-semibold mb-4">
+              Editar: {editingTool.name}
+            </h2>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Nome</label>
+                <Input
+                  value={editingTool.name}
+                  onChange={(e) =>
+                    setEditingTool({ ...editingTool, name: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Status</label>
+                  <SelectNative
+                    value={editingTool.status}
+                    onChange={(e) =>
+                      setEditingTool({
+                        ...editingTool,
+                        status: e.target.value as ToolInventory["status"],
+                      })
+                    }
+                  >
+                    <option value="available">Disponível</option>
+                    <option value="in_custody">Em custódia</option>
+                    <option value="maintenance">Em manutenção</option>
+                    <option value="retired">Aposentada</option>
+                  </SelectNative>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Condição</label>
+                  <SelectNative
+                    value={editingTool.condition ?? "good"}
+                    onChange={(e) =>
+                      setEditingTool({
+                        ...editingTool,
+                        condition: e.target.value as ToolInventory["condition"],
+                      })
+                    }
+                  >
+                    <option value="new">Nova</option>
+                    <option value="good">Boa</option>
+                    <option value="regular">Regular</option>
+                    <option value="poor">Ruim</option>
+                    <option value="damaged">Danificada</option>
+                  </SelectNative>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Categoria</label>
+                  <Input
+                    value={editingTool.category ?? ""}
+                    onChange={(e) =>
+                      setEditingTool({ ...editingTool, category: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Número de série</label>
+                  <Input
+                    value={editingTool.serial_number ?? ""}
+                    onChange={(e) =>
+                      setEditingTool({
+                        ...editingTool,
+                        serial_number: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Descrição</label>
+                <textarea
+                  value={editingTool.description ?? ""}
+                  onChange={(e) =>
+                    setEditingTool({
+                      ...editingTool,
+                      description: e.target.value,
+                    })
+                  }
+                  rows={3}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Observações</label>
+                <textarea
+                  value={editingTool.notes ?? ""}
+                  onChange={(e) =>
+                    setEditingTool({ ...editingTool, notes: e.target.value })
+                  }
+                  rows={2}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
+                />
+              </div>
+            </div>
+            <div className="flex justify-between gap-3 mt-6">
+              <Button
+                variant="outline"
+                className="text-destructive"
+                onClick={() => {
+                  const t = editingTool;
+                  setEditingTool(null);
+                  setPurgingTool(t);
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Excluir
+              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setEditingTool(null)}>
+                  Cancelar
+                </Button>
+                <Button
+                  isLoading={isSavingEdit}
+                  onClick={async () => {
+                    if (!editingTool) return;
+                    setIsSavingEdit(true);
+                    try {
+                      await toolsApi.update(editingTool.id, {
+                        name: editingTool.name,
+                        description: editingTool.description,
+                        serial_number: editingTool.serial_number,
+                        category: editingTool.category,
+                        condition: editingTool.condition,
+                        notes: editingTool.notes,
+                        status: editingTool.status,
+                      });
+                      toast.success("Ferramenta atualizada");
+                      setEditingTool(null);
+                      mutateTools();
+                    } catch (err) {
+                      toast.error(
+                        err instanceof Error ? err.message : "Falha ao salvar"
+                      );
+                    } finally {
+                      setIsSavingEdit(false);
+                    }
+                  }}
+                >
+                  Salvar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <HardDeleteDialog
+        open={!!purgingTool}
+        entityLabel="ferramenta"
+        entityName={purgingTool?.name ?? ""}
+        onClose={() => setPurgingTool(null)}
+        onConfirm={async () => {
+          if (!purgingTool) return;
+          await toolsApi.purge(purgingTool.id);
+          mutateTools();
+        }}
+      />
     </div>
   );
 }
