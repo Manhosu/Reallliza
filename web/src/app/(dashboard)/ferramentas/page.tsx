@@ -21,6 +21,7 @@ import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 import { PedidosPanel } from "@/components/ferramentas/pedidos-panel";
 import { ManutencaoPanel } from "@/components/ferramentas/manutencao-panel";
 import { BaixaPanel } from "@/components/ferramentas/baixa-panel";
+import { DevolucaoModal } from "@/components/ferramentas/devolucao-modal";
 import { apiClient } from "@/lib/api/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -349,10 +350,11 @@ export default function FerramentasPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
-  // Jessica 28/07: modal editar + hard delete + status change
+  // Jessica 28/07: modal editar + hard delete + status change + devolucao
   const [editingTool, setEditingTool] = useState<ToolInventory | null>(null);
   const [purgingTool, setPurgingTool] = useState<ToolInventory | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [returningCustodyId, setReturningCustodyId] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
     name: "",
     description: "",
@@ -420,16 +422,21 @@ export default function FerramentasPage() {
     { value: ToolStatus.RETIRED, label: "Aposentada" },
   ];
 
+  // handleCheckin legado (substituido por DevolucaoModal). Mantido pra
+  // qualquer chamada sem UI expandida.
   const handleCheckin = async (custodyId: string) => {
     try {
       await toolsApi.checkin(custodyId, { condition_in: ToolCondition.GOOD });
       toast.success("Devolução registrada com sucesso!");
       mutateCustodies();
       mutateTools();
-    } catch (err: any) {
-      toast.error(err?.message || "Erro ao registrar devolução");
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : "Erro ao registrar devolução";
+      toast.error(msg);
     }
   };
+  void handleCheckin; // silencia lint no caso de UI antiga desativada
 
   const handleCreateTool = async () => {
     if (!createForm.name.trim()) {
@@ -919,7 +926,7 @@ export default function FerramentasPage() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => handleCheckin(custody.id)}
+                                  onClick={() => setReturningCustodyId(custody.id)}
                                 >
                                   <CheckCircle2 className="h-3.5 w-3.5" />
                                   Registrar Devolução
@@ -989,7 +996,7 @@ export default function FerramentasPage() {
                           variant="outline"
                           size="sm"
                           className="w-full"
-                          onClick={() => handleCheckin(custody.id)}
+                          onClick={() => setReturningCustodyId(custody.id)}
                         >
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           Registrar Devolucao
@@ -1331,6 +1338,21 @@ export default function FerramentasPage() {
           mutateTools();
         }}
       />
+
+      {returningCustodyId && (() => {
+        const c = (custodies ?? []).find((x) => x.id === returningCustodyId);
+        return (
+          <DevolucaoModal
+            custodyId={returningCustodyId}
+            toolId={c?.tool_id}
+            onClose={() => setReturningCustodyId(null)}
+            onDone={async () => {
+              mutateCustodies();
+              mutateTools();
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

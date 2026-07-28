@@ -1,15 +1,18 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Clock, Check, X, ChevronRight, User } from "lucide-react";
+import { Clock, Check, X, ChevronRight, User, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toolsApi } from "@/lib/api";
 import { apiClient } from "@/lib/api/client";
+import { uploadToolPhoto } from "@/lib/tools/upload-photo";
 import type { ToolInventory } from "@/lib/types";
 
 interface ToolRequest {
@@ -89,6 +92,7 @@ export function PedidosPanel({
   const [requests, setRequests] = useState<ToolRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [deliveringReq, setDeliveringReq] = useState<ToolRequest | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -115,37 +119,9 @@ export function PedidosPanel({
     req: ToolRequest,
     action: "separate" | "ready" | "deliver" | "reject" | "cancel"
   ) => {
-    if (action === "deliver" && !req.tool_id) {
-      // Precisa escolher ferramenta antes de entregar
-      const availableTools = tools.filter(
-        (t) => t.status === "available" && t.name.toLowerCase().includes(req.tool_name.toLowerCase().split(" ")[0] ?? "")
-      );
-      if (availableTools.length === 0) {
-        toast.error("Nenhuma ferramenta disponível compatível");
-        return;
-      }
-      const toolId = window.prompt(
-        `Ferramentas disponíveis:\n${availableTools
-          .map((t) => `${t.id.slice(0, 8)} — ${t.name} (${t.serial_number ?? "sem serial"})`)
-          .join("\n")}\n\nCole o ID (8 chars):`
-      );
-      if (!toolId) return;
-      const matched = availableTools.find((t) => t.id.startsWith(toolId));
-      if (!matched) {
-        toast.error("Ferramenta não encontrada");
-        return;
-      }
-      setProcessingId(req.id);
-      try {
-        await toolsApi.patchRequest(req.id, { action, tool_id: matched.id });
-        toast.success("Entregue");
-        await load();
-        onChanged();
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Falha");
-      } finally {
-        setProcessingId(null);
-      }
+    if (action === "deliver") {
+      // Abre modal de entrega (foto + condicao + escolha da unidade)
+      setDeliveringReq(req);
       return;
     }
     if (action === "reject") {
@@ -274,6 +250,195 @@ export function PedidosPanel({
           </div>
         )}
       </CardContent>
+
+      {deliveringReq && (
+        <EntregaModal
+          request={deliveringReq}
+          tools={tools}
+          onClose={() => setDeliveringReq(null)}
+          onDone={async () => {
+            setDeliveringReq(null);
+            await load();
+            onChanged();
+          }}
+        />
+      )}
     </Card>
+  );
+}
+
+function EntregaModal({
+  request,
+  tools,
+  onClose,
+  onDone,
+}: {
+  request: ToolRequest;
+  tools: ToolInventory[];
+  onClose: () => void;
+  onDone: () => Promise<void>;
+}) {
+  const firstWord = request.tool_name.toLowerCase().split(" ")[0] ?? "";
+  const available = tools.filter(
+    (t) => t.status === "available" && t.name.toLowerCase().includes(firstWord)
+  );
+  const fallback = tools.filter((t) => t.status === "available");
+  const options = available.length > 0 ? available : fallback;
+
+  const [toolId, setToolId] = useState(request.tool_id ?? options[0]?.id ?? "");
+  const [condition, setCondition] = useState("good");
+  const [notes, setNotes] = useState("");
+  const [photos, setPhotos] = useState<
+    Array<{ url: string; name: string; storage_path?: string }>
+  >([]);
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleFile = async (f: File) => {
+    if (!toolId) {
+      toast.error("Escolha a ferramenta primeiro");
+      return;
+    }
+    setUploading(true);
+    try {
+      const p = await uploadToolPhoto(f, "delivery", toolId);
+      setPhotos((prev) => [...prev, p]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha upload");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const submit = async () => {
+    if (!toolId) {
+      toast.error("Escolha a ferramenta");
+      return;
+    }
+    setSaving(true);
+    try {
+      await toolsApi.patchRequest(request.id, {
+        action: "deliver",
+        tool_id: toolId,
+        condition_out: condition,
+        notes_out: notes || undefined,
+        photos_out: photos,
+      });
+      toast.success("Entregue");
+      await onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md rounded-xl bg-card border p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Entregar ferramenta</h2>
+          <Button size="sm" variant="ghost" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          Pedido de {request.requester_name ?? "técnico"}:{" "}
+          <strong>{request.quantity}x {request.tool_name}</strong>
+        </p>
+        <div className="space-y-3">
+          <div>
+            <label className="text-sm font-medium">Ferramenta física</label>
+            <SelectNative
+              value={toolId}
+              onChange={(e) => setToolId(e.target.value)}
+              className="mt-1"
+            >
+              <option value="">Escolha...</option>
+              {options.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                  {t.serial_number && ` — ${t.serial_number}`}
+                </option>
+              ))}
+            </SelectNative>
+          </div>
+          <div>
+            <label className="text-sm font-medium">Condição na entrega</label>
+            <SelectNative
+              value={condition}
+              onChange={(e) => setCondition(e.target.value)}
+              className="mt-1"
+            >
+              <option value="good">Boa</option>
+              <option value="fair">Desgaste normal</option>
+              <option value="new">Nova</option>
+            </SelectNative>
+          </div>
+          <div>
+            <label className="text-sm font-medium">Observação</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Opcional"
+              className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium">
+              Fotos ({photos.length})
+            </label>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {photos.map((p, i) => (
+                <div key={i} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.url}
+                    alt={p.name}
+                    className="h-16 w-16 rounded-md object-cover border"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPhotos((prev) => prev.filter((_, idx) => idx !== i))
+                    }
+                    className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-md border border-dashed hover:bg-secondary/50">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleFile(f);
+                    e.target.value = "";
+                  }}
+                  disabled={uploading || !toolId}
+                />
+                <Upload className="h-4 w-4 text-muted-foreground" />
+              </label>
+            </div>
+            {uploading && (
+              <p className="text-xs text-muted-foreground mt-1">Enviando...</p>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button onClick={submit} isLoading={saving} disabled={uploading || !toolId}>
+              Confirmar entrega
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

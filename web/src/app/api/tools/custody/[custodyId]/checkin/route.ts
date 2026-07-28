@@ -21,7 +21,12 @@ export async function POST(
     const { custodyId } = await params;
 
     const body = await request.json();
-    const { condition_in, notes_in } = body;
+    const { condition_in, notes_in, photos_in, new_status } = body as {
+      condition_in?: string;
+      notes_in?: string;
+      photos_in?: Array<{ url: string; name: string; storage_path?: string }>;
+      new_status?: string; // Jessica 28/07: operador escolhe o destino da ferramenta
+    };
 
     if (!condition_in) {
       return jsonResponse(
@@ -63,6 +68,8 @@ export async function POST(
         checked_in_at: new Date().toISOString(),
         condition_in,
         notes_in: notes_in || null,
+        photos_in: Array.isArray(photos_in) ? photos_in : [],
+        received_by: user.id,
       })
       .eq("id", custodyId)
       .select()
@@ -75,11 +82,22 @@ export async function POST(
       throw new Error("Failed to update custody record");
     }
 
-    // Determine new tool status based on condition
+    // Jessica 28/07: se operador escolheu status explicito, respeita.
+    // Senao, aplica regra: poor/damaged -> maintenance, resto -> available.
+    const VALID_STATUSES = [
+      "available",
+      "maintenance",
+      "retired",
+      "damaged",
+      "awaiting_evaluation",
+      "missing",
+    ];
     const newStatus =
-      condition_in === "poor" || condition_in === "damaged"
-        ? "maintenance"
-        : "available";
+      new_status && VALID_STATUSES.includes(new_status)
+        ? new_status
+        : condition_in === "poor" || condition_in === "damaged"
+          ? "maintenance"
+          : "available";
 
     // Update tool status and condition
     const { error: updateToolError } = await supabase

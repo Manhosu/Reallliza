@@ -97,13 +97,22 @@ export async function PATCH(
         throw new AuthError(400, "tool_id obrigatorio no deliver");
       }
       const toolId = body.tool_id || (current.tool_id as string);
+      // Jessica 28/07: aceita photos_out + condition_out + notes_out do payload
+      const b = body as {
+        tool_id?: string;
+        condition_out?: string;
+        notes_out?: string;
+        photos_out?: Array<{ url: string; name: string; storage_path?: string }>;
+      };
       const { data: cust, error: cErr } = await supabase
         .from("tool_custody")
         .insert({
           tool_id: toolId,
           user_id: current.requester_id,
           checked_out_at: nowIso,
-          condition_out: "good",
+          condition_out: b.condition_out || "good",
+          notes_out: b.notes_out || null,
+          photos_out: Array.isArray(b.photos_out) ? b.photos_out : [],
           delivered_by: user.id,
         })
         .select("id")

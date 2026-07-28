@@ -83,6 +83,9 @@ export const toolsApi = {
         | "cancel";
       rejection_reason?: string;
       tool_id?: string;
+      condition_out?: string;
+      notes_out?: string;
+      photos_out?: Array<{ url: string; name: string; storage_path?: string }>;
     }
   ) {
     return apiClient.patch<{ request: unknown }>(
