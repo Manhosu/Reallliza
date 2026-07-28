@@ -94,12 +94,18 @@ function ChatPanel({ os, onClose }: { os: OsWithLastMessage; onClose?: () => voi
     const content = text.trim();
     if (!content || sending) return;
     setSending(true);
-    setText("");
+    // Jessica 28/07: nao limpa antes do sucesso, senao mensagem some
+    // sem feedback quando POST falha.
     try {
       const msg = await messagesApi.send(os.id, content);
       setMessages((prev) => [...prev, msg]);
+      setText("");
     } catch (e) {
-      console.error(e);
+      console.error("chat send failed", e);
+      const { toast } = await import("sonner");
+      toast.error(
+        e instanceof Error ? e.message : "Falha ao enviar mensagem"
+      );
     } finally {
       setSending(false);
     }

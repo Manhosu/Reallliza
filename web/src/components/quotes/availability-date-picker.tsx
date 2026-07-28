@@ -195,9 +195,20 @@ export function AvailabilityDatePicker({
   const handleClick = (d: Date) => {
     const iso = fmtISO(d);
     if (specialtyId) {
+      // Jessica 28/07 bug: se activeTeam ainda nao carregou (teamData ==
+      // null), blocked fica vazio e cliente conseguia agendar em dia
+      // bloqueado. Bloqueia o clique ate' o load terminar.
+      if (!teamData || !activeTeam) return;
       // Modo novo: monta bloco de N dias
       const block = tryBuildBlock(iso, daysNeeded, holidays, blocked);
       if (!block) return;
+      // Valida: se algum dia do bloco esta bloqueado pela equipe,
+      // rejeita. tryBuildBlock ja pula dias bloqueados, mas se o
+      // primeiro dia clicado esta bloqueado ele avanca. Aqui garantimos
+      // que o dia CLICADO esta livre.
+      if (blocked.has(iso) || isWeekend(iso)) {
+        return;
+      }
       onChange(daysNeeded === 1 && isMulti === false ? block[0] : block, selectedTeamId);
       setOpen(false);
     } else {
