@@ -24,7 +24,7 @@ interface CreateNotificationOptions {
  * Cria uma notificação para o usuário (Execução).
  *
  * Persiste em `notifications` e dispara push Expo (fire-and-forget).
- * O som customizado "realliza.wav" e channel `realliza-urgent` são usados
+ * O som customizado "realliza.mp3" e channel `realliza-urgent` são usados
  * em prioridades `high` ou `urgent` — coloca a notificação em destaque na
  * gaveta do Android e toca o áudio identitário no foreground/background.
  */
