@@ -187,6 +187,7 @@ export async function convertQuoteToServiceOrder(
       total_hours: Number(quote.total_hours),
       partner_id: (quote.partner_id as string | null) ?? null,
       team_id: autoAssignedTeamId,
+      allow_weekend: !!(quote as { allow_weekend?: boolean }).allow_weekend,
     });
   }
 
@@ -339,12 +340,13 @@ async function scheduleReallizaJobs(
     total_hours: number;
     partner_id: string | null;
     team_id?: string | null;
+    allow_weekend?: boolean;
   }
 ): Promise<void> {
   const totalDays = Math.ceil(opts.total_hours / 8);
   if (totalDays <= 0) return;
 
-  // Feriados ativos pra pular
+  // Feriados ativos pra pular (sempre respeitados, mesmo com allow_weekend)
   const { data: holidays } = await supabase
     .from("public_holidays")
     .select("date")
@@ -381,9 +383,11 @@ async function scheduleReallizaJobs(
     safety++;
     const dateStr = current.toISOString().slice(0, 10);
     const dow = current.getDay();
-    const isSunday = dow === 0;
+    // Jessica 03/08: se allow_weekend, so' pula feriado (nao pula sab/dom).
+    // Senao (padrao), pula sabado (6), domingo (0) e feriado.
+    const skipWeekend = !opts.allow_weekend && (dow === 0 || dow === 6);
     const isHoliday = holidaySet.has(dateStr);
-    if (!isSunday && !isHoliday) {
+    if (!skipWeekend && !isHoliday) {
       inserts.push({
         service_order_id: serviceOrderId,
         technician_id: null, // equipe distribui internamente
@@ -401,6 +405,13 @@ async function scheduleReallizaJobs(
   }
 
   if (inserts.length > 0) {
-    await supabase.from("schedules").insert(inserts);
+    // Jessica 03/08 fix: log de erro antes silencioso (era o motivo dos
+    // schedules nao aparecerem no calendario da equipe).
+    const { error: schErr } = await supabase.from("schedules").insert(inserts);
+    if (schErr) {
+      console.error(
+        `scheduleReallizaJobs: falha inserir ${inserts.length} schedules: ${schErr.message}`
+      );
+    }
   }
 }

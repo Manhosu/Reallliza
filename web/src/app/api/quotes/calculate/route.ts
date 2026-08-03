@@ -85,6 +85,7 @@ export async function POST(request: NextRequest) {
         (body.service_address_street as string | undefined) ?? null,
       service_date: (body.service_date as string | undefined) ?? null,
       service_time: (body.service_time as string | undefined) ?? null,
+      allow_weekend: !!body.allow_weekend,
       manual_total_amount:
         typeof body.manual_total_amount === "number"
           ? body.manual_total_amount

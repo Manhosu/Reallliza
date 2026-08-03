@@ -132,6 +132,7 @@ export interface CreateQuotePayload {
   modality?: QuoteModality;
   service_date?: string;
   service_time?: string;
+  allow_weekend?: boolean;
   region_city?: string;
   region_state?: string;
   manual_total_amount?: number;

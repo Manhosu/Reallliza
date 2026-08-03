@@ -229,6 +229,7 @@ export async function POST(request: NextRequest) {
         service_address_street: body.address_street ?? null,
         service_date: body.service_date ?? null,
         service_time: body.service_time ?? null,
+        allow_weekend: !!body.allow_weekend,
         manual_total_amount:
           typeof body.manual_total_amount === "number"
             ? body.manual_total_amount
@@ -306,6 +307,8 @@ export async function POST(request: NextRequest) {
       // Anexos Jessica 16/07
       project_files: Array.isArray(body.project_files) ? body.project_files : [],
       material_files: Array.isArray(body.material_files) ? body.material_files : [],
+      // Jessica 03/08: opt-in fim de semana
+      allow_weekend: !!body.allow_weekend,
     };
 
     if (calc) {

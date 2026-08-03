@@ -49,6 +49,7 @@ interface Props {
   onChange: (block: string | string[], teamId?: string) => void;
   daysNeeded?: number;
   specialtyId?: string | null;
+  allowWeekend?: boolean;
   placeholder?: string;
   disabled?: boolean;
 }
@@ -90,16 +91,19 @@ function tryBuildBlock(
   startISO: string,
   daysNeeded: number,
   holidays: Set<string>,
-  blocked: Set<string>
+  blocked: Set<string>,
+  allowWeekend = false
 ): string[] | null {
   const days: string[] = [];
   const cursor = new Date(`${startISO}T00:00:00`);
   let safety = 0;
   while (days.length < daysNeeded && safety < 120) {
     const iso = fmtISO(cursor);
-    if (!isWeekend(iso) && !holidays.has(iso) && !blocked.has(iso)) {
-      days.push(iso);
-    }
+    const skip =
+      (!allowWeekend && isWeekend(iso)) ||
+      holidays.has(iso) ||
+      blocked.has(iso);
+    if (!skip) days.push(iso);
     cursor.setDate(cursor.getDate() + 1);
     safety++;
   }
@@ -111,6 +115,7 @@ export function AvailabilityDatePicker({
   onChange,
   daysNeeded = 1,
   specialtyId,
+  allowWeekend = false,
   placeholder = "Escolha a data",
   disabled,
 }: Props) {
@@ -195,18 +200,17 @@ export function AvailabilityDatePicker({
   const handleClick = (d: Date) => {
     const iso = fmtISO(d);
     if (specialtyId) {
-      // Jessica 28/07 bug: se activeTeam ainda nao carregou (teamData ==
-      // null), blocked fica vazio e cliente conseguia agendar em dia
-      // bloqueado. Bloqueia o clique ate' o load terminar.
       if (!teamData || !activeTeam) return;
-      // Modo novo: monta bloco de N dias
-      const block = tryBuildBlock(iso, daysNeeded, holidays, blocked);
+      // Jessica 03/08: allowWeekend permite selecionar sabado/domingo
+      const block = tryBuildBlock(
+        iso,
+        daysNeeded,
+        holidays,
+        blocked,
+        allowWeekend
+      );
       if (!block) return;
-      // Valida: se algum dia do bloco esta bloqueado pela equipe,
-      // rejeita. tryBuildBlock ja pula dias bloqueados, mas se o
-      // primeiro dia clicado esta bloqueado ele avanca. Aqui garantimos
-      // que o dia CLICADO esta livre.
-      if (blocked.has(iso) || isWeekend(iso)) {
+      if (blocked.has(iso) || (!allowWeekend && isWeekend(iso))) {
         return;
       }
       onChange(daysNeeded === 1 && isMulti === false ? block[0] : block, selectedTeamId);

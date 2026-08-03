@@ -169,6 +169,8 @@ export default function NovoOrcamentoPage() {
   const [modality, setModality] = useState<Modality>("reallliza");
   const [serviceDate, setServiceDate] = useState("");
   const [serviceTime, setServiceTime] = useState("");
+  // Jessica 03/08: opt-in fim de semana
+  const [allowWeekend, setAllowWeekend] = useState(false);
   // Modalidade homologados
   const [manualTotal, setManualTotal] = useState("");
   const [regionCity, setRegionCity] = useState("");
@@ -368,6 +370,7 @@ export default function NovoOrcamentoPage() {
         service_address_street: addressStreet.trim() || undefined,
         service_date: serviceDate || undefined,
         service_time: serviceTime || undefined,
+        allow_weekend: allowWeekend,
         manual_total_amount:
           modality === "homologados" && manualTotal
             ? Number(manualTotal.replace(",", "."))
@@ -514,6 +517,7 @@ export default function NovoOrcamentoPage() {
         modality,
         service_date: serviceDate || undefined,
         service_time: serviceTime || undefined,
+        allow_weekend: allowWeekend,
         region_city: modality === "homologados" ? regionCity : undefined,
         region_state: modality === "homologados" ? regionState : undefined,
         manual_total_amount:
@@ -900,6 +904,7 @@ export default function NovoOrcamentoPage() {
                         }}
                         daysNeeded={daysNeeded}
                         specialtyId={dominantSpecId}
+                        allowWeekend={allowWeekend}
                         placeholder="Ver agenda"
                       />
                       <Input
@@ -913,6 +918,25 @@ export default function NovoOrcamentoPage() {
                         ? "Só equipes qualificadas na especialidade dominante. Clique num dia livre pra reservar o bloco completo."
                         : "Só mostra datas com vaga. Sábado destacado (+25% sobre serviços). Domingo/feriado bloqueados."}
                     </p>
+                    {/* Jessica 03/08: opt-in fim de semana */}
+                    <label className="flex items-start gap-2 rounded-md border border-amber-400/40 bg-amber-500/5 p-3 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={allowWeekend}
+                        onChange={(e) => setAllowWeekend(e.target.checked)}
+                        className="mt-0.5"
+                      />
+                      <span>
+                        <strong className="text-amber-700 dark:text-amber-400">
+                          Autorizar execução em sábado/domingo
+                        </strong>
+                        <br />
+                        <span className="text-muted-foreground">
+                          Os dias de fim de semana entram no cronograma. Uma
+                          taxa de +25% sobre o subtotal de serviços é aplicada.
+                        </span>
+                      </span>
+                    </label>
                   </div>
                 );
               })()}

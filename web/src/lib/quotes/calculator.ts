@@ -54,6 +54,8 @@ export interface QuoteCalcInput {
   service_address_street?: string | null;
   service_date?: string | null; // YYYY-MM-DD
   service_time?: string | null; // HH:MM
+  /** Jessica 03/08: cliente autorizou execucao em fim de semana (aplica +25%) */
+  allow_weekend?: boolean;
   /** Modalidade homologados: valor manual definido pela loja */
   manual_total_amount?: number | null;
 }
@@ -434,6 +436,15 @@ export async function calculateQuote(
       input.service_time ?? null,
       settings
     );
+    // Jessica 03/08: se cliente autorizou fim de semana explicitamente,
+    // aplica +25% mesmo se dia inicial for util (parte da execucao vai
+    // cair em sabado/domingo). Cobra a taxa uma vez sobre subtotal_services.
+    if (
+      (input as { allow_weekend?: boolean }).allow_weekend &&
+      !is_special_hour
+    ) {
+      is_special_hour = true;
+    }
     if (is_special_hour) {
       special_hour_extra =
         Math.round(
