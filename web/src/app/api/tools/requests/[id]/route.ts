@@ -163,6 +163,50 @@ export async function PATCH(
       userAgent: request.headers.get("user-agent"),
     });
 
+    // Jessica 04/08: notifica tecnico em cada transicao de status.
+    const NOTIF_MSG: Record<string, { title: string; body: string }> = {
+      separate: {
+        title: "Ferramenta em separação",
+        body: `O almoxarifado começou a separar sua solicitação: ${current.tool_name}.`,
+      },
+      ready: {
+        title: "Ferramenta pronta pra retirada",
+        body: `Sua solicitação foi separada: ${current.tool_name}. Pode passar no almoxarifado.`,
+      },
+      deliver: {
+        title: "Ferramenta entregue",
+        body: `${current.tool_name} agora está na sua custódia.`,
+      },
+      reject: {
+        title: "Solicitação recusada",
+        body: `${current.tool_name}: ${body.rejection_reason ?? "sem motivo informado"}.`,
+      },
+      cancel: {
+        title: "Solicitação cancelada",
+        body: `Sua solicitação de ${current.tool_name} foi cancelada.`,
+      },
+    };
+    const notif = NOTIF_MSG[body.action];
+    if (notif && current.requester_id) {
+      try {
+        const { createNotification } = await import(
+          "@/lib/api-helpers/notifications"
+        );
+        await createNotification(
+          current.requester_id as string,
+          notif.title,
+          notif.body,
+          "general",
+          { tool_request_id: id, status: (update as { status?: string }).status },
+          { priority: body.action === "ready" ? "high" : "normal" }
+        );
+      } catch (err) {
+        console.warn(
+          `Notif tool_request failed: ${err instanceof Error ? err.message : err}`
+        );
+      }
+    }
+
     return jsonResponse({ request: updated });
   } catch (error) {
     return errorResponse(error);

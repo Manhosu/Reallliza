@@ -84,12 +84,31 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const supabase = getAdminClient();
 
-    // Map DTO fields to DB column names
-    const { image_url, photo_url, purchase_value, ...rest } = body;
-    const insertData: Record<string, unknown> = { ...rest };
-    if (purchase_value !== undefined) insertData.purchase_value = purchase_value;
+    // Map DTO fields to DB column names + whitelist (Jessica 04/08 bug:
+    // form mandava purchase_value que nao existe na tabela e insert
+    // falhava com "Failed to create tool")
+    const ALLOWED = new Set([
+      "name",
+      "description",
+      "serial_number",
+      "category",
+      "status",
+      "condition",
+      "photo_url",
+      "purchase_date",
+      "notes",
+      "quantity_available",
+      "patrimony_code",
+      "brand",
+      "model",
+      "photos",
+    ]);
+    const insertData: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(body)) {
+      if (ALLOWED.has(k) && v !== undefined && v !== "") insertData[k] = v;
+    }
     // Aceita tanto image_url (legacy DTO) quanto photo_url
-    const finalPhoto = photo_url ?? image_url;
+    const finalPhoto = body.photo_url ?? body.image_url;
     if (finalPhoto) insertData.photo_url = finalPhoto;
 
     const { data: tool, error } = await supabase
@@ -100,7 +119,7 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error(`Failed to create tool: ${error.message}`);
-      throw new Error("Failed to create tool");
+      throw new Error(`Falha ao criar ferramenta: ${error.message}`);
     }
 
     // Log audit

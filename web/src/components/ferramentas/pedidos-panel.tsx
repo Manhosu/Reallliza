@@ -93,14 +93,17 @@ export function PedidosPanel({
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [deliveringReq, setDeliveringReq] = useState<ToolRequest | null>(null);
+  const [filter, setFilter] = useState<"active" | "all" | "finished">("active");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Jessica 04/08: mostra TODOS os status (padrao antes era so pending,
+      // fazendo o pedido sumir apos o operador clicar Separar)
       const res = await apiClient.get<{
         data?: ToolRequest[];
         requests?: ToolRequest[];
-      }>("/tools/requests");
+      }>("/tools/requests?status=all");
       const list = res.data || res.requests || (res as unknown as ToolRequest[]);
       setRequests(Array.isArray(list) ? list : []);
     } catch (err) {
@@ -166,23 +169,69 @@ export function PedidosPanel({
     );
   }
 
+  const ACTIVE_SET = new Set([
+    "pending",
+    "approved",
+    "separating",
+    "awaiting_pickup",
+  ]);
+  const FINISHED_SET = new Set([
+    "delivered",
+    "released",
+    "rejected",
+    "cancelled",
+  ]);
+  const visibleRequests = requests.filter((r) => {
+    if (filter === "all") return true;
+    if (filter === "active") return ACTIVE_SET.has(r.status);
+    return FINISHED_SET.has(r.status);
+  });
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">
-          Pedidos ({requests.length})
-        </CardTitle>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <CardTitle className="text-base">
+            Pedidos ({visibleRequests.length})
+          </CardTitle>
+          <div className="flex items-center gap-1 rounded-lg bg-secondary/50 p-0.5">
+            {(["active", "finished", "all"] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFilter(f)}
+                className={`text-xs px-3 py-1 rounded-md transition ${
+                  filter === f
+                    ? "bg-background shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {f === "active"
+                  ? "Em andamento"
+                  : f === "finished"
+                    ? "Finalizados"
+                    : "Todos"}
+              </button>
+            ))}
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
-        {requests.length === 0 ? (
+        {visibleRequests.length === 0 ? (
           <EmptyState
             icon={<Clock className="h-6 w-6" />}
-            title="Nenhum pedido"
+            title={
+              filter === "active"
+                ? "Nenhum pedido em andamento"
+                : filter === "finished"
+                  ? "Nenhum pedido finalizado"
+                  : "Nenhum pedido"
+            }
             description="Pedidos dos técnicos via app aparecem aqui"
           />
         ) : (
           <div className="space-y-3">
-            {requests.map((req) => {
+            {visibleRequests.map((req) => {
               const info = STATUS_MAP[req.status] ?? {
                 label: req.status,
                 color: "bg-muted text-muted-foreground",
