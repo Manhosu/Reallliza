@@ -402,7 +402,14 @@ export async function PATCH(
           notif.title,
           notif.body,
           "general",
-          { tool_request_id: id, status: (update as { status?: string }).status },
+          // `type` é o que o listener do app lê pra decidir a navegação
+          // (push-notifications.ts). Sem essa chave, tocar na notificação não
+          // abria nada — o switch caía fora antes de qualquer case.
+          {
+            type: "tool_custody",
+            tool_request_id: id,
+            status: (update as { status?: string }).status,
+          },
           { priority: body.action === "ready" ? "high" : "normal" }
         );
       } catch (err) {

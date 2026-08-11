@@ -201,7 +201,11 @@ export async function PATCH(
           ? `Novo prazo de devolução: ${new Date(finalDate as string).toLocaleDateString("pt-BR")}.`
           : `Seu pedido de prorrogação foi recusado. ${body.decision_notes ?? ""}`.trim(),
         "general",
-        { custody_id: custodyId, kind: approved ? "extension_approved" : "extension_rejected" },
+        {
+          type: "tool_custody",
+          custody_id: custodyId,
+          kind: approved ? "extension_approved" : "extension_rejected",
+        },
         { priority: "normal" }
       );
     } catch (err) {

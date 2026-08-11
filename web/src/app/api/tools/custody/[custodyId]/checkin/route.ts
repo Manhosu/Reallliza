@@ -202,7 +202,7 @@ export async function POST(
         "Devolução confirmada",
         "O almoxarifado recebeu e conferiu a ferramenta devolvida.",
         "general",
-        { custody_id: custodyId, kind: "return_confirmed" },
+        { type: "tool_custody", custody_id: custodyId, kind: "return_confirmed" },
         { priority: "normal" }
       );
     } catch (err) {
