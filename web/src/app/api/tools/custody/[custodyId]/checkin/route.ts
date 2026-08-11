@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { recordToolEvent, setUnitStatus } from "@/lib/tools/events";
 
 /**
  * POST /api/tools/custody/[custodyId]/checkin
@@ -43,7 +44,9 @@ export async function POST(
     // Get the custody record
     const { data: custody, error: findError } = await supabase
       .from("tool_custody")
-      .select("id, tool_id, checked_in_at")
+      .select(
+        "id, tool_id, unit_id, user_id, checked_in_at, checked_out_at, expected_return_at, service_order_id"
+      )
       .eq("id", custodyId)
       .single();
 
@@ -99,21 +102,113 @@ export async function POST(
           ? "maintenance"
           : "available";
 
-    // Update tool status and condition
-    const { error: updateToolError } = await supabase
+    // Destino da unidade / do saldo.
+    //
+    // Spec seção 20: a unidade só volta a ficar "Disponível" depois da
+    // conferência e liberação. Em modo controlado quem muda de estado é a
+    // UNIDADE — antes o código marcava o tipo inteiro, o que tirava todas as
+    // outras unidades do catálogo de uma vez.
+    const { data: toolRow } = await supabase
       .from("tool_inventory")
-      .update({
-        status: newStatus,
-        condition: condition_in,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", custody.tool_id);
+      .select("tracking_mode, quantity_available")
+      .eq("id", custody.tool_id)
+      .maybeSingle();
+    const trackingMode =
+      (toolRow as { tracking_mode?: string })?.tracking_mode ?? "quantity";
 
-    if (updateToolError) {
-      console.error(
-        `Failed to update tool status: ${updateToolError.message}`
+    if (trackingMode === "controlled" && custody.unit_id) {
+      await setUnitStatus(supabase, custody.unit_id as string, newStatus, {
+        tool_id: custody.tool_id as string,
+        event_type: "recebimento",
+        description: "Devolução recebida e conferida pelo almoxarifado",
+        technician_id: custody.user_id as string,
+        almoxarife_id: user.id,
+        actor_id: user.id,
+        custody_id: custodyId,
+        service_order_id: custody.service_order_id as string | null,
+        condition: condition_in,
+        notes: notes_in || null,
+        photos: Array.isArray(photos_in) ? photos_in : [],
+      });
+      await supabase
+        .from("tool_units")
+        .update({ condition: condition_in })
+        .eq("id", custody.unit_id);
+    } else {
+      // Modo quantidade: devolve o saldo à prateleira.
+      const saldo = Number(
+        (toolRow as { quantity_available?: number })?.quantity_available ?? 0
       );
-      throw new Error("Failed to update tool status");
+      await supabase
+        .from("tool_inventory")
+        .update({
+          quantity_available: saldo + 1,
+          condition: condition_in,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", custody.tool_id);
+
+      await recordToolEvent(supabase, {
+        tool_id: custody.tool_id as string,
+        event_type: "recebimento",
+        description: "Devolução recebida e conferida pelo almoxarifado",
+        technician_id: custody.user_id as string,
+        almoxarife_id: user.id,
+        actor_id: user.id,
+        custody_id: custodyId,
+        service_order_id: custody.service_order_id as string | null,
+        condition: condition_in,
+        notes: notes_in || null,
+        photos: Array.isArray(photos_in) ? photos_in : [],
+        metadata: { balance_after: saldo + 1 },
+      });
+    }
+
+    // Encerramento da custódia (seção 20), com o registro de atraso.
+    const wasLate =
+      !!custody.expected_return_at &&
+      new Date(custody.expected_return_at as string).getTime() < Date.now();
+    await recordToolEvent(supabase, {
+      tool_id: custody.tool_id as string,
+      unit_id: custody.unit_id as string | null,
+      event_type: "encerramento",
+      description: wasLate
+        ? "Custódia encerrada com atraso"
+        : "Custódia encerrada",
+      technician_id: custody.user_id as string,
+      almoxarife_id: user.id,
+      actor_id: user.id,
+      custody_id: custodyId,
+      service_order_id: custody.service_order_id as string | null,
+      metadata: {
+        late: wasLate,
+        expected_return_at: custody.expected_return_at,
+        checked_out_at: custody.checked_out_at,
+      },
+    });
+
+    // Prorrogações pendentes dessa custódia perdem o sentido.
+    await supabase
+      .from("tool_extension_requests")
+      .update({ status: "cancelled" })
+      .eq("custody_id", custodyId)
+      .eq("status", "pending");
+
+    // Avisa o técnico (spec seção 28).
+    try {
+      const { createNotification } = await import("@/lib/api-helpers/notifications");
+      await createNotification(
+        custody.user_id as string,
+        "Devolução confirmada",
+        "O almoxarifado recebeu e conferiu a ferramenta devolvida.",
+        "general",
+        { custody_id: custodyId, kind: "return_confirmed" },
+        { priority: "normal" }
+      );
+    } catch (err) {
+      console.warn(
+        `Notif devolucao confirmada falhou: ${err instanceof Error ? err.message : err}`
+      );
     }
 
     // Log audit

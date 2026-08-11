@@ -6,6 +6,46 @@ import type {
   ToolCondition,
   PaginatedResponse,
 } from "@/lib/types";
+import type { ToolUnit, ToolEvent } from "@/lib/tools/types";
+
+/** Resposta de GET /tools/dashboard (spec seção 4). */
+export interface ToolsDashboard {
+  indicators: {
+    available: number;
+    reserved: number;
+    separating: number;
+    awaiting_pickup: number;
+    in_custody: number;
+    return_requested: number;
+    due_today: number;
+    overdue: number;
+    maintenance: number;
+    damage_reported: number;
+    extension_pending: number;
+    pending_requests: number;
+  };
+  totals: {
+    units: number;
+    damaged: number;
+    missing: number;
+    retired: number;
+    active_custody: number;
+  };
+  blocks: Record<string, Array<Record<string, unknown>>>;
+}
+
+/** Resposta de GET /tools/search (spec seções 5-7). */
+export interface ToolsSearchResult {
+  query: string;
+  total: number;
+  exact_unit_id: string | null;
+  results: {
+    units: Array<Record<string, unknown>>;
+    tools: Array<Record<string, unknown>>;
+    technicians: Array<Record<string, unknown>>;
+    service_orders: Array<Record<string, unknown>>;
+  };
+}
 
 // ============================================================
 // Request / Query types
@@ -220,5 +260,97 @@ export const toolsApi = {
     }
 
     return (data as { url: string }).url;
+  },
+
+  // ============================================================
+  // Modelo novo — unidades físicas, histórico e prazos (spec 06/08)
+  // ============================================================
+
+  /** Unidades físicas. `available_for` aplica a regra da seção 12. */
+  listUnits(params?: {
+    tool_id?: string;
+    status?: string;
+    search?: string;
+    location?: string;
+    available_for?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    return apiClient.get<PaginatedResponse<ToolUnit>>(
+      "/tools/units",
+      params as Record<string, unknown>
+    );
+  },
+
+  createUnit(body: Partial<ToolUnit> & { tool_id: string; code: string }) {
+    return apiClient.post<ToolUnit>("/tools/units", body);
+  },
+
+  getUnit(id: string) {
+    return apiClient.get<ToolUnit & { current_custody: unknown; summary: unknown }>(
+      `/tools/units/${id}`
+    );
+  },
+
+  updateUnit(id: string, body: Partial<ToolUnit> & { reason?: string }) {
+    return apiClient.patch<ToolUnit>(`/tools/units/${id}`, body);
+  },
+
+  /** Timeline permanente da unidade (seções 23-27). */
+  getUnitHistory(
+    id: string,
+    params?: {
+      from?: string;
+      to?: string;
+      technician_id?: string;
+      service_order_id?: string;
+      event_type?: string;
+      order?: "asc" | "desc";
+    }
+  ) {
+    return apiClient.get<ToolEvent[]>(
+      `/tools/units/${id}/history`,
+      params as Record<string, unknown>
+    );
+  },
+
+  /** Indicadores e blocos do dashboard (seção 4). */
+  getDashboard() {
+    return apiClient.get<ToolsDashboard>("/tools/dashboard");
+  },
+
+  /** Pesquisa global (seções 5-7). */
+  globalSearch(q: string) {
+    return apiClient.get<ToolsSearchResult>("/tools/search", { q });
+  },
+
+  /** O técnico avisa que quer devolver — não encerra a custódia (seção 4). */
+  requestReturn(custodyId: string, notes?: string) {
+    return apiClient.post(`/tools/custody/${custodyId}/request-return`, { notes });
+  },
+
+  reportDamage(
+    custodyId: string,
+    body: { description: string; photos?: Array<{ url: string; name: string }> }
+  ) {
+    return apiClient.post(`/tools/custody/${custodyId}/report-damage`, body);
+  },
+
+  requestExtension(
+    custodyId: string,
+    body: { requested_return_at: string; justification?: string }
+  ) {
+    return apiClient.post(`/tools/custody/${custodyId}/extension`, body);
+  },
+
+  decideExtension(
+    custodyId: string,
+    body: {
+      action: "approve" | "reject";
+      approved_return_at?: string;
+      decision_notes?: string;
+    }
+  ) {
+    return apiClient.patch(`/tools/custody/${custodyId}/extension`, body);
   },
 };
