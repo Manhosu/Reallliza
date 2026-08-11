@@ -50,9 +50,7 @@ export async function PATCH(
       .maybeSingle();
 
     const role = profile?.role as string | undefined;
-    if (!["admin", "supervisor", "gestor"].includes(role || "")) {
-      throw new AuthError(403, "Apenas admin/supervisor/gestor pode decidir");
-    }
+    const isOperator = ["admin", "supervisor", "gestor"].includes(role || "");
 
     const { data: current, error: fetchError } = await supabase
       .from("tool_requests")
@@ -64,6 +62,21 @@ export async function PATCH(
 
     if (fetchError || !current) {
       throw new AuthError(404, "Solicitacao nao encontrada");
+    }
+
+    // O técnico pode cancelar o PRÓPRIO pedido enquanto ele não saiu da
+    // análise — é o que a RLS da migration 013 já permitia, mas a rota barrava
+    // com 403. Todas as outras ações continuam restritas ao operador.
+    const isOwnPendingCancel =
+      body.action === "cancel" &&
+      current.requester_id === user.id &&
+      current.status === "pending";
+
+    if (!isOperator && !isOwnPendingCancel) {
+      throw new AuthError(
+        403,
+        "Apenas admin/supervisor/gestor pode decidir. O solicitante pode cancelar o próprio pedido em análise."
+      );
     }
 
     // State machine simples
@@ -197,7 +210,8 @@ export async function PATCH(
       },
     };
     const notif = NOTIF_MSG[body.action];
-    if (notif && current.requester_id) {
+    // Não notifica quem fez a própria ação (técnico cancelando o próprio pedido).
+    if (notif && current.requester_id && current.requester_id !== user.id) {
       try {
         const { createNotification } = await import(
           "@/lib/api-helpers/notifications"

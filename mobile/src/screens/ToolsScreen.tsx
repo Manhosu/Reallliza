@@ -101,20 +101,37 @@ export function ToolsScreen() {
   const [returningId, setReturningId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
-    try {
-      const [c, r, h] = await Promise.all([
-        apiClient.get<CustodyWithTool[]>('/tools/my-custody'),
-        apiClient.get<ToolRequest[]>('/tools/requests/my'),
-        apiClient
-          .get<CustodyWithTool[]>('/tools/my-custody?include_returned=true')
-          .catch(() => [] as CustodyWithTool[]),
-      ]);
-      setCustodies(c);
-      setRequests(r);
-      setHistory(h.filter((x) => x.checked_in_at));
-    } catch (error) {
-      console.error('Tools fetch error:', error);
-    }
+    // Cada chamada tem catch próprio: antes um único Promise.all sem catch
+    // derrubava as TRÊS abas quando qualquer endpoint falhasse — e um deles
+    // (/tools/requests/my) nem existe, então a tela vinha sempre vazia.
+    const [c, r, h] = await Promise.all([
+      apiClient
+        .get<CustodyWithTool[]>('/tools/my-custody')
+        .catch((e) => {
+          console.error('Tools: falha ao carregar custódias:', e);
+          return [] as CustodyWithTool[];
+        }),
+      // A rota correta é /tools/requests — já filtra por requester_id pra quem
+      // não é admin — e devolve { requests: [...] } envelopado.
+      apiClient
+        .get<{ requests: ToolRequest[] } | ToolRequest[]>('/tools/requests?status=all')
+        .then((res) =>
+          Array.isArray(res) ? res : ((res?.requests ?? []) as ToolRequest[]),
+        )
+        .catch((e) => {
+          console.error('Tools: falha ao carregar pedidos:', e);
+          return [] as ToolRequest[];
+        }),
+      apiClient
+        .get<CustodyWithTool[]>('/tools/my-custody?include_returned=true')
+        .catch((e) => {
+          console.error('Tools: falha ao carregar histórico:', e);
+          return [] as CustodyWithTool[];
+        }),
+    ]);
+    setCustodies(c);
+    setRequests(r);
+    setHistory(h.filter((x) => x.checked_in_at));
   }, []);
 
   useEffect(() => {
@@ -161,7 +178,11 @@ export function ToolsScreen() {
         text: 'Sim',
         onPress: async () => {
           try {
-            await apiClient.patch(`/tools/requests/${req.id}/cancel`);
+            // A rota /cancel não existe; o handler real é PATCH no próprio
+            // pedido, com a ação no corpo.
+            await apiClient.patch(`/tools/requests/${req.id}`, {
+              action: 'cancel',
+            });
             await fetchData();
           } catch {
             Alert.alert('Erro', 'Falha ao cancelar');

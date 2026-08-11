@@ -5,16 +5,22 @@ import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 
 /**
  * GET /api/tools/my-custody
- * List active custody records for the authenticated user.
- * Returns tools currently checked out to the user (not yet returned).
+ * Custódias do usuário autenticado.
+ *
+ * ?include_returned=true traz também as já devolvidas — é o que alimenta a
+ * aba Histórico do app. O parâmetro era ignorado, então a rota sempre filtrava
+ * `checked_in_at IS NULL` e o app, que depois filtra pelas devolvidas, ficava
+ * matematicamente sempre vazio.
  */
 export async function GET(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
+    const includeReturned =
+      request.nextUrl.searchParams.get("include_returned") === "true";
 
     const supabase = getAdminClient();
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("tool_custody")
       .select(
         `
@@ -23,9 +29,15 @@ export async function GET(request: NextRequest) {
         service_order:service_orders(id, order_number, title)
       `
       )
-      .eq("user_id", user.id)
-      .is("checked_in_at", null)
-      .order("checked_out_at", { ascending: false });
+      .eq("user_id", user.id);
+
+    if (!includeReturned) {
+      query = query.is("checked_in_at", null);
+    }
+
+    const { data, error } = await query.order("checked_out_at", {
+      ascending: false,
+    });
 
     if (error) {
       console.error(`Failed to fetch my custody: ${error.message}`);
