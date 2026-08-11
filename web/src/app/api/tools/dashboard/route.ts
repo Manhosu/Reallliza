@@ -199,7 +199,11 @@ export async function GET(request: NextRequest) {
         reserved: reservadas.count ?? 0,
         separating: pedidosSeparando.count ?? 0,
         awaiting_pickup: pedidosProntos.count ?? 0,
-        in_custody: emCustodiaUnid.count ?? 0,
+        // Conta CUSTÓDIAS ativas, não unidades com status in_custody: itens
+        // controlados por quantidade não têm unidade, e o indicador mostrava
+        // zero mesmo com ferramentas na mão dos técnicos.
+        in_custody: custodiaAtiva.count ?? 0,
+        in_custody_units: emCustodiaUnid.count ?? 0,
         return_requested: devolucaoSolicitada.count ?? 0,
         due_today: custodiaVenceHoje.count ?? 0,
         overdue: custodiaAtrasada.count ?? 0,

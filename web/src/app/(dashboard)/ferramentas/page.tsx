@@ -88,9 +88,11 @@ export default function AlmoxarifadoDashboard() {
 
       {/* Blocos operacionais */}
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+        {/* Bloco "Pedidos recentes" da seção 4 — mostra os últimos de qualquer
+            status; a fila de análise tem indicador próprio acima. */}
         <RequestBlock
-          title="Pedidos aguardando análise"
-          href="/ferramentas/pedidos?status=pending"
+          title="Pedidos recentes"
+          href="/ferramentas/pedidos"
           rows={blocks.recent_requests ?? []}
           isLoading={isLoading}
         />

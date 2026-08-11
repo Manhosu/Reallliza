@@ -15,7 +15,10 @@ export interface ToolsDashboard {
     reserved: number;
     separating: number;
     awaiting_pickup: number;
+    /** Custódias ativas (cobre unidade e quantidade). */
     in_custody: number;
+    /** Só unidades físicas com status in_custody. */
+    in_custody_units: number;
     return_requested: number;
     due_today: number;
     overdue: number;
