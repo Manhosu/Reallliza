@@ -76,9 +76,14 @@ export default function OrcamentoDetailPage() {
         window.location.href = res.checkout_url;
         return;
       }
-      toast.success(
-        "Pagamento registrado. Aguardando confirmação da Reallliza."
-      );
+      // Sem checkout, o clique já paga e converte (Jessica, áudio 06/08).
+      if (res.auto_converted) {
+        toast.success("Pagamento confirmado — Ordem de Serviço gerada");
+      } else if (res.error) {
+        toast.error(`Pagamento registrado, mas a OS não foi gerada: ${res.error}`);
+      } else {
+        toast.success("Pagamento registrado");
+      }
       load();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao pagar");

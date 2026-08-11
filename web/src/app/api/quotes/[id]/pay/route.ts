@@ -99,23 +99,82 @@ export async function POST(
       }
     }
 
+    // Com checkout da Asaas, quem confirma é o webhook: o orçamento fica
+    // aguardando o pagamento de verdade.
+    if (checkoutUrl) {
+      await supabase
+        .from("quotes")
+        .update({ status: "awaiting_payment" })
+        .eq("id", id);
+
+      logAudit({
+        userId: user.id,
+        action: "quote.payment_started",
+        entityType: "quote",
+        entityId: id,
+        newData: { payment_id: payment.id, asaas: true },
+      });
+
+      return jsonResponse({
+        payment_id: payment.id,
+        checkout_url: checkoutUrl,
+        manual: false,
+      });
+    }
+
+    // Sem cobrança configurada, o clique da loja é o próprio aceite.
+    //
+    // Jessica (áudio 06/08): "eu clico em Pagar e gerar ordem de serviço... mas
+    // quando chega no sistema do operador, o orçamento ainda precisa que eu
+    // confirme que foi pago. Isso não era pra ser automático?" Era — o admin
+    // confirmando na mão só existia porque não havia cobrança de verdade pra
+    // confirmar. Agora marcamos como pago e convertemos na hora.
+    const paidAt = new Date().toISOString();
+
+    await supabase
+      .from("payments")
+      .update({ status: "confirmed", paid_at: paidAt })
+      .eq("id", payment.id);
+
     await supabase
       .from("quotes")
-      .update({ status: "awaiting_payment" })
+      .update({ status: "paid", paid_at: paidAt })
       .eq("id", id);
+
+    const { convertQuoteToServiceOrder } = await import(
+      "@/lib/quotes/convert-to-os"
+    );
+    // Idempotente: se o webhook rodar depois, não duplica a OS.
+    const conversion = await convertQuoteToServiceOrder(supabase, id);
 
     logAudit({
       userId: user.id,
-      action: "quote.payment_started",
+      action: "quote.paid_and_converted",
       entityType: "quote",
       entityId: id,
-      newData: { payment_id: payment.id, asaas: !!checkoutUrl },
+      newData: {
+        payment_id: payment.id,
+        asaas: false,
+        service_order_id: conversion.ok ? conversion.service_order_id : null,
+        conversion_error: conversion.ok ? null : conversion.error,
+      },
     });
+
+    if (!conversion.ok) {
+      // O pagamento ficou registrado; a OS não saiu. O operador resolve pela
+      // tela de orçamentos, e o erro aparece pra loja em vez de sumir.
+      console.error(
+        `quote.pay: pagamento confirmado mas conversao falhou (${id}): ${conversion.error}`
+      );
+    }
 
     return jsonResponse({
       payment_id: payment.id,
-      checkout_url: checkoutUrl,
-      manual: !checkoutUrl,
+      checkout_url: null,
+      manual: false,
+      auto_converted: conversion.ok,
+      service_order_id: conversion.ok ? conversion.service_order_id : null,
+      error: conversion.ok ? null : conversion.error,
     });
   } catch (error) {
     return errorResponse(error);

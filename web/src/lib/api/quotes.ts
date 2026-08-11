@@ -157,6 +157,10 @@ export interface PayQuoteResult {
   payment_id: string;
   checkout_url: string | null;
   manual?: boolean;
+  /** Sem cobrança configurada, o clique já paga e gera a OS na hora. */
+  auto_converted?: boolean;
+  service_order_id?: string | null;
+  error?: string | null;
 }
 
 export const quotesApi = {
