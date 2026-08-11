@@ -7,7 +7,7 @@ import { createClient } from "@supabase/supabase-js";
  */
 export async function uploadToolPhoto(
   file: File,
-  kind: "delivery" | "return" | "maintenance" | "retirement",
+  kind: "delivery" | "return" | "maintenance" | "retirement" | "unit",
   toolId: string
 ): Promise<{ url: string; name: string; storage_path: string }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

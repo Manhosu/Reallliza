@@ -1,1502 +1,336 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 import {
-  Wrench,
-  Plus,
-  Search,
-  Filter,
   Package,
-  AlertTriangle,
-  ArrowLeftRight,
+  Bookmark,
+  PackageOpen,
+  ShoppingBag,
+  User,
+  Undo2,
   Clock,
-  CheckCircle2,
-  Settings,
-  XCircle,
-  X,
-  Edit,
-  History,
-  Trash2,
+  AlertTriangle,
+  Wrench,
+  ShieldAlert,
+  CalendarClock,
+  Inbox,
+  RefreshCw,
 } from "lucide-react";
-import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
-import { PedidosPanel } from "@/components/ferramentas/pedidos-panel";
-import { ManutencaoPanel } from "@/components/ferramentas/manutencao-panel";
-import { BaixaPanel } from "@/components/ferramentas/baixa-panel";
-import { DevolucaoModal } from "@/components/ferramentas/devolucao-modal";
-import { HistoricoModal } from "@/components/ferramentas/historico-modal";
-import { apiClient } from "@/lib/api/client";
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import { EmptyState } from "@/components/ui/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  ToolStatus,
-  ToolCondition,
-  type ToolInventory,
-  type ToolCustody,
-} from "@/lib/types";
+import { EmptyState } from "@/components/ui/empty-state";
+import { useApi } from "@/hooks/use-api";
 import { toolsApi } from "@/lib/api";
-import { useApi, usePaginatedApi } from "@/hooks/use-api";
+import type { ToolsDashboard } from "@/lib/api/tools";
+import { KpiTile } from "@/components/ferramentas/kpi-tile";
+import { RequestStatusBadge, DeadlineBadge } from "@/components/ferramentas/almox-badges";
+import { EVENT_TYPE_LABELS } from "@/lib/tools/types";
 
-// ============================================================
-// Labels & Config
-// ============================================================
+/**
+ * Dashboard do almoxarifado (spec seção 4).
+ * "O objetivo é mostrar ao operador tudo que precisa de atenção imediata."
+ */
+export default function AlmoxarifadoDashboard() {
+  const { data, isLoading, mutate } = useApi<ToolsDashboard>(
+    () => toolsApi.getDashboard(),
+    []
+  );
 
-// A migration 053 ampliou o enum do banco (damaged, awaiting_evaluation,
-// missing, reserved) e esses valores chegam aqui de verdade — o modal de
-// devolucao oferece "danificada" e "extraviada". Mapas indexados por string
-// pra cobrir tudo que o banco pode devolver.
-const TOOL_STATUS_LABELS: Record<string, string> = {
-  [ToolStatus.AVAILABLE]: "Disponível",
-  [ToolStatus.IN_CUSTODY]: "Em Custódia",
-  [ToolStatus.MAINTENANCE]: "Manutenção",
-  [ToolStatus.RETIRED]: "Aposentada",
-  damaged: "Danificada",
-  awaiting_evaluation: "Aguardando Avaliação",
-  missing: "Extraviada",
-  reserved: "Reservada para OS",
-};
+  const ind = data?.indicators;
+  const blocks = data?.blocks ?? {};
 
-type StatusColors = { bg: string; text: string; dot: string };
+  // Os 12 indicadores da seção 4, cada um abrindo a área já filtrada.
+  const TILES = [
+    { label: "Disponíveis", value: ind?.available, accent: "green", icon: Package, href: "/ferramentas/inventario?status=available" },
+    { label: "Reservadas", value: ind?.reserved, accent: "amber", icon: Bookmark, href: "/ferramentas/inventario?status=reserved" },
+    { label: "Separadas", value: ind?.separating, accent: "amber", icon: PackageOpen, href: "/ferramentas/pedidos?status=separating" },
+    { label: "Prontas p/ retirada", value: ind?.awaiting_pickup, accent: "cyan", icon: ShoppingBag, href: "/ferramentas/pedidos?status=awaiting_pickup" },
+    { label: "Em custódia", value: ind?.in_custody, accent: "blue", icon: User, href: "/ferramentas/custodias" },
+    { label: "Devolução solicitada", value: ind?.return_requested, accent: "blue", icon: Undo2, href: "/ferramentas/devolucoes" },
+    { label: "Vencem hoje", value: ind?.due_today, accent: "amber", icon: Clock, href: "/ferramentas/custodias?situacao=due_today" },
+    { label: "Atrasadas", value: ind?.overdue, accent: "red", icon: AlertTriangle, href: "/ferramentas/custodias?situacao=overdue" },
+    { label: "Em manutenção", value: ind?.maintenance, accent: "purple", icon: Wrench, href: "/ferramentas/manutencao" },
+    { label: "Danos comunicados", value: ind?.damage_reported, accent: "red", icon: ShieldAlert, href: "/ferramentas/custodias?situacao=damage" },
+    { label: "Prorrogações pendentes", value: ind?.extension_pending, accent: "orange", icon: CalendarClock, href: "/ferramentas/custodias?situacao=extension" },
+    { label: "Pedidos em análise", value: ind?.pending_requests, accent: "blue", icon: Inbox, href: "/ferramentas/pedidos?status=pending" },
+  ] as const;
 
-const TOOL_STATUS_FALLBACK_COLORS: StatusColors = {
-  bg: "bg-zinc-500/10",
-  text: "text-zinc-400",
-  dot: "bg-zinc-400",
-};
-
-const TOOL_STATUS_COLORS: Record<string, StatusColors> = {
-  [ToolStatus.AVAILABLE]: {
-    bg: "bg-green-500/10",
-    text: "text-green-500",
-    dot: "bg-green-500",
-  },
-  [ToolStatus.IN_CUSTODY]: {
-    bg: "bg-blue-500/10",
-    text: "text-blue-500",
-    dot: "bg-blue-500",
-  },
-  [ToolStatus.MAINTENANCE]: {
-    bg: "bg-yellow-500/10",
-    text: "text-yellow-500",
-    dot: "bg-yellow-500",
-  },
-  [ToolStatus.RETIRED]: {
-    bg: "bg-zinc-500/10",
-    text: "text-zinc-400",
-    dot: "bg-zinc-400",
-  },
-  damaged: {
-    bg: "bg-red-500/10",
-    text: "text-red-500",
-    dot: "bg-red-500",
-  },
-  awaiting_evaluation: {
-    bg: "bg-orange-500/10",
-    text: "text-orange-500",
-    dot: "bg-orange-500",
-  },
-  missing: {
-    bg: "bg-purple-500/10",
-    text: "text-purple-400",
-    dot: "bg-purple-400",
-  },
-  reserved: {
-    bg: "bg-cyan-500/10",
-    text: "text-cyan-500",
-    dot: "bg-cyan-500",
-  },
-};
-
-const TOOL_CONDITION_LABELS: Record<ToolCondition, string> = {
-  [ToolCondition.NEW]: "Nova",
-  [ToolCondition.GOOD]: "Boa",
-  [ToolCondition.FAIR]: "Regular",
-  [ToolCondition.POOR]: "Ruim",
-  [ToolCondition.DAMAGED]: "Danificada",
-};
-
-const TOOL_CONDITION_COLORS: Record<ToolCondition, string> = {
-  [ToolCondition.NEW]: "bg-green-500",
-  [ToolCondition.GOOD]: "bg-blue-500",
-  [ToolCondition.FAIR]: "bg-yellow-500",
-  [ToolCondition.POOR]: "bg-orange-500",
-  [ToolCondition.DAMAGED]: "bg-red-500",
-};
-
-// ============================================================
-// Tab Type
-// ============================================================
-
-type Tab = "inventario" | "custodia" | "pedidos" | "manutencao" | "baixa";
-
-/** Custódia com os relacionamentos que a rota /tools/custody/active embute. */
-type CustodyWithRelations = ToolCustody & {
-  tool?: { id: string; name: string; serial_number?: string | null } | null;
-  user?: { id: string; full_name: string } | null;
-  service_order?: { id: string; order_number: string; title?: string } | null;
-};
-
-// ============================================================
-// Status Badge Component
-// ============================================================
-
-function StatusBadge({ status }: { status: ToolStatus | string }) {
-  // Defensivo: status desconhecido nao pode derrubar a aba inteira de
-  // inventario (era o que acontecia com 'damaged'/'missing').
-  const colors = TOOL_STATUS_COLORS[status] ?? TOOL_STATUS_FALLBACK_COLORS;
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium",
-        colors.bg,
-        colors.text
-      )}
-    >
-      <span className={cn("h-1.5 w-1.5 rounded-full", colors.dot)} />
-      {TOOL_STATUS_LABELS[status] ?? status}
-    </span>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Visão geral da operação do almoxarifado.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => mutate()}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Atualizar
+        </Button>
+      </div>
+
+      {/* Indicadores */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {TILES.map((t) => (
+          <KpiTile
+            key={t.label}
+            label={t.label}
+            value={t.value ?? 0}
+            href={t.href}
+            icon={t.icon}
+            accent={t.accent}
+            isLoading={isLoading}
+          />
+        ))}
+      </div>
+
+      {/* Blocos operacionais */}
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+        <RequestBlock
+          title="Pedidos aguardando análise"
+          href="/ferramentas/pedidos?status=pending"
+          rows={blocks.recent_requests ?? []}
+          isLoading={isLoading}
+        />
+        <CustodyBlock
+          title="Próximas devoluções"
+          href="/ferramentas/custodias"
+          rows={blocks.upcoming_returns ?? []}
+          isLoading={isLoading}
+          dateField="expected_return_at"
+        />
+        <CustodyBlock
+          title="Custódias atrasadas"
+          href="/ferramentas/custodias?situacao=overdue"
+          rows={blocks.overdue_custody ?? []}
+          isLoading={isLoading}
+          dateField="expected_return_at"
+        />
+        <CustodyBlock
+          title="Devoluções pendentes"
+          href="/ferramentas/devolucoes"
+          rows={blocks.pending_returns ?? []}
+          isLoading={isLoading}
+          dateField="return_requested_at"
+        />
+        <RequestBlock
+          title="Aguardando separação"
+          href="/ferramentas/pedidos?status=separating"
+          rows={blocks.awaiting_separation ?? []}
+          isLoading={isLoading}
+        />
+        <RequestBlock
+          title="Prontas para retirada"
+          href="/ferramentas/pedidos?status=awaiting_pickup"
+          rows={blocks.ready_for_pickup ?? []}
+          isLoading={isLoading}
+        />
+        <CustodyBlock
+          title="Danos comunicados"
+          href="/ferramentas/custodias?situacao=damage"
+          rows={blocks.reported_damages ?? []}
+          isLoading={isLoading}
+          dateField="damage_reported_at"
+        />
+        <EventBlock
+          title="Últimas movimentações"
+          rows={blocks.latest_events ?? []}
+          isLoading={isLoading}
+        />
+      </div>
+    </div>
   );
 }
 
 // ============================================================
-// Condition Badge Component
+// Blocos
 // ============================================================
 
-function ConditionBadge({ condition }: { condition: ToolCondition }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-      <span
-        className={cn(
-          "h-2 w-2 rounded-full",
-          TOOL_CONDITION_COLORS[condition]
-        )}
-      />
-      {TOOL_CONDITION_LABELS[condition]}
-    </span>
-  );
-}
-
-// ============================================================
-// Tool Card Skeleton
-// ============================================================
-
-function ToolCardSkeleton() {
+function BlockShell({
+  title,
+  href,
+  isLoading,
+  empty,
+  children,
+}: {
+  title: string;
+  href?: string;
+  isLoading?: boolean;
+  empty: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <Card>
-      <CardContent className="p-6">
-        <div className="space-y-3">
-          <div className="flex items-start justify-between">
-            <Skeleton className="h-5 w-40" />
-            <Skeleton className="h-6 w-20 rounded-lg" />
+      <CardHeader className="flex-row items-center justify-between gap-2 space-y-0 pb-3">
+        <CardTitle className="text-sm">{title}</CardTitle>
+        {href && (
+          <Link
+            href={href}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Ver todos
+          </Link>
+        )}
+      </CardHeader>
+      <CardContent className="pt-0">
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
           </div>
-          <Skeleton className="h-4 w-28" />
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-5 w-16 rounded-full" />
-            <Skeleton className="h-4 w-14" />
-          </div>
-        </div>
+        ) : empty ? (
+          <p className="py-6 text-center text-xs text-muted-foreground">
+            Nada por aqui
+          </p>
+        ) : (
+          <div className="space-y-2">{children}</div>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-// ============================================================
-// Custody Table Skeleton
-// ============================================================
+function fmtDate(v: unknown): string {
+  if (!v || typeof v !== "string") return "—";
+  return new Date(v).toLocaleDateString("pt-BR");
+}
 
-function CustodyTableSkeleton() {
+function RequestBlock({
+  title,
+  href,
+  rows,
+  isLoading,
+}: {
+  title: string;
+  href: string;
+  rows: Array<Record<string, unknown>>;
+  isLoading?: boolean;
+}) {
   return (
-    <div className="space-y-3">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="flex items-center gap-4 rounded-xl p-4">
-          <Skeleton className="h-4 w-36" />
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-4 w-20" />
-          <Skeleton className="h-4 w-28" />
-          <Skeleton className="h-4 w-28" />
-          <Skeleton className="h-4 w-16" />
-          <Skeleton className="h-8 w-32 rounded-lg" />
-        </div>
-      ))}
-    </div>
+    <BlockShell title={title} href={href} isLoading={isLoading} empty={rows.length === 0}>
+      {rows.map((r) => {
+        const requester = r.requester as { full_name?: string } | null;
+        return (
+          <Link
+            key={String(r.id)}
+            href={`/ferramentas/pedidos?focus=${String(r.id)}`}
+            className="flex items-center justify-between gap-2 rounded-lg border border-transparent px-2 py-1.5 transition-colors hover:border-border hover:bg-secondary/40"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium">
+                {String(r.quantity ?? 1)}× {String(r.tool_name ?? "Ferramenta")}
+              </p>
+              <p className="truncate text-[11px] text-muted-foreground">
+                {requester?.full_name ?? "—"} · {fmtDate(r.created_at)}
+              </p>
+            </div>
+            <RequestStatusBadge status={String(r.status)} />
+          </Link>
+        );
+      })}
+    </BlockShell>
   );
 }
 
-// ============================================================
-// Ferramentas Page
-// ============================================================
-
-interface ToolsMetrics {
-  totals: {
-    available: number;
-    in_custody: number;
-    maintenance: number;
-    retired: number;
-    all: number;
-  };
-  custody: {
-    active_count: number;
-    overdue_count: number;
-    due_in_7d_count: number;
-  };
-  requests: {
-    pending_count: number;
-    approved_count: number;
-  };
+function CustodyBlock({
+  title,
+  href,
+  rows,
+  isLoading,
+  dateField,
+}: {
+  title: string;
+  href: string;
+  rows: Array<Record<string, unknown>>;
+  isLoading?: boolean;
+  dateField: string;
+}) {
+  return (
+    <BlockShell title={title} href={href} isLoading={isLoading} empty={rows.length === 0}>
+      {rows.map((c) => {
+        const tool = c.tool as { name?: string } | null;
+        const unit = c.unit as { code?: string } | null;
+        const user = c.user as { full_name?: string } | null;
+        const os = c.service_order as { order_number?: string } | null;
+        return (
+          <Link
+            key={String(c.id)}
+            href={`/ferramentas/custodias?focus=${String(c.id)}`}
+            className="flex items-center justify-between gap-2 rounded-lg border border-transparent px-2 py-1.5 transition-colors hover:border-border hover:bg-secondary/40"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium">
+                {tool?.name ?? "Ferramenta"}
+                {unit?.code && (
+                  <span className="ml-1 text-muted-foreground">{unit.code}</span>
+                )}
+              </p>
+              <p className="truncate text-[11px] text-muted-foreground">
+                {user?.full_name ?? "—"}
+                {os?.order_number && ` · OS #${os.order_number}`}
+              </p>
+            </div>
+            <div className="shrink-0 text-right">
+              <DeadlineBadge custody={c as never} />
+              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                {fmtDate(c[dateField])}
+              </p>
+            </div>
+          </Link>
+        );
+      })}
+    </BlockShell>
+  );
 }
 
-function ToolsMetricsPanel() {
-  const [metrics, setMetrics] = useState<ToolsMetrics | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    apiClient
-      .get<ToolsMetrics>("/tools/metrics")
-      .then((data) => {
-        if (!cancelled) setMetrics(data);
-      })
-      .catch(() => {
-        if (!cancelled) setMetrics(null);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const cards: Array<{
-    label: string;
-    value: number | string;
-    hint?: string;
-    icon: React.ComponentType<{ className?: string }>;
-    accent: string;
-    bg: string;
-  }> = [
-    {
-      label: "Disponíveis",
-      value: metrics?.totals.available ?? 0,
-      hint: `de ${metrics?.totals.all ?? 0} total`,
-      icon: CheckCircle2,
-      accent: "border-t-green-500",
-      bg: "bg-green-500/10",
-    },
-    {
-      label: "Em custódia",
-      value: metrics?.totals.in_custody ?? 0,
-      hint:
-        metrics && metrics.custody.overdue_count > 0
-          ? `${metrics.custody.overdue_count} atrasada${metrics.custody.overdue_count === 1 ? "" : "s"}`
-          : metrics?.custody.due_in_7d_count
-            ? `${metrics.custody.due_in_7d_count} vence em 7d`
-            : "todas no prazo",
-      icon: ArrowLeftRight,
-      accent: "border-t-blue-500",
-      bg: "bg-blue-500/10",
-    },
-    {
-      label: "Em manutenção",
-      value: metrics?.totals.maintenance ?? 0,
-      hint: "indisponível para uso",
-      icon: Settings,
-      accent: "border-t-amber-500",
-      bg: "bg-amber-500/10",
-    },
-    {
-      label: "Aposentadas",
-      value: metrics?.totals.retired ?? 0,
-      hint: "fora de operação",
-      icon: XCircle,
-      accent: "border-t-zinc-500",
-      bg: "bg-zinc-500/10",
-    },
-  ];
-
+function EventBlock({
+  title,
+  rows,
+  isLoading,
+}: {
+  title: string;
+  rows: Array<Record<string, unknown>>;
+  isLoading?: boolean;
+}) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.05, duration: 0.4 }}
-      className="grid grid-cols-2 gap-3 md:grid-cols-4"
-    >
-      {cards.map((c) => {
-        const Icon = c.icon;
-        return (
-          <div
-            key={c.label}
-            className={cn(
-              "group rounded-xl border-t-2 bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
-              c.accent
-            )}
-          >
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {c.label}
-              </p>
-              <div className={cn("rounded-lg p-1.5", c.bg)}>
-                <Icon className="h-4 w-4" />
-              </div>
-            </div>
-            <p className="mt-2 text-2xl font-bold tracking-tight">
-              {isLoading ? "..." : c.value}
+    <BlockShell title={title} isLoading={isLoading} empty={rows.length === 0}>
+      {rows.map((e) => {
+        const tool = e.tool as { name?: string } | null;
+        const unit = e.unit as { id?: string; code?: string } | null;
+        const body = (
+          <>
+            <p className="truncate text-xs font-medium">
+              {EVENT_TYPE_LABELS[String(e.event_type)] ?? String(e.event_type)}
             </p>
-            <p className="text-xs text-muted-foreground">{c.hint}</p>
+            <p className="truncate text-[11px] text-muted-foreground">
+              {tool?.name ?? "Ferramenta"}
+              {unit?.code && ` — ${unit.code}`} ·{" "}
+              {new Date(String(e.created_at)).toLocaleString("pt-BR", {
+                day: "2-digit",
+                month: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </p>
+          </>
+        );
+        return unit?.id ? (
+          <Link
+            key={String(e.id)}
+            href={`/ferramentas/unidades/${unit.id}`}
+            className="block rounded-lg border border-transparent px-2 py-1.5 transition-colors hover:border-border hover:bg-secondary/40"
+          >
+            {body}
+          </Link>
+        ) : (
+          <div key={String(e.id)} className="px-2 py-1.5">
+            {body}
           </div>
         );
       })}
-      {metrics && (metrics.requests.pending_count > 0 || metrics.custody.overdue_count > 0) && (
-        <a
-          href="/ferramentas/solicitacoes"
-          className="col-span-2 flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 text-sm hover:bg-amber-500/10 md:col-span-4"
-        >
-          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-          <span>
-            {metrics.requests.pending_count > 0 && (
-              <>
-                <strong>{metrics.requests.pending_count}</strong> requisição
-                {metrics.requests.pending_count === 1 ? "" : "ões"} pendente
-                {metrics.requests.pending_count === 1 ? "" : "s"} de aprovação
-              </>
-            )}
-            {metrics.requests.pending_count > 0 &&
-              metrics.custody.overdue_count > 0 && " · "}
-            {metrics.custody.overdue_count > 0 && (
-              <>
-                <strong>{metrics.custody.overdue_count}</strong> custódia
-                {metrics.custody.overdue_count === 1 ? "" : "s"} atrasada
-                {metrics.custody.overdue_count === 1 ? "" : "s"}
-              </>
-            )}
-            <span className="ml-2 text-xs text-amber-700 dark:text-amber-300">
-              → ver fila por prioridade
-            </span>
-          </span>
-        </a>
-      )}
-    </motion.div>
-  );
-}
-
-export default function FerramentasPage() {
-  const [activeTab, setActiveTab] = useState<Tab>("inventario");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ToolStatus | "all">("all");
-
-  // Create modal state
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
-  // Jessica 28/07: modal editar + hard delete + status change + devolucao
-  const [editingTool, setEditingTool] = useState<ToolInventory | null>(null);
-  const [historyTool, setHistoryTool] = useState<ToolInventory | null>(null);
-  const [purgingTool, setPurgingTool] = useState<ToolInventory | null>(null);
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [returningCustodyId, setReturningCustodyId] = useState<string | null>(null);
-  // Jessica 22/06 pediu patrimônio, marca, modelo e FOTOS (plural) no
-  // cadastro. As colunas existem desde a migration 053 e a API já aceita
-  // (api/tools/route.ts) — só o formulário nunca enviou.
-  const EMPTY_CREATE_FORM = {
-    name: "",
-    description: "",
-    patrimony_code: "",
-    brand: "",
-    model: "",
-    serial_number: "",
-    category: "",
-    condition: ToolCondition.GOOD as string,
-    purchase_value: "",
-    purchase_date: "",
-    notes: "",
-    photo_url: "",
-    photos: [] as string[],
-    quantity_available: "1",
-  };
-
-  const [createForm, setCreateForm] = useState(EMPTY_CREATE_FORM);
-
-  // Debounce search input
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 400);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  // Inventory tab: paginated tools
-  const toolsFetcher = useCallback(
-    (page: number, limit: number) => {
-      return toolsApi.list({
-        page,
-        limit,
-        search: debouncedSearch || undefined,
-        status: statusFilter !== "all" ? statusFilter : undefined,
-      });
-    },
-    [debouncedSearch, statusFilter]
-  );
-
-  const {
-    data: tools,
-    meta: toolsMeta,
-    isLoading: toolsLoading,
-    page: toolsPage,
-    setPage: setToolsPage,
-    mutate: mutateTools,
-  } = usePaginatedApi<ToolInventory>(toolsFetcher, 1, 12, [debouncedSearch, statusFilter]);
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setToolsPage(1);
-  }, [debouncedSearch, statusFilter, setToolsPage]);
-
-  // Custody tab: active custodies.
-  // A rota /tools/custody/active já devolve tool/user/service_order
-  // embutidos; o tipo base ToolCustody só descreve as colunas.
-  const {
-    data: custodies,
-    isLoading: custodiesLoading,
-    mutate: mutateCustodies,
-  } = useApi<CustodyWithRelations[]>(
-    (signal) => toolsApi.getActiveCustodies() as Promise<CustodyWithRelations[]>,
-    []
-  );
-
-  const isLoading = activeTab === "inventario" ? toolsLoading : custodiesLoading;
-  const totalTools = toolsMeta?.total ?? 0;
-
-  const statusFilterOptions: { value: ToolStatus | "all"; label: string }[] = [
-    { value: "all", label: "Todos" },
-    { value: ToolStatus.AVAILABLE, label: "Disponível" },
-    { value: ToolStatus.IN_CUSTODY, label: "Em Custódia" },
-    { value: ToolStatus.MAINTENANCE, label: "Manutenção" },
-    { value: ToolStatus.RETIRED, label: "Aposentada" },
-  ];
-
-  // handleCheckin legado (substituido por DevolucaoModal). Mantido pra
-  // qualquer chamada sem UI expandida.
-  const handleCheckin = async (custodyId: string) => {
-    try {
-      await toolsApi.checkin(custodyId, { condition_in: ToolCondition.GOOD });
-      toast.success("Devolução registrada com sucesso!");
-      mutateCustodies();
-      mutateTools();
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : "Erro ao registrar devolução";
-      toast.error(msg);
-    }
-  };
-  void handleCheckin; // silencia lint no caso de UI antiga desativada
-
-  const handleCreateTool = async () => {
-    if (!createForm.name.trim()) {
-      toast.error("Nome da ferramenta é obrigatório");
-      return;
-    }
-
-    setIsCreating(true);
-    try {
-      const qty = parseInt(createForm.quantity_available || "1", 10);
-      // A primeira foto da galeria vira a capa (photo_url/image_url), pra
-      // continuar compatível com as listagens que só leem a capa.
-      const cover = createForm.photos[0] || createForm.photo_url || null;
-      await toolsApi.create({
-        name: createForm.name,
-        description: createForm.description || null,
-        patrimony_code: createForm.patrimony_code || null,
-        brand: createForm.brand || null,
-        model: createForm.model || null,
-        serial_number: createForm.serial_number || null,
-        category: createForm.category || null,
-        condition: createForm.condition as ToolCondition,
-        purchase_value: createForm.purchase_value ? parseFloat(createForm.purchase_value) : null,
-        purchase_date: createForm.purchase_date || null,
-        notes: createForm.notes || null,
-        image_url: cover,
-        photo_url: cover,
-        photos: createForm.photos,
-        quantity_available: Number.isFinite(qty) && qty >= 0 ? qty : 1,
-      } as any);
-      toast.success("Ferramenta criada com sucesso!");
-      setShowCreateModal(false);
-      setCreateForm(EMPTY_CREATE_FORM);
-      mutateTools();
-    } catch (err: any) {
-      toast.error(err?.message || "Erro ao criar ferramenta");
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  /** Envia uma ou mais fotos e acumula na galeria do formulário. */
-  const handleUploadPhoto = async (files: FileList | File[]) => {
-    const list = Array.from(files ?? []);
-    if (list.length === 0) return;
-
-    const invalid = list.find((f) => !f.type.startsWith("image/"));
-    if (invalid) {
-      toast.error("Selecione apenas imagens (JPEG, PNG, WebP).");
-      return;
-    }
-
-    setIsUploadingPhoto(true);
-    try {
-      const urls: string[] = [];
-      for (const file of list) {
-        urls.push(await toolsApi.uploadPhoto(file));
-      }
-      setCreateForm((f) => ({
-        ...f,
-        photos: [...f.photos, ...urls],
-        // Mantém a capa apontando pra primeira foto da galeria.
-        photo_url: f.photo_url || urls[0],
-      }));
-      toast.success(urls.length > 1 ? `${urls.length} fotos enviadas` : "Foto enviada");
-    } catch (err: any) {
-      toast.error(err?.message || "Erro ao enviar foto");
-    } finally {
-      setIsUploadingPhoto(false);
-    }
-  };
-
-  const handleRemovePhoto = (url: string) => {
-    setCreateForm((f) => {
-      const photos = f.photos.filter((p) => p !== url);
-      return {
-        ...f,
-        photos,
-        photo_url: f.photo_url === url ? photos[0] ?? "" : f.photo_url,
-      };
-    });
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
-      >
-        <div className="space-y-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-              Ferramentas
-            </h1>
-            <span className="inline-flex h-7 items-center rounded-lg bg-primary/10 px-2.5 text-sm font-semibold text-primary">
-              {toolsLoading ? "..." : totalTools}
-            </span>
-          </div>
-          <p className="text-muted-foreground">
-            Gerenciamento do inventário e custódia de ferramentas.
-          </p>
-        </div>
-        <Button onClick={() => setShowCreateModal(true)}>
-          <Plus className="h-4 w-4" />
-          Nova Ferramenta
-        </Button>
-      </motion.div>
-
-      {/* KPI cards (Jessica 22/06) */}
-      <ToolsMetricsPanel />
-
-      {/* Tab Buttons */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1, duration: 0.4 }}
-        className="flex gap-1 rounded-xl bg-secondary/50 p-1"
-      >
-        <button
-          onClick={() => setActiveTab("inventario")}
-          className={cn(
-            "relative flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200",
-            activeTab === "inventario"
-              ? "text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          {activeTab === "inventario" && (
-            <motion.div
-              layoutId="activeToolTab"
-              className="absolute inset-0 rounded-lg bg-background shadow-sm"
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            />
-          )}
-          <span className="relative z-10 flex items-center gap-2">
-            <Package className="h-4 w-4" />
-            Inventário
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab("custodia")}
-          className={cn(
-            "relative flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200",
-            activeTab === "custodia"
-              ? "text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          {activeTab === "custodia" && (
-            <motion.div
-              layoutId="activeToolTab"
-              className="absolute inset-0 rounded-lg bg-background shadow-sm"
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            />
-          )}
-          <span className="relative z-10 flex items-center gap-2">
-            <ArrowLeftRight className="h-4 w-4" />
-            Custódia
-            {custodies && custodies.length > 0 && (
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white">
-                {custodies.length}
-              </span>
-            )}
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab("pedidos")}
-          className={cn(
-            "relative flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200",
-            activeTab === "pedidos"
-              ? "text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          {activeTab === "pedidos" && (
-            <motion.div layoutId="activeToolTab" className="absolute inset-0 rounded-lg bg-background shadow-sm" transition={{ type: "spring", stiffness: 300, damping: 30 }} />
-          )}
-          <span className="relative z-10 flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            Pedidos
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab("manutencao")}
-          className={cn(
-            "relative flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200",
-            activeTab === "manutencao"
-              ? "text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          {activeTab === "manutencao" && (
-            <motion.div layoutId="activeToolTab" className="absolute inset-0 rounded-lg bg-background shadow-sm" transition={{ type: "spring", stiffness: 300, damping: 30 }} />
-          )}
-          <span className="relative z-10 flex items-center gap-2">
-            <Settings className="h-4 w-4" />
-            Manutenção
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab("baixa")}
-          className={cn(
-            "relative flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200",
-            activeTab === "baixa"
-              ? "text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          {activeTab === "baixa" && (
-            <motion.div layoutId="activeToolTab" className="absolute inset-0 rounded-lg bg-background shadow-sm" transition={{ type: "spring", stiffness: 300, damping: 30 }} />
-          )}
-          <span className="relative z-10 flex items-center gap-2">
-            <XCircle className="h-4 w-4" />
-            Baixa
-          </span>
-        </button>
-      </motion.div>
-
-      {/* Tab Content */}
-      <AnimatePresence mode="wait">
-        {activeTab === "inventario" ? (
-          <motion.div
-            key="inventario"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.3 }}
-            className="space-y-4"
-          >
-            {/* Filters */}
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Buscar ferramenta, serial, categoria..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="flex h-11 w-full rounded-xl border border-input bg-background pl-10 pr-4 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-200"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                <div className="flex gap-1 rounded-lg bg-secondary/50 p-0.5">
-                  {statusFilterOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => setStatusFilter(option.value)}
-                      className={cn(
-                        "rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-200",
-                        statusFilter === option.value
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Tools Grid */}
-            {toolsLoading ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <ToolCardSkeleton key={i} />
-                ))}
-              </div>
-            ) : !tools || tools.length === 0 ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-              >
-                <Card>
-                  <CardContent>
-                    <EmptyState
-                      icon={<Wrench className="h-6 w-6" />}
-                      title="Nenhuma ferramenta encontrada"
-                      description="Cadastre uma nova ferramenta para começar ou ajuste os filtros de busca."
-                      action={
-                        <Button onClick={() => setShowCreateModal(true)}>
-                          <Plus className="h-4 w-4" />
-                          Nova Ferramenta
-                        </Button>
-                      }
-                    />
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {tools.map((tool, index) => (
-                  <motion.div
-                    key={tool.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05, duration: 0.3 }}
-                  >
-                    <Card
-                      hover
-                      className="cursor-pointer overflow-hidden"
-                    >
-                      {/* Top accent line by status */}
-                      <div
-                        className={cn(
-                          "h-[2px]",
-                          tool.status === ToolStatus.AVAILABLE &&
-                            "bg-green-500",
-                          tool.status === ToolStatus.IN_CUSTODY && "bg-blue-500",
-                          tool.status === ToolStatus.MAINTENANCE &&
-                            "bg-yellow-500",
-                          tool.status === ToolStatus.RETIRED && "bg-zinc-400"
-                        )}
-                      />
-                      <CardContent className="p-5">
-                        <div className="space-y-3">
-                          {/* Photo + Name + Status */}
-                          <div className="flex items-start gap-3">
-                            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-border bg-secondary/40 flex items-center justify-center">
-                              {(tool.photo_url || tool.image_url) ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={(tool.photo_url || tool.image_url) as string}
-                                  alt={tool.name}
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <Wrench className="h-6 w-6 text-muted-foreground" />
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-start justify-between gap-2">
-                                <h3 className="truncate text-sm font-semibold">
-                                  {tool.name}
-                                </h3>
-                                <StatusBadge status={tool.status} />
-                              </div>
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                {tool.serial_number || "Sem serial"}
-                              </p>
-                              <p className="mt-1 text-xs">
-                                <span className="text-muted-foreground">Disponivel: </span>
-                                <span className="font-semibold text-primary">
-                                  {tool.quantity_available ?? 1}
-                                </span>
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Category & Condition */}
-                          <div className="flex items-center gap-3">
-                            {tool.category && (
-                              <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                                {tool.category}
-                              </span>
-                            )}
-                            <ConditionBadge condition={tool.condition} />
-                          </div>
-
-                          {/* Description if present */}
-                          {tool.description && (
-                            <p className="line-clamp-2 text-xs text-muted-foreground">
-                              {tool.description}
-                            </p>
-                          )}
-
-                          {/* Actions (Jessica 28/07 D6) */}
-                          <div className="flex items-center gap-1 border-t pt-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="flex-1"
-                              onClick={() => setEditingTool(tool)}
-                            >
-                              <Edit className="h-3.5 w-3.5 mr-1" />
-                              Editar
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setHistoryTool(tool)}
-                              title="Histórico da ferramenta"
-                            >
-                              <History className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setPurgingTool(tool)}
-                              title="Excluir permanentemente"
-                            >
-                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-          </motion.div>
-        ) : (
-          <motion.div
-            key="custodia"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-            className="space-y-4"
-          >
-            {/* Custody Table */}
-            {custodiesLoading ? (
-              <CustodyTableSkeleton />
-            ) : !custodies || custodies.length === 0 ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-              >
-                <Card>
-                  <CardContent>
-                    <EmptyState
-                      icon={<ArrowLeftRight className="h-6 w-6" />}
-                      title="Nenhuma custódia ativa"
-                      description="Todas as ferramentas estão disponíveis no momento."
-                    />
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ) : (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <ArrowLeftRight className="h-5 w-5 text-primary" />
-                    Custodias Ativas
-                    <span className="ml-1 inline-flex h-5 items-center rounded-md bg-primary/10 px-2 text-xs font-semibold text-primary">
-                      {custodies.length}
-                    </span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {/* Desktop Table */}
-                  <div className="hidden lg:block">
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b border-border text-left">
-                            <th className="pb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                              Ferramenta
-                            </th>
-                            <th className="pb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                              Técnico
-                            </th>
-                            <th className="pb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                              OS Vinculada
-                            </th>
-                            <th className="pb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                              Retirada Em
-                            </th>
-                            <th className="pb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                              Condição
-                            </th>
-                            <th className="pb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                              Ações
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                          {custodies.map((custody, index) => (
-                            <motion.tr
-                              key={custody.id}
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{
-                                delay: index * 0.05,
-                                duration: 0.3,
-                              }}
-                              className="transition-colors hover:bg-accent/50"
-                            >
-                              <td className="py-3.5 pr-4">
-                                <div className="flex items-center gap-2">
-                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                                    <Wrench className="h-4 w-4 text-primary" />
-                                  </div>
-                                  {/*
-                                    A rota custody/active já faz embed de
-                                    tool/user/service_order — a tabela só
-                                    imprimia os UUIDs crus.
-                                  */}
-                                  <span className="text-sm font-medium">
-                                    {custody.tool?.name ?? custody.tool_id}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="py-3.5 pr-4 text-sm">
-                                {custody.user?.full_name ?? custody.user_id}
-                              </td>
-                              <td className="py-3.5 pr-4 text-sm">
-                                {custody.service_order_id ? (
-                                  <span className="inline-flex items-center rounded-md bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-500">
-                                    OS #
-                                    {custody.service_order?.order_number ??
-                                      custody.service_order_id.slice(0, 8)}
-                                  </span>
-                                ) : (
-                                  <span className="text-xs text-muted-foreground">
-                                    —
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-3.5 pr-4 text-sm text-muted-foreground">
-                                <div className="flex items-center gap-1.5">
-                                  <Clock className="h-3.5 w-3.5" />
-                                  {new Date(
-                                    custody.checked_out_at
-                                  ).toLocaleDateString("pt-BR", {
-                                    day: "2-digit",
-                                    month: "2-digit",
-                                    year: "2-digit",
-                                  })}
-                                </div>
-                              </td>
-                              <td className="py-3.5 pr-4">
-                                <ConditionBadge
-                                  condition={custody.condition_out}
-                                />
-                              </td>
-                              <td className="py-3.5">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setReturningCustodyId(custody.id)}
-                                >
-                                  <CheckCircle2 className="h-3.5 w-3.5" />
-                                  Registrar Devolução
-                                </Button>
-                              </td>
-                            </motion.tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Mobile Cards */}
-                  <div className="space-y-3 lg:hidden">
-                    {custodies.map((custody, index) => (
-                      <motion.div
-                        key={custody.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05, duration: 0.3 }}
-                        className="rounded-xl border p-4 space-y-3 border-border"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                              <Wrench className="h-4 w-4 text-primary" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium">
-                                {custody.tool?.name ?? custody.tool_id}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {custody.user?.full_name ?? custody.user_id}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div>
-                            <span className="text-muted-foreground">
-                              OS:{" "}
-                            </span>
-                            <span className="font-medium">
-                              {custody.service_order?.order_number
-                                ? `#${custody.service_order.order_number}`
-                                : custody.service_order_id
-                                  ? custody.service_order_id.slice(0, 8)
-                                  : "—"}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">
-                              Condição:{" "}
-                            </span>
-                            <ConditionBadge
-                              condition={custody.condition_out}
-                            />
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">
-                              Retirada:{" "}
-                            </span>
-                            <span>
-                              {new Date(
-                                custody.checked_out_at
-                              ).toLocaleDateString("pt-BR")}
-                            </span>
-                          </div>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full"
-                          onClick={() => setReturningCustodyId(custody.id)}
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Registrar Devolucao
-                        </Button>
-                      </motion.div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </motion.div>
-        )}
-
-        {/* Pedidos Operador (Jessica 28/07) */}
-        {activeTab === "pedidos" && (
-          <motion.div key="pedidos" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.3 }}>
-            <PedidosPanel tools={tools ?? []} onChanged={mutateTools} />
-          </motion.div>
-        )}
-
-        {/* Manutenção (Jessica 28/07) */}
-        {activeTab === "manutencao" && (
-          <motion.div key="manutencao" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.3 }}>
-            <ManutencaoPanel tools={tools ?? []} onChanged={mutateTools} />
-          </motion.div>
-        )}
-
-        {/* Baixa/Aposentadoria (Jessica 28/07) */}
-        {activeTab === "baixa" && (
-          <motion.div key="baixa" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.3 }}>
-            <BaixaPanel tools={tools ?? []} onChanged={mutateTools} />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ============================================================ */}
-      {/* CREATE TOOL MODAL */}
-      {/* ============================================================ */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCreateModal(false)} />
-          <div className="relative z-10 w-full max-w-lg rounded-xl bg-card border p-6 shadow-xl mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-semibold mb-4">Nova Ferramenta</h2>
-            <div className="space-y-4">
-              {/* Fotos — galeria (a primeira vira a capa) */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">
-                  Fotos
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {createForm.photos.map((url, idx) => (
-                    <div
-                      key={url}
-                      className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-border bg-secondary/40"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={url}
-                        alt={`Foto ${idx + 1}`}
-                        className="h-full w-full object-cover"
-                      />
-                      {idx === 0 && (
-                        <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[9px] text-white text-center py-0.5">
-                          Capa
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => handleRemovePhoto(url)}
-                        className="absolute top-1 right-1 rounded-full bg-black/70 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                        aria-label={`Remover foto ${idx + 1}`}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-                  {createForm.photos.length === 0 && (
-                    <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-border bg-secondary/40 flex items-center justify-center">
-                      <Wrench className="h-6 w-6 text-muted-foreground" />
-                    </div>
-                  )}
-                </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(e) => {
-                    if (e.target.files?.length) handleUploadPhoto(e.target.files);
-                    e.target.value = "";
-                  }}
-                  className="block w-full text-xs file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
-                  disabled={isUploadingPhoto}
-                />
-                {isUploadingPhoto && (
-                  <p className="text-xs text-muted-foreground">Enviando...</p>
-                )}
-              </div>
-
-              <Input
-                label="Nome *"
-                placeholder="Nome da ferramenta"
-                value={createForm.name}
-                onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
-              />
-              <div className="w-full space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">Descricao</label>
-                <textarea
-                  placeholder="Descricao da ferramenta (visivel para tecnicos no catalogo)"
-                  value={createForm.description}
-                  onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
-                  rows={2}
-                  className="flex w-full rounded-xl border border-input bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 focus-visible:border-primary transition-all duration-200 resize-none"
-                />
-              </div>
-              <Input
-                label="Quantidade disponivel *"
-                type="number"
-                min="0"
-                step="1"
-                placeholder="1"
-                value={createForm.quantity_available}
-                onChange={(e) => setCreateForm({ ...createForm, quantity_available: e.target.value })}
-              />
-              <Input
-                label="Código interno / Patrimônio"
-                placeholder="Ex.: PAT-00123"
-                value={createForm.patrimony_code}
-                onChange={(e) => setCreateForm({ ...createForm, patrimony_code: e.target.value })}
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Marca"
-                  placeholder="Ex.: Bosch"
-                  value={createForm.brand}
-                  onChange={(e) => setCreateForm({ ...createForm, brand: e.target.value })}
-                />
-                <Input
-                  label="Modelo"
-                  placeholder="Ex.: GSB 550"
-                  value={createForm.model}
-                  onChange={(e) => setCreateForm({ ...createForm, model: e.target.value })}
-                />
-              </div>
-              <Input
-                label="Número de Serie"
-                placeholder="Serial number"
-                value={createForm.serial_number}
-                onChange={(e) => setCreateForm({ ...createForm, serial_number: e.target.value })}
-              />
-              <Input
-                label="Categoria"
-                placeholder="Ex: Elétrica, Medição..."
-                value={createForm.category}
-                onChange={(e) => setCreateForm({ ...createForm, category: e.target.value })}
-              />
-              <SelectNative
-                label="Condição"
-                value={createForm.condition}
-                onChange={(e) => setCreateForm({ ...createForm, condition: e.target.value })}
-              >
-                <option value={ToolCondition.NEW}>Nova</option>
-                <option value={ToolCondition.GOOD}>Boa</option>
-                <option value={ToolCondition.FAIR}>Regular</option>
-                <option value={ToolCondition.POOR}>Ruim</option>
-                <option value={ToolCondition.DAMAGED}>Danificada</option>
-              </SelectNative>
-              <Input
-                label="Valor de Compra (R$)"
-                type="number"
-                placeholder="0,00"
-                min="0"
-                step="0.01"
-                value={createForm.purchase_value}
-                onChange={(e) => setCreateForm({ ...createForm, purchase_value: e.target.value })}
-              />
-              <Input
-                label="Data de Compra"
-                type="date"
-                value={createForm.purchase_date}
-                onChange={(e) => setCreateForm({ ...createForm, purchase_date: e.target.value })}
-              />
-              <div className="w-full space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">Observações</label>
-                <textarea
-                  placeholder="Observações sobre a ferramenta..."
-                  value={createForm.notes}
-                  onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })}
-                  rows={3}
-                  className="flex w-full rounded-xl border border-input bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 focus-visible:border-primary transition-all duration-200 resize-none"
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <Button variant="outline" onClick={() => setShowCreateModal(false)}>Cancelar</Button>
-              <Button onClick={handleCreateTool} isLoading={isCreating}>Criar Ferramenta</Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Editar (Jessica 28/07) */}
-      {editingTool && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setEditingTool(null)}
-          />
-          <div className="relative z-10 w-full max-w-lg rounded-xl bg-card border p-6 shadow-xl mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-semibold mb-4">
-              Editar: {editingTool.name}
-            </h2>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Nome</label>
-                <Input
-                  value={editingTool.name}
-                  onChange={(e) =>
-                    setEditingTool({ ...editingTool, name: e.target.value })
-                  }
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Status</label>
-                  <SelectNative
-                    value={editingTool.status}
-                    onChange={(e) =>
-                      setEditingTool({
-                        ...editingTool,
-                        status: e.target.value as ToolInventory["status"],
-                      })
-                    }
-                  >
-                    <option value="available">Disponível</option>
-                    <option value="in_custody">Em custódia</option>
-                    <option value="maintenance">Em manutenção</option>
-                    <option value="retired">Aposentada</option>
-                  </SelectNative>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Condição</label>
-                  <SelectNative
-                    value={editingTool.condition ?? "good"}
-                    onChange={(e) =>
-                      setEditingTool({
-                        ...editingTool,
-                        condition: e.target.value as ToolInventory["condition"],
-                      })
-                    }
-                  >
-                    <option value="new">Nova</option>
-                    <option value="good">Boa</option>
-                    <option value="regular">Regular</option>
-                    <option value="poor">Ruim</option>
-                    <option value="damaged">Danificada</option>
-                  </SelectNative>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Categoria</label>
-                  <Input
-                    value={editingTool.category ?? ""}
-                    onChange={(e) =>
-                      setEditingTool({ ...editingTool, category: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Número de série</label>
-                  <Input
-                    value={editingTool.serial_number ?? ""}
-                    onChange={(e) =>
-                      setEditingTool({
-                        ...editingTool,
-                        serial_number: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Descrição</label>
-                <textarea
-                  value={editingTool.description ?? ""}
-                  onChange={(e) =>
-                    setEditingTool({
-                      ...editingTool,
-                      description: e.target.value,
-                    })
-                  }
-                  rows={3}
-                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Observações</label>
-                <textarea
-                  value={editingTool.notes ?? ""}
-                  onChange={(e) =>
-                    setEditingTool({ ...editingTool, notes: e.target.value })
-                  }
-                  rows={2}
-                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                />
-              </div>
-            </div>
-            <div className="flex justify-between gap-3 mt-6">
-              <Button
-                variant="outline"
-                className="text-destructive"
-                onClick={() => {
-                  const t = editingTool;
-                  setEditingTool(null);
-                  setPurgingTool(t);
-                }}
-              >
-                <Trash2 className="h-4 w-4 mr-1" />
-                Excluir
-              </Button>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setEditingTool(null)}>
-                  Cancelar
-                </Button>
-                <Button
-                  isLoading={isSavingEdit}
-                  onClick={async () => {
-                    if (!editingTool) return;
-                    setIsSavingEdit(true);
-                    try {
-                      await toolsApi.update(editingTool.id, {
-                        name: editingTool.name,
-                        description: editingTool.description,
-                        serial_number: editingTool.serial_number,
-                        category: editingTool.category,
-                        condition: editingTool.condition,
-                        notes: editingTool.notes,
-                        status: editingTool.status,
-                      });
-                      toast.success("Ferramenta atualizada");
-                      setEditingTool(null);
-                      mutateTools();
-                    } catch (err) {
-                      toast.error(
-                        err instanceof Error ? err.message : "Falha ao salvar"
-                      );
-                    } finally {
-                      setIsSavingEdit(false);
-                    }
-                  }}
-                >
-                  Salvar
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <HardDeleteDialog
-        open={!!purgingTool}
-        entityLabel="ferramenta"
-        entityName={purgingTool?.name ?? ""}
-        onClose={() => setPurgingTool(null)}
-        onConfirm={async () => {
-          if (!purgingTool) return;
-          await toolsApi.purge(purgingTool.id);
-          mutateTools();
-        }}
-      />
-
-      {returningCustodyId && (() => {
-        const c = (custodies ?? []).find((x) => x.id === returningCustodyId);
-        return (
-          <DevolucaoModal
-            custodyId={returningCustodyId}
-            toolId={c?.tool_id}
-            onClose={() => setReturningCustodyId(null)}
-            onDone={async () => {
-              mutateCustodies();
-              mutateTools();
-            }}
-          />
-        );
-      })()}
-
-      {historyTool && (
-        <HistoricoModal
-          toolId={historyTool.id}
-          toolName={historyTool.name}
-          onClose={() => setHistoryTool(null)}
-        />
-      )}
-    </div>
+    </BlockShell>
   );
 }

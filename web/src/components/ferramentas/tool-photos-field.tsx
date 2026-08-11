@@ -24,7 +24,7 @@ export function ToolPhotosField({
   disabled = false,
 }: {
   toolId: string;
-  kind: "delivery" | "return" | "maintenance" | "retirement";
+  kind: "delivery" | "return" | "maintenance" | "retirement" | "unit";
   photos: PhotoRef[];
   onChange: (photos: PhotoRef[]) => void;
   label?: string;
