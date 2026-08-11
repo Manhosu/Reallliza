@@ -39,7 +39,17 @@ interface ToolRequest {
   tool_name: string;
   quantity: number;
   justification: string | null;
-  status: 'pending' | 'approved' | 'released' | 'rejected' | 'cancelled';
+  // separating/awaiting_pickup/delivered vieram com a expansão do
+  // almoxarifado (migration 053) e chegam aqui de verdade.
+  status:
+    | 'pending'
+    | 'approved'
+    | 'separating'
+    | 'awaiting_pickup'
+    | 'delivered'
+    | 'released'
+    | 'rejected'
+    | 'cancelled';
   approved_at: string | null;
   released_at: string | null;
   rejected_at: string | null;
@@ -47,21 +57,38 @@ interface ToolRequest {
   created_at: string;
 }
 
-const STATUS_LABEL: Record<ToolRequest['status'], string> = {
+// Jessica 10/08: sem os três status novos o badge saía vazio e sem cor — o
+// técnico não via o progresso do próprio pedido depois que o operador
+// começava a separar.
+const STATUS_LABEL: Record<string, string> = {
   pending: 'Enviado',
   approved: 'Aprovado',
+  separating: 'Em separação',
+  awaiting_pickup: 'Aguardando retirada',
+  delivered: 'Entregue',
   released: 'Liberado',
   rejected: 'Rejeitado',
   cancelled: 'Cancelado',
 };
 
-const STATUS_COLOR: Record<ToolRequest['status'], string> = {
+const STATUS_COLOR: Record<string, string> = {
   pending: colors.warning,
   approved: colors.info,
+  separating: colors.info,
+  awaiting_pickup: colors.warning,
+  delivered: colors.success,
   released: colors.success,
   rejected: colors.danger,
   cancelled: colors.textDark,
 };
+
+function statusLabel(status: string): string {
+  return STATUS_LABEL[status] ?? status;
+}
+
+function statusColor(status: string): string {
+  return STATUS_COLOR[status] ?? colors.textDark;
+}
 
 export function ToolsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<OsStackParamList>>();
@@ -257,16 +284,16 @@ export function ToolsScreen() {
                       <View
                         style={[
                           styles.statusBadge,
-                          { backgroundColor: STATUS_COLOR[r.status] + '20' },
+                          { backgroundColor: statusColor(r.status) + '20' },
                         ]}
                       >
                         <Text
                           style={[
                             styles.statusText,
-                            { color: STATUS_COLOR[r.status] },
+                            { color: statusColor(r.status) },
                           ]}
                         >
-                          {STATUS_LABEL[r.status]}
+                          {statusLabel(r.status)}
                         </Text>
                       </View>
                     </View>

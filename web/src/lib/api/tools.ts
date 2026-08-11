@@ -123,6 +123,8 @@ export const toolsApi = {
     expected_return_at?: string;
     estimated_cost?: number;
     notes?: string;
+    responsible_id?: string;
+    photos?: Array<{ url: string; name: string; storage_path?: string }>;
   }) {
     return apiClient.post("/tools/maintenance", body);
   },
@@ -152,7 +154,12 @@ export const toolsApi = {
     >("/tools/retirements");
   },
 
-  retire(body: { tool_id: string; reason: string; notes?: string }) {
+  retire(body: {
+    tool_id: string;
+    reason: string;
+    notes?: string;
+    photos?: Array<{ url: string; name: string; storage_path?: string }>;
+  }) {
     return apiClient.post("/tools/retirements", body);
   },
 

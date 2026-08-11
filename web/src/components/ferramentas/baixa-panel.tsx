@@ -10,6 +10,7 @@ import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toolsApi } from "@/lib/api";
+import { ToolPhotosField, type PhotoRef } from "@/components/ferramentas/tool-photos-field";
 import type { ToolInventory } from "@/lib/types";
 
 interface Retirement {
@@ -33,6 +34,7 @@ export function BaixaPanel({
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ tool_id: "", reason: "", notes: "" });
+  const [photos, setPhotos] = useState<PhotoRef[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,10 +67,12 @@ export function BaixaPanel({
         tool_id: form.tool_id,
         reason: form.reason,
         notes: form.notes || undefined,
+        photos,
       });
       toast.success("Ferramenta baixada");
       setCreating(false);
       setForm({ tool_id: "", reason: "", notes: "" });
+      setPhotos([]);
       await load();
       onChanged();
     } catch (err) {
@@ -170,6 +174,14 @@ export function BaixaPanel({
                   rows={2}
                 />
               </div>
+              <ToolPhotosField
+                toolId={form.tool_id}
+                kind="retirement"
+                photos={photos}
+                onChange={setPhotos}
+                label="Fotos (opcional)"
+                disabled={!form.tool_id}
+              />
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setCreating(false)}>
                   Cancelar

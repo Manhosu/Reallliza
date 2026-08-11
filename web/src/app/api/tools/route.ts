@@ -42,8 +42,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Jessica 10/08: `available=true` (catalogo do app) filtrava so' por
+    // quantidade. Como manutencao/baixa/devolucao-danificada mudam apenas o
+    // `status` e nao mexem em `quantity_available`, ferramenta em manutencao,
+    // aposentada, danificada ou extraviada continuava aparecendo pro tecnico
+    // pedir. Agora exige status 'available' tambem.
     if (available === "true") {
-      query = query.gt("quantity_available", 0);
+      query = query.gt("quantity_available", 0).eq("status", "available");
     }
 
     query = query

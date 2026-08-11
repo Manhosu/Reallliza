@@ -56,7 +56,9 @@ export async function PATCH(
 
     const { data: current, error: fetchError } = await supabase
       .from("tool_requests")
-      .select("id, status, requester_id, tool_name, quantity, priority, tool_id")
+      .select(
+        "id, status, requester_id, tool_name, quantity, priority, tool_id, service_order_id"
+      )
       .eq("id", id)
       .single();
 
@@ -103,12 +105,20 @@ export async function PATCH(
         condition_out?: string;
         notes_out?: string;
         photos_out?: Array<{ url: string; name: string; storage_path?: string }>;
+        service_order_id?: string;
       };
+      // Jessica 10/08: propaga a OS do pedido pra custodia. Sem isso o
+      // historico da ferramenta nunca sabia em qual OS ela foi usada — o
+      // embed da OS em /tools/[id]/history vinha sempre nulo.
+      const serviceOrderId =
+        b.service_order_id ||
+        ((current as { service_order_id?: string | null }).service_order_id ?? null);
       const { data: cust, error: cErr } = await supabase
         .from("tool_custody")
         .insert({
           tool_id: toolId,
           user_id: current.requester_id,
+          service_order_id: serviceOrderId,
           checked_out_at: nowIso,
           condition_out: b.condition_out || "good",
           notes_out: b.notes_out || null,

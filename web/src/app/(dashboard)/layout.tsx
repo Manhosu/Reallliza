@@ -350,7 +350,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, signOut } = useAuthStore();
+  const { user, signOut, isLoading: authLoading } = useAuthStore();
 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -364,12 +364,17 @@ export default function DashboardLayout({
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const notifDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Filter nav items based on user role
+  // Filter nav items based on user role.
+  //
+  // Jessica 10/08: o fallback era `true` quando `role` ainda nao carregou, o
+  // que fazia TODOS os itens (inclusive de outras roles) aparecerem por um
+  // instante e sumirem depois — lido pela cliente como "o menu apareceu e
+  // depois nao estava mais". Agora, enquanto carrega, o menu fica vazio e a
+  // nav mostra skeleton (ver render abaixo).
   const navItems = useMemo(() => {
     const role = user?.role as UserRole | undefined;
-    const filtered = allNavItems.filter((item) =>
-      role ? item.roles.includes(role) : true
-    );
+    if (!role) return [];
+    const filtered = allNavItems.filter((item) => item.roles.includes(role));
     // For partner, rename "Ordens de Serviço" to "Meus Chamados"
     if (role === UserRole.PARTNER) {
       return filtered.map((item) =>
@@ -619,6 +624,22 @@ export default function DashboardLayout({
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+          {authLoading && navItems.length === 0
+            ? Array.from({ length: 10 }).map((_, i) => (
+                <div
+                  key={`nav-skeleton-${i}`}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl px-3 py-2.5",
+                    isCollapsed && "justify-center px-0"
+                  )}
+                >
+                  <div className="h-5 w-5 shrink-0 animate-pulse rounded bg-sidebar-accent" />
+                  {!isCollapsed && (
+                    <div className="h-4 flex-1 animate-pulse rounded bg-sidebar-accent" />
+                  )}
+                </div>
+              ))
+            : null}
           {navItems.map((item) => {
             const isActive =
               pathname === item.href || pathname.startsWith(item.href + "/");

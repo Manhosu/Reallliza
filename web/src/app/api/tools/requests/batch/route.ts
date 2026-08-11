@@ -11,12 +11,16 @@ interface BatchItem {
   quantity: number;
   justification?: string | null;
   priority?: RequestPriority;
+  /** OS pra qual a ferramenta foi pedida (opcional, por item). */
+  service_order_id?: string | null;
 }
 
 interface BatchPayload {
   items: BatchItem[];
   shared_justification?: string | null;
   priority?: RequestPriority;
+  /** OS aplicada a todos os itens do carrinho, quando o item não traz a sua. */
+  service_order_id?: string | null;
 }
 
 /**
@@ -82,6 +86,9 @@ export async function POST(request: NextRequest) {
         it.priority && validPriorities.includes(it.priority)
           ? it.priority
           : sharedPriority;
+      // Jessica 10/08: OS opcional no pedido — propagada pra custodia na
+      // entrega, e' o que alimenta o historico "qual OS usou a ferramenta".
+      const serviceOrderId = it.service_order_id || body.service_order_id || null;
       return {
         requester_id: user.id,
         tool_id: tool.id,
@@ -89,6 +96,7 @@ export async function POST(request: NextRequest) {
         quantity: Math.floor(qty),
         justification,
         priority: itemPriority,
+        service_order_id: serviceOrderId,
         status: "pending",
       };
     });

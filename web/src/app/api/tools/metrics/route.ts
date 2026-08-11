@@ -27,13 +27,39 @@ export async function GET(request: NextRequest) {
       .from("tool_inventory")
       .select("status");
 
-    const totals = { available: 0, in_custody: 0, maintenance: 0, retired: 0, all: 0 };
+    // Jessica 10/08: os quatro status da migration 053 entravam no total mas
+    // nao apareciam em bucket nenhum — ferramenta danificada ou extraviada
+    // sumia do painel. Agora todo status conhecido tem contador, e o que nao
+    // for reconhecido cai em `other` em vez de desaparecer.
+    const totals = {
+      available: 0,
+      in_custody: 0,
+      maintenance: 0,
+      retired: 0,
+      damaged: 0,
+      awaiting_evaluation: 0,
+      missing: 0,
+      reserved: 0,
+      other: 0,
+      all: 0,
+    };
+    const COUNTED = new Set([
+      "available",
+      "in_custody",
+      "maintenance",
+      "retired",
+      "damaged",
+      "awaiting_evaluation",
+      "missing",
+      "reserved",
+    ]);
     for (const row of (statusRows ?? []) as Array<{ status: string }>) {
       totals.all++;
-      if (row.status === "available") totals.available++;
-      else if (row.status === "in_custody") totals.in_custody++;
-      else if (row.status === "maintenance") totals.maintenance++;
-      else if (row.status === "retired") totals.retired++;
+      if (COUNTED.has(row.status)) {
+        totals[row.status as keyof typeof totals]++;
+      } else {
+        totals.other++;
+      }
     }
 
     // Custodia ativa + atrasadas
@@ -58,7 +84,9 @@ export async function GET(request: NextRequest) {
       .gte("expected_return_at", nowIso)
       .lte("expected_return_at", in7dIso);
 
-    // Requisicoes
+    // Requisicoes. Os estados intermediarios da 053 (separating,
+    // awaiting_pickup, delivered) tambem contam — sem eles o painel dizia
+    // "0 pedidos" com a fila cheia de pedidos em separacao.
     const { count: pendingReq } = await supabase
       .from("tool_requests")
       .select("*", { count: "exact", head: true })
@@ -68,6 +96,21 @@ export async function GET(request: NextRequest) {
       .from("tool_requests")
       .select("*", { count: "exact", head: true })
       .eq("status", "approved");
+
+    const { count: separatingReq } = await supabase
+      .from("tool_requests")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "separating");
+
+    const { count: awaitingPickupReq } = await supabase
+      .from("tool_requests")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "awaiting_pickup");
+
+    const { count: deliveredReq } = await supabase
+      .from("tool_requests")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "delivered");
 
     return jsonResponse({
       totals,
@@ -79,6 +122,15 @@ export async function GET(request: NextRequest) {
       requests: {
         pending_count: pendingReq ?? 0,
         approved_count: approvedReq ?? 0,
+        separating_count: separatingReq ?? 0,
+        awaiting_pickup_count: awaitingPickupReq ?? 0,
+        delivered_count: deliveredReq ?? 0,
+        /** Tudo que ainda exige acao do operador do almoxarifado. */
+        open_count:
+          (pendingReq ?? 0) +
+          (approvedReq ?? 0) +
+          (separatingReq ?? 0) +
+          (awaitingPickupReq ?? 0),
       },
     });
   } catch (error) {

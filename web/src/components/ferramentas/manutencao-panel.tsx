@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { toolsApi } from "@/lib/api";
+import { toolsApi, usersApi } from "@/lib/api";
+import { ToolPhotosField, type PhotoRef } from "@/components/ferramentas/tool-photos-field";
 import type { ToolInventory } from "@/lib/types";
 
 interface Maintenance {
@@ -44,7 +45,12 @@ export function ManutencaoPanel({
     expected_return_at: "",
     estimated_cost: "",
     notes: "",
+    responsible_id: "",
   });
+  // Jessica 22/06 pediu responsável e anexos no envio pra manutenção — as
+  // colunas existem desde a 053 e a rota já aceita, faltava a UI.
+  const [photos, setPhotos] = useState<PhotoRef[]>([]);
+  const [staff, setStaff] = useState<Array<{ id: string; full_name: string }>>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,6 +68,24 @@ export function ManutencaoPanel({
   useEffect(() => {
     load();
   }, [load]);
+
+  // Lista de responsáveis possíveis (equipe interna).
+  useEffect(() => {
+    let cancelled = false;
+    usersApi
+      .list({ limit: 100, status: "active" as never })
+      .then((res) => {
+        if (cancelled) return;
+        const rows = (res?.data ?? []) as Array<{ id: string; full_name: string }>;
+        setStaff(rows);
+      })
+      .catch(() => {
+        // Sem a lista o campo vira opcional — não bloqueia o envio.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const availableTools = tools.filter(
     (t) =>
@@ -84,6 +108,8 @@ export function ManutencaoPanel({
           ? parseFloat(form.estimated_cost)
           : undefined,
         notes: form.notes || undefined,
+        responsible_id: form.responsible_id || undefined,
+        photos,
       });
       toast.success("Enviado pra manutenção");
       setCreating(false);
@@ -93,7 +119,9 @@ export function ManutencaoPanel({
         expected_return_at: "",
         estimated_cost: "",
         notes: "",
+        responsible_id: "",
       });
+      setPhotos([]);
       await load();
       onChanged();
     } catch (err) {
@@ -231,6 +259,22 @@ export function ManutencaoPanel({
                 </div>
               </div>
               <div>
+                <label className="text-sm">Responsável</label>
+                <SelectNative
+                  value={form.responsible_id}
+                  onChange={(e) =>
+                    setForm({ ...form, responsible_id: e.target.value })
+                  }
+                >
+                  <option value="">Não definido</option>
+                  {staff.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.full_name}
+                    </option>
+                  ))}
+                </SelectNative>
+              </div>
+              <div>
                 <label className="text-sm">Observações</label>
                 <textarea
                   value={form.notes}
@@ -239,6 +283,14 @@ export function ManutencaoPanel({
                   rows={2}
                 />
               </div>
+              <ToolPhotosField
+                toolId={form.tool_id}
+                kind="maintenance"
+                photos={photos}
+                onChange={setPhotos}
+                label="Fotos / comprovantes (opcional)"
+                disabled={!form.tool_id}
+              />
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setCreating(false)}>
                   Cancelar

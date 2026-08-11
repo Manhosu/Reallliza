@@ -181,7 +181,7 @@ export async function convertQuoteToServiceOrder(
     quote.service_date &&
     Number(quote.total_hours) > 0
   ) {
-    await scheduleReallizaJobs(supabase, os.id, {
+    const scheduled = await scheduleReallizaJobs(supabase, os.id, {
       service_date: quote.service_date as string,
       service_time: (quote.service_time as string | null) ?? "08:00",
       total_hours: Number(quote.total_hours),
@@ -189,6 +189,25 @@ export async function convertQuoteToServiceOrder(
       team_id: autoAssignedTeamId,
       allow_weekend: !!(quote as { allow_weekend?: boolean }).allow_weekend,
     });
+
+    // Jessica 10/08: espelha a data na propria OS. Sem isso o calendario da
+    // equipe fica vazio nos dois caminhos — nem pelos schedules, nem pelo
+    // fallback de scheduled_date (api/teams/[id]/calendar/route.ts).
+    if (scheduled.first_date) {
+      const { error: schedMirrorErr } = await supabase
+        .from("service_orders")
+        .update({
+          scheduled_date: scheduled.first_date,
+          scheduled_start_time: scheduled.start_time,
+          scheduled_end_time: scheduled.end_time,
+        })
+        .eq("id", os.id);
+      if (schedMirrorErr) {
+        console.error(
+          `convertQuote: falha ao gravar scheduled_date na OS ${os.id}: ${schedMirrorErr.message}`
+        );
+      }
+    }
   }
 
   // 5.4. Aditivo Marco 4: se auto-assigned, valida cursos obrigatorios
@@ -241,7 +260,13 @@ export async function convertQuoteToServiceOrder(
     .select("status")
     .eq("id", os.id)
     .maybeSingle();
-  if ((latestOs as { status?: string } | null)?.status === "assigned") {
+  // Status efetivo depois do eventual downgrade do 5.4 — o bloco acima pode
+  // ter mandado a OS de volta pra 'awaiting_assignment' e zerado o team_id.
+  const finalStatus =
+    (latestOs as { status?: string } | null)?.status ?? initialStatus;
+  const finalTeamId = finalStatus === "assigned" ? autoAssignedTeamId : null;
+
+  if (finalStatus === "assigned") {
     try {
       const { applyCategoryAutomation } = await import(
         "@/lib/service-orders/category-automation"
@@ -256,7 +281,11 @@ export async function convertQuoteToServiceOrder(
 
   // 6. Notifica admins quando modalidade reallliza cai na fila de designacao
   // (Jessica 24/06). Feito em fire-and-forget pra nao atrasar webhook Asaas.
-  if (initialStatus === "awaiting_assignment") {
+  //
+  // Usa o status final: antes olhava só o inicial, então uma OS rebaixada
+  // pelo 5.4 (nenhum membro da equipe com os cursos obrigatórios) caía na
+  // fila de designação sem avisar ninguém.
+  if (finalStatus === "awaiting_assignment") {
     notifyAdminsOfAwaitingAssignment(
       supabase,
       os.id,
@@ -264,6 +293,21 @@ export async function convertQuoteToServiceOrder(
       quote.client_name as string
     ).catch((err) => {
       console.error(`convertQuote: notify admins failed: ${err?.message ?? err}`);
+    });
+  }
+
+  // 6.1. Jessica 10/08: quando o auto-assign da certo ninguem era avisado —
+  // nem admin (so' notificado em awaiting_assignment) nem os tecnicos. A OS
+  // simplesmente aparecia na lista da equipe sem aviso nenhum.
+  if (finalStatus === "assigned" && finalTeamId) {
+    notifyTeamOfAssignment(
+      supabase,
+      finalTeamId,
+      os.id,
+      quote.quote_number as string | number,
+      quote.client_name as string
+    ).catch((err) => {
+      console.error(`convertQuote: notify team failed: ${err?.message ?? err}`);
     });
   }
 
@@ -328,8 +372,55 @@ async function notifyAdminsOfAwaitingAssignment(
 }
 
 /**
+ * Notifica todos os membros da equipe quando a OS e' auto-atribuida a ela.
+ * Fire-and-forget — falha nao bloqueia a conversao.
+ */
+async function notifyTeamOfAssignment(
+  supabase: SupabaseClient,
+  teamId: string,
+  serviceOrderId: string,
+  quoteNumber: string | number,
+  clientName: string
+): Promise<void> {
+  const { getTeamMemberIds } = await import("@/lib/api-helpers/team-scope");
+  const memberIds = await getTeamMemberIds(supabase, teamId);
+  if (memberIds.length === 0) return;
+
+  const { createNotification } = await import(
+    "@/lib/api-helpers/notifications"
+  );
+
+  await Promise.allSettled(
+    memberIds.map((id) =>
+      createNotification(
+        id,
+        "Nova OS para sua equipe",
+        `Orçamento #${quoteNumber} de ${clientName} foi atribuído à sua equipe.`,
+        "general",
+        { service_order_id: serviceOrderId, kind: "team_assigned" },
+        { priority: "high" }
+      )
+    )
+  );
+}
+
+/** Resultado do agendamento automatico, usado pra espelhar em service_orders. */
+interface ScheduleReallizaResult {
+  /** Primeira data util efetivamente agendada (YYYY-MM-DD). */
+  first_date: string | null;
+  start_time: string;
+  end_time: string;
+  /** Quantos dias foram inseridos de fato. */
+  days: number;
+}
+
+/**
  * Cria schedules em jornadas de 8h consecutivas a partir de service_date.
  * Pula domingos e feriados (busca a proxima data util).
+ *
+ * Devolve a primeira data agendada pro caller espelhar em
+ * service_orders.scheduled_date — o calendario da equipe usa esse campo como
+ * fallback quando a OS ainda nao tem schedule (api/teams/[id]/calendar).
  */
 async function scheduleReallizaJobs(
   supabase: SupabaseClient,
@@ -342,9 +433,15 @@ async function scheduleReallizaJobs(
     team_id?: string | null;
     allow_weekend?: boolean;
   }
-): Promise<void> {
+): Promise<ScheduleReallizaResult> {
+  const empty: ScheduleReallizaResult = {
+    first_date: null,
+    start_time: "",
+    end_time: "",
+    days: 0,
+  };
   const totalDays = Math.ceil(opts.total_hours / 8);
-  if (totalDays <= 0) return;
+  if (totalDays <= 0) return empty;
 
   // Feriados ativos pra pular (sempre respeitados, mesmo com allow_weekend)
   const { data: holidays } = await supabase
@@ -404,14 +501,24 @@ async function scheduleReallizaJobs(
     current.setDate(current.getDate() + 1);
   }
 
-  if (inserts.length > 0) {
-    // Jessica 03/08 fix: log de erro antes silencioso (era o motivo dos
-    // schedules nao aparecerem no calendario da equipe).
-    const { error: schErr } = await supabase.from("schedules").insert(inserts);
-    if (schErr) {
-      console.error(
-        `scheduleReallizaJobs: falha inserir ${inserts.length} schedules: ${schErr.message}`
-      );
-    }
+  if (inserts.length === 0) return empty;
+
+  // Jessica 03/08 fix: log de erro antes silencioso (era o motivo dos
+  // schedules nao aparecerem no calendario da equipe).
+  const { error: schErr } = await supabase.from("schedules").insert(inserts);
+  if (schErr) {
+    console.error(
+      `scheduleReallizaJobs: falha inserir ${inserts.length} schedules: ${schErr.message}`
+    );
+    // Mesmo com falha no insert devolvemos as datas calculadas: o caller
+    // espelha em service_orders.scheduled_date e o calendario da equipe
+    // ainda consegue mostrar a OS pelo caminho de fallback.
   }
+
+  return {
+    first_date: inserts[0].date,
+    start_time: startTime,
+    end_time: endTime,
+    days: inserts.length,
+  };
 }

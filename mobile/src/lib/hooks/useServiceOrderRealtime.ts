@@ -31,6 +31,7 @@ export function useServiceOrderRealtime({ onRelevantChange, enabled = true }: Op
   const lastFire = useRef<number>(0);
   const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const partnerIdRef = useRef<string | null>(null);
+  const teamIdsRef = useRef<Set<string>>(new Set());
 
   // Pré-carrega o partner_id do user (parceiro) uma única vez. Para o
   // técnico não precisa — basta comparar technician_id.
@@ -55,6 +56,27 @@ export function useServiceOrderRealtime({ onRelevantChange, enabled = true }: Op
     };
   }, [enabled, profile?.id, profile?.role]);
 
+  // Jessica 10/08: OS atribuída à equipe vem com technician_id NULL. Sem as
+  // equipes do usuário aqui, o realtime nunca disparava pra elas e a lista
+  // só atualizava no pull-to-refresh.
+  useEffect(() => {
+    if (!enabled || !profile?.id) return;
+    let cancelled = false;
+    supabase
+      .from('team_members')
+      .select('team_id')
+      .eq('technician_id', profile.id)
+      .then(({ data }) => {
+        if (cancelled) return;
+        teamIdsRef.current = new Set(
+          ((data ?? []) as Array<{ team_id: string }>).map((r) => r.team_id)
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, profile?.id]);
+
   useEffect(() => {
     if (!enabled || !profile?.id) return;
 
@@ -78,8 +100,10 @@ export function useServiceOrderRealtime({ onRelevantChange, enabled = true }: Op
       if (!row) return false;
       const technicianId = row.technician_id as string | null;
       const partnerId = row.partner_id as string | null;
+      const teamId = row.team_id as string | null;
       if (technicianId && technicianId === profile.id) return true;
       if (partnerIdRef.current && partnerId === partnerIdRef.current) return true;
+      if (teamId && teamIdsRef.current.has(teamId)) return true;
       return false;
     };
 

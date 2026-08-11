@@ -4,6 +4,7 @@ import { authenticateRequest } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { redactOsListForRole } from "@/lib/api-helpers/redact";
 import { isUserHomologado } from "@/lib/api-helpers/user-context";
+import { getUserTeamIds, buildTeamScopeFilter } from "@/lib/api-helpers/team-scope";
 
 /**
  * GET /api/service-orders/my
@@ -42,8 +43,13 @@ export async function GET(request: NextRequest) {
     // nunca aparecia. Mesmo fix aplicado em /api/service-orders ontem,
     // mas o mobile chama /my (essa rota). Agora parceiro ve OS quando
     // e o partner_id OU quando assumiu como tecnico.
+    // Jessica 10/08: OS auto-atribuida a uma equipe fica com technician_id
+    // NULL (so' team_id). Sem o escopo de equipe abaixo, ela nao aparecia
+    // pra nenhum membro — sintoma relatado como "OS nao chega no app".
     if (user.role === "technician") {
-      query = query.eq("technician_id", user.id);
+      const teamIds = await getUserTeamIds(supabase, user.id);
+      const scope = buildTeamScopeFilter(user.id, teamIds);
+      query = scope ? query.or(scope) : query.eq("technician_id", user.id);
     } else if (user.role === "partner") {
       const { data: partnerData } = await supabase
         .from("partners")
@@ -51,11 +57,10 @@ export async function GET(request: NextRequest) {
         .eq("user_id", user.id)
         .single();
 
-      const orParts: string[] = [`technician_id.eq.${user.id}`];
-      if (partnerData) {
-        orParts.push(`partner_id.eq.${partnerData.id}`);
-      }
-      query = query.or(orParts.join(","));
+      const teamIds = await getUserTeamIds(supabase, user.id);
+      const extra = partnerData ? [`partner_id.eq.${partnerData.id}`] : [];
+      const scope = buildTeamScopeFilter(user.id, teamIds, extra);
+      query = scope ? query.or(scope) : query.eq("technician_id", user.id);
     }
     // admin/manager see all (same as /api/service-orders)
 

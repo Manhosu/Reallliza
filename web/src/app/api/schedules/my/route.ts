@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { getUserTeamIds, buildTeamScopeFilter } from "@/lib/api-helpers/team-scope";
 
 /**
  * GET /api/schedules/my
@@ -19,6 +20,12 @@ export async function GET(request: NextRequest) {
 
     const supabase = getAdminClient();
 
+    // Jessica 10/08: os agendamentos gerados na conversao de orcamento nascem
+    // com technician_id NULL e so' team_id preenchido (a equipe distribui
+    // internamente). Sem o escopo de equipe a aba Agenda do app fica vazia.
+    const teamIds = await getUserTeamIds(supabase, user.id);
+    const scope = buildTeamScopeFilter(user.id, teamIds);
+
     let query = supabase
       .from("schedules")
       .select(
@@ -27,8 +34,9 @@ export async function GET(request: NextRequest) {
         technician:profiles!schedules_technician_id_fkey(id, full_name, email, phone, avatar_url),
         service_order:service_orders!schedules_service_order_id_fkey(id, order_number, title, status, client_name, address_city)
       `
-      )
-      .eq("technician_id", user.id);
+      );
+
+    query = scope ? query.or(scope) : query.eq("technician_id", user.id);
 
     if (status) {
       query = query.eq("status", status);

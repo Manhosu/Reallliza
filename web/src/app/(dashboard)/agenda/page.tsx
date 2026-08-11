@@ -109,6 +109,23 @@ function parseTime(time: string): { hour: number; minute: number } {
   return { hour: h, minute: m };
 }
 
+/**
+ * Rotulo do agendamento na agenda.
+ *
+ * Jessica 10/08: antes era `title || order_number`, e como toda OS tem titulo
+ * o numero nunca aparecia — pior ainda, o titulo de OS vinda de orcamento e
+ * "Orcamento #123 — Cliente", o que faz o operador ler o numero errado.
+ * Agora o numero da OS vem primeiro.
+ */
+function scheduleLabel(s: {
+  service_order?: { order_number?: string | null; title?: string | null } | null;
+  service_order_id?: string | null;
+}): string {
+  if (s.service_order?.order_number) return `OS #${s.service_order.order_number}`;
+  if (s.service_order?.title) return s.service_order.title;
+  return s.service_order_id?.slice(0, 8) ?? "Agendamento";
+}
+
 function getScheduleTopAndHeight(
   startTime: string,
   endTime: string
@@ -209,7 +226,7 @@ function ScheduleBlock({
           </span>
         )}
         <p className={cn("truncate text-[11px] font-semibold", colors.text)}>
-          {schedule.service_order?.title || schedule.service_order?.order_number || schedule.service_order_id.slice(0, 8)}
+          {scheduleLabel(schedule)}
         </p>
       </div>
       {height > 48 && (
@@ -773,7 +790,7 @@ export default function AgendaPage() {
                                       colors.text
                                     )}
                                   >
-                                    {s.service_order?.title || s.service_order?.order_number || s.service_order_id.slice(0, 8)}
+                                    {scheduleLabel(s)}
                                   </p>
                                 );
                               })}
@@ -893,7 +910,7 @@ export default function AgendaPage() {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
                               <p className="truncate text-sm font-semibold">
-                                {schedule.service_order?.title || schedule.service_order?.order_number || schedule.service_order_id.slice(0, 8)}
+                                {scheduleLabel(schedule)}
                               </p>
                               {schedule.source === "os" && (
                                 <span className="shrink-0 inline-flex items-center gap-0.5 rounded bg-primary/10 px-1.5 py-px text-[9px] font-semibold text-primary">

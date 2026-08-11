@@ -30,6 +30,21 @@ function fmtISO(d: Date): string {
   return `${y}-${m}-${dd}`;
 }
 
+/**
+ * Rotulo curto do evento na celula do calendario.
+ *
+ * Jessica 10/08: a celula mostrava `title`, que pra OS vinda de orcamento e
+ * "Orcamento #123 — Cliente" — ou seja, o numero do ORCAMENTO. Ela procurava
+ * o numero da OS. Agora prioriza `order_number` e cai no titulo so' quando o
+ * evento nao tem OS vinculada (agendamento manual).
+ */
+function eventLabel(e: TeamCalendarEvent): string {
+  if (e.service_order?.order_number) {
+    return `OS #${e.service_order.order_number}`;
+  }
+  return e.title;
+}
+
 function daysInMonthGrid(anchor: Date) {
   const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
   const startWeekday = first.getDay(); // 0=Dom
@@ -220,7 +235,7 @@ export default function EquipeCalendarioPage({
                             border: `1px solid ${teamColor}50`,
                           }}
                         >
-                          {e.start_time?.slice(0, 5)} {e.title}
+                          {e.start_time?.slice(0, 5)} {eventLabel(e)}
                         </div>
                       ))}
                       {events.length > 3 && (

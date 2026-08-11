@@ -7,6 +7,7 @@ import { createNotification } from "@/lib/api-helpers/notifications";
 import { createScheduleFromOs } from "@/lib/api-helpers/schedules";
 import { redactOsForRole } from "@/lib/api-helpers/redact";
 import { isUserHomologado } from "@/lib/api-helpers/user-context";
+import { canTechnicianAccessOs } from "@/lib/api-helpers/team-scope";
 
 /**
  * GET /api/service-orders/[id]
@@ -41,8 +42,14 @@ export async function GET(
       throw new AuthError(404, `Service order with ID ${id} not found`);
     }
 
-    // Role-based access: technicians can only see their own orders
-    if (user.role === "technician" && order.technician_id !== user.id) {
+    // Role-based access: tecnico ve a OS dele OU a da equipe dele.
+    // Jessica 10/08: sem o escopo de equipe, OS auto-atribuida (technician_id
+    // NULL, so' team_id) dava 403 pro membro que tentasse abrir por link ou
+    // notificacao.
+    if (
+      user.role === "technician" &&
+      !(await canTechnicianAccessOs(supabase, user.id, order))
+    ) {
       throw new AuthError(403, "You do not have permission to view this service order");
     }
 
@@ -229,7 +236,8 @@ export async function PUT(
           .maybeSingle();
         partnerOwnId = pd?.id ?? null;
       }
-      const okAsTech = existing.technician_id === user.id;
+      // Membro da equipe dona da OS conta como operador (Jessica 10/08).
+      const okAsTech = await canTechnicianAccessOs(supabase, user.id, existing);
       const okAsPartner =
         !!partnerOwnId && (existing as { partner_id?: string | null }).partner_id === partnerOwnId;
       if (!okAsTech && !okAsPartner) {

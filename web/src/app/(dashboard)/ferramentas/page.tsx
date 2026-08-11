@@ -14,7 +14,9 @@ import {
   CheckCircle2,
   Settings,
   XCircle,
+  X,
   Edit,
+  History,
   Trash2,
 } from "lucide-react";
 import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
@@ -22,6 +24,7 @@ import { PedidosPanel } from "@/components/ferramentas/pedidos-panel";
 import { ManutencaoPanel } from "@/components/ferramentas/manutencao-panel";
 import { BaixaPanel } from "@/components/ferramentas/baixa-panel";
 import { DevolucaoModal } from "@/components/ferramentas/devolucao-modal";
+import { HistoricoModal } from "@/components/ferramentas/historico-modal";
 import { apiClient } from "@/lib/api/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -44,17 +47,30 @@ import { useApi, usePaginatedApi } from "@/hooks/use-api";
 // Labels & Config
 // ============================================================
 
-const TOOL_STATUS_LABELS: Record<ToolStatus, string> = {
+// A migration 053 ampliou o enum do banco (damaged, awaiting_evaluation,
+// missing, reserved) e esses valores chegam aqui de verdade — o modal de
+// devolucao oferece "danificada" e "extraviada". Mapas indexados por string
+// pra cobrir tudo que o banco pode devolver.
+const TOOL_STATUS_LABELS: Record<string, string> = {
   [ToolStatus.AVAILABLE]: "Disponível",
   [ToolStatus.IN_CUSTODY]: "Em Custódia",
   [ToolStatus.MAINTENANCE]: "Manutenção",
   [ToolStatus.RETIRED]: "Aposentada",
+  damaged: "Danificada",
+  awaiting_evaluation: "Aguardando Avaliação",
+  missing: "Extraviada",
+  reserved: "Reservada para OS",
 };
 
-const TOOL_STATUS_COLORS: Record<
-  ToolStatus,
-  { bg: string; text: string; dot: string }
-> = {
+type StatusColors = { bg: string; text: string; dot: string };
+
+const TOOL_STATUS_FALLBACK_COLORS: StatusColors = {
+  bg: "bg-zinc-500/10",
+  text: "text-zinc-400",
+  dot: "bg-zinc-400",
+};
+
+const TOOL_STATUS_COLORS: Record<string, StatusColors> = {
   [ToolStatus.AVAILABLE]: {
     bg: "bg-green-500/10",
     text: "text-green-500",
@@ -74,6 +90,26 @@ const TOOL_STATUS_COLORS: Record<
     bg: "bg-zinc-500/10",
     text: "text-zinc-400",
     dot: "bg-zinc-400",
+  },
+  damaged: {
+    bg: "bg-red-500/10",
+    text: "text-red-500",
+    dot: "bg-red-500",
+  },
+  awaiting_evaluation: {
+    bg: "bg-orange-500/10",
+    text: "text-orange-500",
+    dot: "bg-orange-500",
+  },
+  missing: {
+    bg: "bg-purple-500/10",
+    text: "text-purple-400",
+    dot: "bg-purple-400",
+  },
+  reserved: {
+    bg: "bg-cyan-500/10",
+    text: "text-cyan-500",
+    dot: "bg-cyan-500",
   },
 };
 
@@ -99,12 +135,21 @@ const TOOL_CONDITION_COLORS: Record<ToolCondition, string> = {
 
 type Tab = "inventario" | "custodia" | "pedidos" | "manutencao" | "baixa";
 
+/** Custódia com os relacionamentos que a rota /tools/custody/active embute. */
+type CustodyWithRelations = ToolCustody & {
+  tool?: { id: string; name: string; serial_number?: string | null } | null;
+  user?: { id: string; full_name: string } | null;
+  service_order?: { id: string; order_number: string; title?: string } | null;
+};
+
 // ============================================================
 // Status Badge Component
 // ============================================================
 
-function StatusBadge({ status }: { status: ToolStatus }) {
-  const colors = TOOL_STATUS_COLORS[status];
+function StatusBadge({ status }: { status: ToolStatus | string }) {
+  // Defensivo: status desconhecido nao pode derrubar a aba inteira de
+  // inventario (era o que acontecia com 'damaged'/'missing').
+  const colors = TOOL_STATUS_COLORS[status] ?? TOOL_STATUS_FALLBACK_COLORS;
   return (
     <span
       className={cn(
@@ -114,7 +159,7 @@ function StatusBadge({ status }: { status: ToolStatus }) {
       )}
     >
       <span className={cn("h-1.5 w-1.5 rounded-full", colors.dot)} />
-      {TOOL_STATUS_LABELS[status]}
+      {TOOL_STATUS_LABELS[status] ?? status}
     </span>
   );
 }
@@ -352,12 +397,19 @@ export default function FerramentasPage() {
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   // Jessica 28/07: modal editar + hard delete + status change + devolucao
   const [editingTool, setEditingTool] = useState<ToolInventory | null>(null);
+  const [historyTool, setHistoryTool] = useState<ToolInventory | null>(null);
   const [purgingTool, setPurgingTool] = useState<ToolInventory | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [returningCustodyId, setReturningCustodyId] = useState<string | null>(null);
-  const [createForm, setCreateForm] = useState({
+  // Jessica 22/06 pediu patrimônio, marca, modelo e FOTOS (plural) no
+  // cadastro. As colunas existem desde a migration 053 e a API já aceita
+  // (api/tools/route.ts) — só o formulário nunca enviou.
+  const EMPTY_CREATE_FORM = {
     name: "",
     description: "",
+    patrimony_code: "",
+    brand: "",
+    model: "",
     serial_number: "",
     category: "",
     condition: ToolCondition.GOOD as string,
@@ -365,8 +417,11 @@ export default function FerramentasPage() {
     purchase_date: "",
     notes: "",
     photo_url: "",
+    photos: [] as string[],
     quantity_available: "1",
-  });
+  };
+
+  const [createForm, setCreateForm] = useState(EMPTY_CREATE_FORM);
 
   // Debounce search input
   useEffect(() => {
@@ -401,13 +456,15 @@ export default function FerramentasPage() {
     setToolsPage(1);
   }, [debouncedSearch, statusFilter, setToolsPage]);
 
-  // Custody tab: active custodies
+  // Custody tab: active custodies.
+  // A rota /tools/custody/active já devolve tool/user/service_order
+  // embutidos; o tipo base ToolCustody só descreve as colunas.
   const {
     data: custodies,
     isLoading: custodiesLoading,
     mutate: mutateCustodies,
-  } = useApi<ToolCustody[]>(
-    (signal) => toolsApi.getActiveCustodies(),
+  } = useApi<CustodyWithRelations[]>(
+    (signal) => toolsApi.getActiveCustodies() as Promise<CustodyWithRelations[]>,
     []
   );
 
@@ -447,22 +504,29 @@ export default function FerramentasPage() {
     setIsCreating(true);
     try {
       const qty = parseInt(createForm.quantity_available || "1", 10);
+      // A primeira foto da galeria vira a capa (photo_url/image_url), pra
+      // continuar compatível com as listagens que só leem a capa.
+      const cover = createForm.photos[0] || createForm.photo_url || null;
       await toolsApi.create({
         name: createForm.name,
         description: createForm.description || null,
+        patrimony_code: createForm.patrimony_code || null,
+        brand: createForm.brand || null,
+        model: createForm.model || null,
         serial_number: createForm.serial_number || null,
         category: createForm.category || null,
         condition: createForm.condition as ToolCondition,
         purchase_value: createForm.purchase_value ? parseFloat(createForm.purchase_value) : null,
         purchase_date: createForm.purchase_date || null,
         notes: createForm.notes || null,
-        image_url: createForm.photo_url || null,
-        photo_url: createForm.photo_url || null,
+        image_url: cover,
+        photo_url: cover,
+        photos: createForm.photos,
         quantity_available: Number.isFinite(qty) && qty >= 0 ? qty : 1,
       } as any);
       toast.success("Ferramenta criada com sucesso!");
       setShowCreateModal(false);
-      setCreateForm({ name: "", description: "", serial_number: "", category: "", condition: ToolCondition.GOOD, purchase_value: "", purchase_date: "", notes: "", photo_url: "", quantity_available: "1" });
+      setCreateForm(EMPTY_CREATE_FORM);
       mutateTools();
     } catch (err: any) {
       toast.error(err?.message || "Erro ao criar ferramenta");
@@ -471,22 +535,46 @@ export default function FerramentasPage() {
     }
   };
 
-  const handleUploadPhoto = async (file: File) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast.error("Selecione uma imagem (JPEG, PNG, WebP).");
+  /** Envia uma ou mais fotos e acumula na galeria do formulário. */
+  const handleUploadPhoto = async (files: FileList | File[]) => {
+    const list = Array.from(files ?? []);
+    if (list.length === 0) return;
+
+    const invalid = list.find((f) => !f.type.startsWith("image/"));
+    if (invalid) {
+      toast.error("Selecione apenas imagens (JPEG, PNG, WebP).");
       return;
     }
+
     setIsUploadingPhoto(true);
     try {
-      const url = await toolsApi.uploadPhoto(file);
-      setCreateForm((f) => ({ ...f, photo_url: url }));
-      toast.success("Foto enviada");
+      const urls: string[] = [];
+      for (const file of list) {
+        urls.push(await toolsApi.uploadPhoto(file));
+      }
+      setCreateForm((f) => ({
+        ...f,
+        photos: [...f.photos, ...urls],
+        // Mantém a capa apontando pra primeira foto da galeria.
+        photo_url: f.photo_url || urls[0],
+      }));
+      toast.success(urls.length > 1 ? `${urls.length} fotos enviadas` : "Foto enviada");
     } catch (err: any) {
       toast.error(err?.message || "Erro ao enviar foto");
     } finally {
       setIsUploadingPhoto(false);
     }
+  };
+
+  const handleRemovePhoto = (url: string) => {
+    setCreateForm((f) => {
+      const photos = f.photos.filter((p) => p !== url);
+      return {
+        ...f,
+        photos,
+        photo_url: f.photo_url === url ? photos[0] ?? "" : f.photo_url,
+      };
+    });
   };
 
   return (
@@ -790,6 +878,14 @@ export default function FerramentasPage() {
                             <Button
                               size="sm"
                               variant="ghost"
+                              onClick={() => setHistoryTool(tool)}
+                              title="Histórico da ferramenta"
+                            >
+                              <History className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
                               onClick={() => setPurgingTool(tool)}
                               title="Excluir permanentemente"
                             >
@@ -886,18 +982,25 @@ export default function FerramentasPage() {
                                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                                     <Wrench className="h-4 w-4 text-primary" />
                                   </div>
+                                  {/*
+                                    A rota custody/active já faz embed de
+                                    tool/user/service_order — a tabela só
+                                    imprimia os UUIDs crus.
+                                  */}
                                   <span className="text-sm font-medium">
-                                    {custody.tool_id}
+                                    {custody.tool?.name ?? custody.tool_id}
                                   </span>
                                 </div>
                               </td>
                               <td className="py-3.5 pr-4 text-sm">
-                                {custody.user_id}
+                                {custody.user?.full_name ?? custody.user_id}
                               </td>
                               <td className="py-3.5 pr-4 text-sm">
                                 {custody.service_order_id ? (
                                   <span className="inline-flex items-center rounded-md bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-500">
-                                    {custody.service_order_id}
+                                    OS #
+                                    {custody.service_order?.order_number ??
+                                      custody.service_order_id.slice(0, 8)}
                                   </span>
                                 ) : (
                                   <span className="text-xs text-muted-foreground">
@@ -956,10 +1059,10 @@ export default function FerramentasPage() {
                             </div>
                             <div>
                               <p className="text-sm font-medium">
-                                {custody.tool_id}
+                                {custody.tool?.name ?? custody.tool_id}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {custody.user_id}
+                                {custody.user?.full_name ?? custody.user_id}
                               </p>
                             </div>
                           </div>
@@ -970,7 +1073,11 @@ export default function FerramentasPage() {
                               OS:{" "}
                             </span>
                             <span className="font-medium">
-                              {custody.service_order_id || "—"}
+                              {custody.service_order?.order_number
+                                ? `#${custody.service_order.order_number}`
+                                : custody.service_order_id
+                                  ? custody.service_order_id.slice(0, 8)
+                                  : "—"}
                             </span>
                           </div>
                           <div>
@@ -1041,49 +1148,58 @@ export default function FerramentasPage() {
           <div className="relative z-10 w-full max-w-lg rounded-xl bg-card border p-6 shadow-xl mx-4 max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-semibold mb-4">Nova Ferramenta</h2>
             <div className="space-y-4">
-              {/* Foto */}
+              {/* Fotos — galeria (a primeira vira a capa) */}
               <div className="space-y-2">
                 <label className="text-sm font-medium leading-none text-foreground/80">
-                  Foto
+                  Fotos
                 </label>
-                <div className="flex items-center gap-3">
-                  <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-border bg-secondary/40 flex items-center justify-center">
-                    {createForm.photo_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
+                <div className="flex flex-wrap gap-2">
+                  {createForm.photos.map((url, idx) => (
+                    <div
+                      key={url}
+                      className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-border bg-secondary/40"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={createForm.photo_url}
-                        alt="Preview"
+                        src={url}
+                        alt={`Foto ${idx + 1}`}
                         className="h-full w-full object-cover"
                       />
-                    ) : (
-                      <Wrench className="h-6 w-6 text-muted-foreground" />
-                    )}
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) handleUploadPhoto(f);
-                      }}
-                      className="block w-full text-xs file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
-                      disabled={isUploadingPhoto}
-                    />
-                    {isUploadingPhoto && (
-                      <p className="text-xs text-muted-foreground">Enviando...</p>
-                    )}
-                    {createForm.photo_url && !isUploadingPhoto && (
+                      {idx === 0 && (
+                        <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[9px] text-white text-center py-0.5">
+                          Capa
+                        </span>
+                      )}
                       <button
                         type="button"
-                        onClick={() => setCreateForm({ ...createForm, photo_url: "" })}
-                        className="text-xs text-destructive hover:underline"
+                        onClick={() => handleRemovePhoto(url)}
+                        className="absolute top-1 right-1 rounded-full bg-black/70 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                        aria-label={`Remover foto ${idx + 1}`}
                       >
-                        Remover foto
+                        <X className="h-3 w-3" />
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  ))}
+                  {createForm.photos.length === 0 && (
+                    <div className="h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-border bg-secondary/40 flex items-center justify-center">
+                      <Wrench className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                  )}
                 </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => {
+                    if (e.target.files?.length) handleUploadPhoto(e.target.files);
+                    e.target.value = "";
+                  }}
+                  className="block w-full text-xs file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
+                  disabled={isUploadingPhoto}
+                />
+                {isUploadingPhoto && (
+                  <p className="text-xs text-muted-foreground">Enviando...</p>
+                )}
               </div>
 
               <Input
@@ -1111,6 +1227,26 @@ export default function FerramentasPage() {
                 value={createForm.quantity_available}
                 onChange={(e) => setCreateForm({ ...createForm, quantity_available: e.target.value })}
               />
+              <Input
+                label="Código interno / Patrimônio"
+                placeholder="Ex.: PAT-00123"
+                value={createForm.patrimony_code}
+                onChange={(e) => setCreateForm({ ...createForm, patrimony_code: e.target.value })}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Marca"
+                  placeholder="Ex.: Bosch"
+                  value={createForm.brand}
+                  onChange={(e) => setCreateForm({ ...createForm, brand: e.target.value })}
+                />
+                <Input
+                  label="Modelo"
+                  placeholder="Ex.: GSB 550"
+                  value={createForm.model}
+                  onChange={(e) => setCreateForm({ ...createForm, model: e.target.value })}
+                />
+              </div>
               <Input
                 label="Número de Serie"
                 placeholder="Serial number"
@@ -1353,6 +1489,14 @@ export default function FerramentasPage() {
           />
         );
       })()}
+
+      {historyTool && (
+        <HistoricoModal
+          toolId={historyTool.id}
+          toolName={historyTool.name}
+          onClose={() => setHistoryTool(null)}
+        />
+      )}
     </div>
   );
 }

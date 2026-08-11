@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type ScheduleSource = "manual" | "os" | "os_assignment" | "proposal_accepted";
+export type ScheduleSource =
+  | "manual"
+  | "os"
+  | "os_assignment"
+  | "proposal_accepted"
+  | "quote_paid";
 
 export interface CreateScheduleFromOsResult {
   /** "created" | "skipped_no_date" | "conflict" | "exists" */
@@ -27,7 +32,12 @@ export async function createScheduleFromOs(
   supabase: SupabaseClient,
   serviceOrderId: string,
   technicianId: string,
-  source: ScheduleSource = "os_assignment"
+  source: ScheduleSource = "os_assignment",
+  /**
+   * Equipe da OS. Preenchido pra que o agendamento apareca no calendario da
+   * equipe, que filtra por team_id OU membro (api/teams/[id]/calendar).
+   */
+  teamId: string | null = null
 ): Promise<CreateScheduleFromOsResult> {
   // 1. Lê data/horário da OS
   const { data: so, error: soErr } = await supabase
@@ -96,6 +106,7 @@ export async function createScheduleFromOs(
     .insert({
       service_order_id: serviceOrderId,
       technician_id: technicianId,
+      team_id: teamId,
       date,
       start_time: startTime,
       end_time: endTime,

@@ -5,6 +5,7 @@ import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { createNotification } from "@/lib/api-helpers/notifications";
 import { createScheduleFromOs } from "@/lib/api-helpers/schedules";
+import { getUserTeamIds, buildTeamScopeFilter } from "@/lib/api-helpers/team-scope";
 
 /**
  * GET /api/service-orders
@@ -56,8 +57,13 @@ export async function GET(request: NextRequest) {
     // Solucao: parceiro ve OS quando ele e o partner_id OU quando ele
     // assumiu a execucao (technician_id = user.id). Tecnico continua
     // filtrando so por technician_id.
+    //
+    // Jessica 10/08: soma a isso o escopo de equipe — OS auto-atribuida na
+    // conversao de orcamento fica so' com team_id, technician_id NULL.
     if (user.role === "technician") {
-      query = query.eq("technician_id", user.id);
+      const teamIds = await getUserTeamIds(supabase, user.id);
+      const scope = buildTeamScopeFilter(user.id, teamIds);
+      query = scope ? query.or(scope) : query.eq("technician_id", user.id);
     } else if (user.role === "partner") {
       const { data: partnerData } = await supabase
         .from("partners")
@@ -65,11 +71,10 @@ export async function GET(request: NextRequest) {
         .eq("user_id", user.id)
         .single();
 
-      const orParts: string[] = [`technician_id.eq.${user.id}`];
-      if (partnerData) {
-        orParts.push(`partner_id.eq.${partnerData.id}`);
-      }
-      query = query.or(orParts.join(","));
+      const teamIds = await getUserTeamIds(supabase, user.id);
+      const extra = partnerData ? [`partner_id.eq.${partnerData.id}`] : [];
+      const scope = buildTeamScopeFilter(user.id, teamIds, extra);
+      query = scope ? query.or(scope) : query.eq("technician_id", user.id);
     }
     // admin / manager can see all
 

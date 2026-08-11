@@ -47,14 +47,21 @@ export async function POST(
     // Carrega OS + valida status
     const { data: os, error: osErr } = await supabase
       .from("service_orders")
-      .select("id, status, technician_id, step_template_group_id, address_state")
+      .select(
+        "id, status, technician_id, team_id, step_template_group_id, address_state"
+      )
       .eq("id", osId)
       .maybeSingle();
     if (osErr || !os) throw new AuthError(404, "OS nao encontrada");
-    if (os.status !== "awaiting_assignment") {
+    // Jessica 10/08: 'assigned' tambem entra aqui. O auto-assign da conversao
+    // de orcamento deixa a OS em 'assigned' com technician_id NULL (so' a
+    // equipe definida) — antes disso o admin nao conseguia nomear o
+    // responsavel pela tela de designacao, tomava 400.
+    const ASSIGNABLE = ["awaiting_assignment", "assigned"];
+    if (!ASSIGNABLE.includes(os.status)) {
       throw new AuthError(
         400,
-        `OS esta em '${os.status}'; assign so permitido em 'awaiting_assignment'.`
+        `OS esta em '${os.status}'; assign so permitido em ${ASSIGNABLE.join(" ou ")}.`
       );
     }
 
@@ -134,27 +141,51 @@ export async function POST(
     // Historico de status
     await supabase.from("os_status_history").insert({
       service_order_id: osId,
-      from_status: "awaiting_assignment",
+      from_status: os.status,
       to_status: "pending",
       changed_by: user.id,
       notes: `Designado: técnico ${tech.full_name}, template "${tmpl.name}"`,
     });
 
-    // Atualiza schedules ja criados (auto-schedule) pra atribuir tecnico
+    // Atualiza schedules ja criados (auto-schedule) pra atribuir tecnico.
+    // Jessica 10/08: propaga tambem o team_id da OS — sem ele o schedule
+    // sumia do calendario da equipe, que filtra por team_id OU membro.
     const scheduleUpdate: Record<string, unknown> = {
       technician_id: body.technician_id,
     };
+    if (os.team_id) scheduleUpdate.team_id = os.team_id;
     if (body.scheduled_date) scheduleUpdate.date = body.scheduled_date;
     if (body.scheduled_start_time)
       scheduleUpdate.start_time = body.scheduled_start_time;
     if (body.scheduled_end_time)
       scheduleUpdate.end_time = body.scheduled_end_time;
 
-    await supabase
+    const { data: updatedSchedules } = await supabase
       .from("schedules")
       .update(scheduleUpdate)
       .eq("service_order_id", osId)
-      .is("technician_id", null);
+      .is("technician_id", null)
+      .select("id");
+
+    // Nenhum schedule pre-existente (OS criada sem auto-agendamento): cria um
+    // a partir da data da propria OS, se ela tiver.
+    if (!updatedSchedules || updatedSchedules.length === 0) {
+      const { createScheduleFromOs } = await import(
+        "@/lib/api-helpers/schedules"
+      );
+      const result = await createScheduleFromOs(
+        supabase,
+        osId,
+        body.technician_id,
+        "os_assignment",
+        os.team_id ?? null
+      );
+      if (result.outcome === "conflict") {
+        console.warn(
+          `assign: schedule nao criado por conflito — ${result.conflict_message}`
+        );
+      }
+    }
 
     logAudit({
       userId: user.id,
