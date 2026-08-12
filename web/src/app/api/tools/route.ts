@@ -3,6 +3,8 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { getAvailabilityByTool } from "@/lib/tools/availability";
+import { recordToolEvent } from "@/lib/tools/events";
 
 /**
  * GET /api/tools
@@ -42,13 +44,47 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Jessica 10/08: `available=true` (catalogo do app) filtrava so' por
-    // quantidade. Como manutencao/baixa/devolucao-danificada mudam apenas o
-    // `status` e nao mexem em `quantity_available`, ferramenta em manutencao,
-    // aposentada, danificada ou extraviada continuava aparecendo pro tecnico
-    // pedir. Agora exige status 'available' tambem.
+    // Jessica 12/08: a disponibilidade tem de sair da fonte certa.
+    // `quantity_available` só é mexida pelo modo quantidade — para tipos
+    // controlados ela fica congelada e não diz nada sobre o estoque real.
+    // Por isso o filtro `available=true` deixa de ser feito no banco e passa a
+    // usar o valor calculado (ver lib/tools/availability).
     if (available === "true") {
-      query = query.gt("quantity_available", 0).eq("status", "available");
+      const { data: all, error: allErr } = await query.order("name", {
+        ascending: true,
+      });
+      if (allErr) {
+        console.error(`Failed to fetch tools: ${allErr.message}`);
+        throw new Error("Failed to fetch tools");
+      }
+
+      const rows = (all ?? []) as Array<Record<string, unknown>>;
+      const availability = await getAvailabilityByTool(
+        supabase,
+        rows.map((r) => r.id as string)
+      );
+
+      const enriched = rows
+        .map((r) => {
+          const a = availability.get(r.id as string);
+          return {
+            ...r,
+            tracking_mode: a?.tracking_mode ?? r.tracking_mode ?? "quantity",
+            available_quantity: a?.available_quantity ?? 0,
+          };
+        })
+        .filter((r) => (r.available_quantity as number) > 0);
+
+      const paged = enriched.slice(offset, offset + limit);
+      return jsonResponse({
+        data: paged,
+        meta: {
+          total: enriched.length,
+          page,
+          limit,
+          total_pages: Math.ceil(enriched.length / limit),
+        },
+      });
     }
 
     query = query
@@ -62,8 +98,22 @@ export async function GET(request: NextRequest) {
       throw new Error("Failed to fetch tools");
     }
 
+    // Enriquece a listagem geral também — o Catálogo mostra a disponibilidade.
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+    const availability = await getAvailabilityByTool(
+      supabase,
+      rows.map((r) => r.id as string)
+    );
+
     return jsonResponse({
-      data: data || [],
+      data: rows.map((r) => {
+        const a = availability.get(r.id as string);
+        return {
+          ...r,
+          tracking_mode: a?.tracking_mode ?? r.tracking_mode ?? "quantity",
+          available_quantity: a?.available_quantity ?? 0,
+        };
+      }),
       meta: {
         total: count || 0,
         page,
@@ -107,6 +157,12 @@ export async function POST(request: NextRequest) {
       "brand",
       "model",
       "photos",
+      "default_location",
+      "supplier",
+      // Jessica 12/08: sem isto na whitelist, o campo era descartado em
+      // silêncio e TODO tipo nascia 'quantity' — o modo só mudava depois,
+      // como efeito colateral de cadastrar a primeira unidade.
+      "tracking_mode",
     ]);
     const insertData: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(body)) {
@@ -115,6 +171,17 @@ export async function POST(request: NextRequest) {
     // Aceita tanto image_url (legacy DTO) quanto photo_url
     const finalPhoto = body.photo_url ?? body.image_url;
     if (finalPhoto) insertData.photo_url = finalPhoto;
+
+    if (
+      insertData.tracking_mode !== undefined &&
+      !["controlled", "quantity"].includes(String(insertData.tracking_mode))
+    ) {
+      throw new Error("tracking_mode deve ser 'controlled' ou 'quantity'");
+    }
+    // Tipo controlado tem estoque nas unidades, não no saldo do tipo.
+    if (insertData.tracking_mode === "controlled") {
+      insertData.quantity_available = 0;
+    }
 
     const { data: tool, error } = await supabase
       .from("tool_inventory")
@@ -126,6 +193,16 @@ export async function POST(request: NextRequest) {
       console.error(`Failed to create tool: ${error.message}`);
       throw new Error(`Falha ao criar ferramenta: ${error.message}`);
     }
+
+    await recordToolEvent(supabase, {
+      tool_id: tool.id,
+      event_type: "cadastro",
+      description: `Ferramenta cadastrada: ${tool.name}`,
+      status_to: tool.status,
+      actor_id: user.id,
+      almoxarife_id: user.id,
+      metadata: { tracking_mode: tool.tracking_mode },
+    });
 
     // Log audit
     logAudit({

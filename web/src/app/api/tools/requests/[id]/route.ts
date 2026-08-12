@@ -103,6 +103,8 @@ export async function PATCH(
     const b = body as {
       tool_id?: string;
       unit_id?: string;
+      /** Multi-unidade: um pedido de N unidades reserva N (Jessica 12/08). */
+      unit_ids?: string[];
       condition_out?: string;
       notes_out?: string;
       photos_out?: Array<{ url: string; name: string; storage_path?: string }>;
@@ -134,49 +136,90 @@ export async function PATCH(
       // Seção 12: ao aprovar, o almoxarifado escolhe a unidade física, ela
       // fica reservada e não pode ir para outro pedido.
       if (trackingMode === "controlled") {
-        if (!b.unit_id) {
+        // Jessica 12/08: pedido de N unidades reserva N unidades. Antes
+        // reservava UMA e ignorava o resto em silêncio — o técnico pedia 3
+        // furadeiras e recebia 1, sem aviso a ninguém.
+        const pedidas = Math.max(1, Number(current.quantity) || 1);
+        const escolhidas = Array.isArray(b.unit_ids)
+          ? b.unit_ids.filter(Boolean)
+          : b.unit_id
+            ? [b.unit_id]
+            : [];
+
+        if (escolhidas.length === 0) {
           throw new AuthError(
             400,
-            "Selecione a unidade física que será destinada a este pedido"
+            "Selecione a(s) unidade(s) física(s) que serão destinadas a este pedido"
           );
         }
-        const { data: unit } = await supabase
+        if (escolhidas.length !== pedidas) {
+          throw new AuthError(
+            400,
+            `O pedido é de ${pedidas} unidade(s); você selecionou ${escolhidas.length}.`
+          );
+        }
+        if (new Set(escolhidas).size !== escolhidas.length) {
+          throw new AuthError(400, "Há unidades repetidas na seleção");
+        }
+
+        const { data: units } = await supabase
           .from("tool_units")
           .select("id, tool_id, code, status, reserved_for_request_id")
-          .eq("id", b.unit_id)
-          .maybeSingle();
+          .in("id", escolhidas);
 
-        if (!unit) throw new AuthError(400, "Unidade não encontrada");
-        if (unit.tool_id !== requestToolId) {
-          throw new AuthError(400, "A unidade escolhida não é do tipo solicitado");
-        }
-        if (unit.status !== "available") {
-          throw new AuthError(
-            400,
-            `A unidade ${unit.code} não está disponível (situação: ${unit.status})`
-          );
-        }
-        if (
-          unit.reserved_for_request_id &&
-          unit.reserved_for_request_id !== id
-        ) {
-          throw new AuthError(400, `A unidade ${unit.code} já está reservada para outro pedido`);
+        const encontradas = (units ?? []) as Array<{
+          id: string;
+          tool_id: string;
+          code: string;
+          status: string;
+          reserved_for_request_id: string | null;
+        }>;
+        if (encontradas.length !== escolhidas.length) {
+          throw new AuthError(400, "Alguma unidade selecionada não foi encontrada");
         }
 
-        await setUnitStatus(supabase, unit.id, "reserved", {
-          event_type: "reserva",
-          description: `Unidade ${unit.code} reservada para o pedido`,
-          technician_id: current.requester_id as string,
-          almoxarife_id: user.id,
-          actor_id: user.id,
-          request_id: id,
-        });
-        await supabase
-          .from("tool_units")
-          .update({ reserved_for_request_id: id })
-          .eq("id", unit.id);
+        for (const unit of encontradas) {
+          if (unit.tool_id !== requestToolId) {
+            throw new AuthError(
+              400,
+              `A unidade ${unit.code} não é do tipo solicitado`
+            );
+          }
+          if (unit.status !== "available") {
+            throw new AuthError(
+              400,
+              `A unidade ${unit.code} não está disponível (situação: ${unit.status})`
+            );
+          }
+          if (
+            unit.reserved_for_request_id &&
+            unit.reserved_for_request_id !== id
+          ) {
+            throw new AuthError(
+              400,
+              `A unidade ${unit.code} já está reservada para outro pedido`
+            );
+          }
+        }
 
-        reservedUnitId = unit.id;
+        for (const unit of encontradas) {
+          await setUnitStatus(supabase, unit.id, "reserved", {
+            event_type: "reserva",
+            description: `Unidade ${unit.code} reservada para o pedido`,
+            technician_id: current.requester_id as string,
+            almoxarife_id: user.id,
+            actor_id: user.id,
+            request_id: id,
+          });
+          await supabase
+            .from("tool_units")
+            .update({ reserved_for_request_id: id })
+            .eq("id", unit.id);
+        }
+
+        // A coluna guarda a primeira; o vínculo real de todas é
+        // tool_units.reserved_for_request_id, que é muitos-para-um.
+        reservedUnitId = encontradas[0].id;
       }
 
       update = {
@@ -195,11 +238,6 @@ export async function PATCH(
         throw new AuthError(400, "tool_id obrigatorio no deliver");
       }
       const toolId = requestToolId;
-      const unitId = b.unit_id || reservedUnitId;
-
-      if (trackingMode === "controlled" && !unitId) {
-        throw new AuthError(400, "Informe a unidade física entregue");
-      }
 
       // Jessica 10/08: propaga a OS do pedido pra custodia. Sem isso o
       // historico da ferramenta nunca sabia em qual OS ela foi usada.
@@ -214,45 +252,81 @@ export async function PATCH(
         (current as { expected_return_at?: string | null }).expected_return_at ||
         null;
 
-      const { data: cust, error: cErr } = await supabase
-        .from("tool_custody")
-        .insert({
-          tool_id: toolId,
-          unit_id: unitId ?? null,
-          user_id: current.requester_id,
-          service_order_id: serviceOrderId,
-          checked_out_at: nowIso,
-          expected_return_at: expectedReturn,
-          condition_out: b.condition_out || "good",
-          notes_out: b.notes_out || null,
-          photos_out: Array.isArray(b.photos_out) ? b.photos_out : [],
-          delivered_by: user.id,
-        })
-        .select("id")
-        .single();
-      if (cErr || !cust) {
-        throw new Error(`Falha criar custody: ${cErr?.message}`);
-      }
+      const custodyBase = {
+        tool_id: toolId,
+        user_id: current.requester_id,
+        service_order_id: serviceOrderId,
+        checked_out_at: nowIso,
+        expected_return_at: expectedReturn,
+        condition_out: b.condition_out || "good",
+        notes_out: b.notes_out || null,
+        photos_out: Array.isArray(b.photos_out) ? b.photos_out : [],
+        delivered_by: user.id,
+      };
 
-      if (trackingMode === "controlled" && unitId) {
-        await setUnitStatus(supabase, unitId, "in_custody", {
-          tool_id: toolId,
-          event_type: "entrega",
-          description: "Entrega física confirmada ao técnico",
-          technician_id: current.requester_id as string,
-          almoxarife_id: user.id,
-          actor_id: user.id,
-          request_id: id,
-          custody_id: (cust as { id: string }).id,
-          service_order_id: serviceOrderId,
-          condition: b.condition_out || "good",
-          notes: b.notes_out || null,
-          photos: Array.isArray(b.photos_out) ? b.photos_out : [],
-        });
-        await supabase
+      let primaryCustodyId: string;
+      let primaryUnitId: string | null = null;
+
+      if (trackingMode === "controlled") {
+        // Todas as unidades reservadas para este pedido — o vínculo é
+        // muitos-para-um, então a entrega cria UMA CUSTÓDIA POR UNIDADE,
+        // cada uma com histórico próprio.
+        const { data: reservadas } = await supabase
           .from("tool_units")
-          .update({ reserved_for_request_id: null })
-          .eq("id", unitId);
+          .select("id, code")
+          .eq("reserved_for_request_id", id);
+
+        let unidades = (reservadas ?? []) as Array<{ id: string; code: string }>;
+        // Compatibilidade: pedidos aprovados antes desta mudança têm só a
+        // coluna unit_id preenchida.
+        if (unidades.length === 0) {
+          const fallback = b.unit_id || reservedUnitId;
+          if (!fallback) {
+            throw new AuthError(400, "Nenhuma unidade reservada para este pedido");
+          }
+          const { data: u } = await supabase
+            .from("tool_units")
+            .select("id, code")
+            .eq("id", fallback)
+            .maybeSingle();
+          if (!u) throw new AuthError(400, "Unidade reservada não encontrada");
+          unidades = [u as { id: string; code: string }];
+        }
+
+        const criadas: string[] = [];
+        for (const unidade of unidades) {
+          const { data: cust, error: cErr } = await supabase
+            .from("tool_custody")
+            .insert({ ...custodyBase, unit_id: unidade.id })
+            .select("id")
+            .single();
+          if (cErr || !cust) {
+            throw new Error(`Falha criar custody: ${cErr?.message}`);
+          }
+          criadas.push((cust as { id: string }).id);
+
+          await setUnitStatus(supabase, unidade.id, "in_custody", {
+            tool_id: toolId,
+            event_type: "entrega",
+            description: `Entrega física confirmada — unidade ${unidade.code}`,
+            technician_id: current.requester_id as string,
+            almoxarife_id: user.id,
+            actor_id: user.id,
+            request_id: id,
+            custody_id: (cust as { id: string }).id,
+            service_order_id: serviceOrderId,
+            condition: b.condition_out || "good",
+            notes: b.notes_out || null,
+            photos: Array.isArray(b.photos_out) ? b.photos_out : [],
+          });
+          await supabase
+            .from("tool_units")
+            .update({ reserved_for_request_id: null })
+            .eq("id", unidade.id);
+        }
+
+        primaryCustodyId = criadas[0];
+        primaryUnitId = unidades[0].id;
       } else {
         // Modo quantidade: abate o saldo em vez de marcar o tipo inteiro como
         // em custódia — era esse o bug que sumia o tipo do catálogo do app.
@@ -265,9 +339,30 @@ export async function PATCH(
           (toolRow as { quantity_available?: number })?.quantity_available ?? 0
         );
         const baixa = Math.max(1, Number(current.quantity) || 1);
+
+        // Jessica 12/08: antes isto era Math.max(0, saldo - baixa) — entregar
+        // 3 com saldo 1 zerava o estoque e reportava sucesso. Recusar é melhor
+        // que mentir sobre o estoque.
+        if (baixa > saldo) {
+          throw new AuthError(
+            400,
+            `Estoque insuficiente: o pedido é de ${baixa} e há ${saldo} em estoque.`
+          );
+        }
+
+        const { data: cust, error: cErr } = await supabase
+          .from("tool_custody")
+          .insert({ ...custodyBase, unit_id: null })
+          .select("id")
+          .single();
+        if (cErr || !cust) {
+          throw new Error(`Falha criar custody: ${cErr?.message}`);
+        }
+        primaryCustodyId = (cust as { id: string }).id;
+
         await supabase
           .from("tool_inventory")
-          .update({ quantity_available: Math.max(0, saldo - baixa) })
+          .update({ quantity_available: saldo - baixa })
           .eq("id", toolId);
 
         await recordToolEvent(supabase, {
@@ -278,12 +373,12 @@ export async function PATCH(
           almoxarife_id: user.id,
           actor_id: user.id,
           request_id: id,
-          custody_id: (cust as { id: string }).id,
+          custody_id: primaryCustodyId,
           service_order_id: serviceOrderId,
           condition: b.condition_out || "good",
           notes: b.notes_out || null,
           photos: Array.isArray(b.photos_out) ? b.photos_out : [],
-          metadata: { quantity: baixa, balance_after: Math.max(0, saldo - baixa) },
+          metadata: { quantity: baixa, balance_after: saldo - baixa },
         });
       }
 
@@ -291,8 +386,8 @@ export async function PATCH(
         status: "delivered",
         released_by: user.id,
         released_at: nowIso,
-        custody_id: (cust as { id: string }).id,
-        unit_id: unitId ?? null,
+        custody_id: primaryCustodyId,
+        unit_id: primaryUnitId,
       };
     } else if (body.action === "reject") {
       update = {

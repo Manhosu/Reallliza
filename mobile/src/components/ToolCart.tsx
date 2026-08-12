@@ -16,7 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
-import { useToolCart } from '../stores/tool-cart';
+import { useToolCart, availableFor } from '../stores/tool-cart';
 import { apiClient } from '../lib/api';
 
 interface ToolCartProps {
@@ -130,7 +130,7 @@ export function ToolCart({ visible, onClose, onSubmitted }: ToolCartProps) {
                         {item.tool.name}
                       </Text>
                       <Text style={styles.lineMeta} numberOfLines={1}>
-                        Disp.: {item.tool.quantity_available ?? 1}
+                        Disp.: {availableFor(item.tool)}
                       </Text>
                       <View style={styles.qtyRow}>
                         <TouchableOpacity
@@ -149,10 +149,22 @@ export function ToolCart({ visible, onClose, onSubmitted }: ToolCartProps) {
                           }}
                         />
                         <TouchableOpacity
-                          style={styles.qtyButton}
+                          style={[
+                            styles.qtyButton,
+                            item.quantity >= availableFor(item.tool) && styles.qtyButtonDisabled,
+                          ]}
+                          disabled={item.quantity >= availableFor(item.tool)}
                           onPress={() => setQuantity(item.tool.id, item.quantity + 1)}
                         >
-                          <Ionicons name="add" size={14} color={colors.text} />
+                          <Ionicons
+                            name="add"
+                            size={14}
+                            color={
+                              item.quantity >= availableFor(item.tool)
+                                ? colors.textDark
+                                : colors.text
+                            }
+                          />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -360,6 +372,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.cardAlt,
+  },
+  qtyButtonDisabled: {
+    opacity: 0.4,
   },
   qtyInput: {
     width: 36,

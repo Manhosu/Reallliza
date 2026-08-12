@@ -102,10 +102,15 @@ function InventarioContent() {
         <div>
           <h1 className="text-2xl font-semibold">Inventário</h1>
           <p className="text-sm text-muted-foreground">
-            Todas as unidades físicas cadastradas no almoxarifado.
+            As peças físicas, uma a uma. Para cadastrar uma ferramenta nova, vá
+            em{" "}
+            <Link href="/ferramentas/catalogo" className="text-primary hover:underline">
+              Catálogo
+            </Link>
+            .
           </p>
         </div>
-        <Button onClick={() => setShowNewUnit(true)}>
+        <Button onClick={() => setShowNewUnit(true)} title="Adiciona uma peça de uma ferramenta já cadastrada">
           <Plus className="mr-2 h-4 w-4" />
           Nova unidade
         </Button>
@@ -278,11 +283,21 @@ function InventarioContent() {
       {quantityTypes.length > 0 && (
         <Card>
           <CardContent className="py-4">
-            <h2 className="mb-1 text-sm font-semibold">Itens controlados por quantidade</h2>
-            <p className="mb-3 text-xs text-muted-foreground">
-              Consumíveis e itens de baixo valor não têm unidade individual — o controle é
-              por saldo.
-            </p>
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold">Itens controlados por quantidade</h2>
+                <p className="text-xs text-muted-foreground">
+                  Consumíveis e itens de baixo valor não têm unidade individual — o
+                  controle é por saldo.
+                </p>
+              </div>
+              <Link
+                href="/ferramentas/catalogo"
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                Gerenciar no Catálogo
+              </Link>
+            </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {quantityTypes.map((t) => (
                 <div

@@ -17,10 +17,29 @@ interface ToolCartState {
   getLine: (toolId: string) => CartLine | undefined;
 }
 
-const clampQty = (n: number): number => {
+/**
+ * Quantas unidades desta ferramenta o técnico pode pedir.
+ *
+ * Jessica 12/08: o Iago pediu 3 parafusadeiras havendo 1. O carrinho tinha
+ * piso mas não teto, e a disponibilidade — que já estava aqui dentro, em
+ * `CartLine.tool` — nunca era consultada.
+ */
+export const availableFor = (tool: ToolInventory): number => {
+  const t = tool as unknown as {
+    available_quantity?: number;
+    quantity_available?: number;
+  };
+  // available_quantity é o valor calculado pelo servidor (unidades livres para
+  // tipos controlados, saldo para os de quantidade). O fallback existe só para
+  // versões antigas da API.
+  const n = t.available_quantity ?? t.quantity_available ?? 0;
+  return Math.max(0, Math.floor(Number(n) || 0));
+};
+
+const clampQty = (n: number, max: number): number => {
   if (!Number.isFinite(n)) return 1;
   if (n < 1) return 1;
-  return Math.floor(n);
+  return Math.min(Math.floor(n), Math.max(1, max));
 };
 
 export const useToolCart = create<ToolCartState>((set, get) => ({
@@ -29,7 +48,10 @@ export const useToolCart = create<ToolCartState>((set, get) => ({
   add: (tool, qty = 1) => {
     set((state) => {
       const existing = state.items[tool.id];
-      const newQty = clampQty((existing?.quantity ?? 0) + qty);
+      const newQty = clampQty(
+        (existing?.quantity ?? 0) + qty,
+        availableFor(tool)
+      );
       return {
         items: {
           ...state.items,
@@ -50,7 +72,10 @@ export const useToolCart = create<ToolCartState>((set, get) => ({
       return {
         items: {
           ...state.items,
-          [toolId]: { ...existing, quantity: clampQty(qty) },
+          [toolId]: {
+            ...existing,
+            quantity: clampQty(qty, availableFor(existing.tool)),
+          },
         },
       };
     });

@@ -29,6 +29,9 @@ import { cn } from "@/lib/utils";
  */
 const AREAS = [
   { href: "/ferramentas", label: "Dashboard", icon: LayoutDashboard, exact: true },
+  // Catálogo = cadastro do TIPO. Inventário = as peças físicas. A separação
+  // não estava clara e a cliente não achou onde cadastrar a ferramenta.
+  { href: "/ferramentas/catalogo", label: "Catálogo", icon: Wrench },
   { href: "/ferramentas/inventario", label: "Inventário", icon: Package },
   { href: "/ferramentas/pedidos", label: "Pedidos", icon: ClipboardList },
   { href: "/ferramentas/custodias", label: "Custódias", icon: Boxes },

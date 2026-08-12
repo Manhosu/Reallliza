@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { ClipboardList, AlertTriangle } from "lucide-react";
+import { ClipboardList, AlertTriangle, Check } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -320,7 +320,12 @@ function SelecionarUnidadeDialog({
 }) {
   const [units, setUnits] = useState<ToolUnit[]>([]);
   const [loadingUnits, setLoadingUnits] = useState(true);
-  const [unitId, setUnitId] = useState(request.unit_id ?? "");
+  // Jessica 12/08: pedido de N unidades reserva N. Antes era um select único e
+  // o resto do pedido era ignorado em silêncio.
+  const pedidas = Math.max(1, Number(request.quantity) || 1);
+  const [selecionadas, setSelecionadas] = useState<string[]>(
+    request.unit_id ? [request.unit_id] : []
+  );
   const [expectedReturn, setExpectedReturn] = useState("");
   const [condition, setCondition] = useState("good");
   const [notes, setNotes] = useState("");
@@ -357,18 +362,30 @@ function SelecionarUnidadeDialog({
   // Tipo por quantidade não tem unidade para escolher.
   const isQuantityMode = !loadingUnits && units.length === 0 && !request.unit_id;
 
+  const toggle = (id: string) =>
+    setSelecionadas((atual) =>
+      atual.includes(id)
+        ? atual.filter((x) => x !== id)
+        : atual.length >= pedidas
+          ? atual // já fechou a quantidade pedida
+          : [...atual, id]
+    );
+
+  const fechou = selecionadas.length === pedidas;
+
   const submit = async () => {
-    if (mode === "approve" && !isQuantityMode && !unitId) {
-      toast.error("Selecione a unidade física que será destinada ao técnico");
+    if (mode === "approve" && !isQuantityMode && !fechou) {
+      toast.error(
+        `Selecione ${pedidas} unidade(s) — você marcou ${selecionadas.length}.`
+      );
       return;
     }
     setSaving(true);
     try {
       await onDone(
         mode === "approve"
-          ? { unit_id: unitId || undefined }
+          ? { unit_ids: selecionadas.length > 0 ? selecionadas : undefined }
           : {
-              unit_id: unitId || undefined,
               expected_return_at: expectedReturn || undefined,
               condition_out: condition,
               notes_out: notes || undefined,
@@ -400,21 +417,79 @@ function SelecionarUnidadeDialog({
             Este item é controlado por quantidade — não há unidade física para escolher.
             A entrega abate o saldo do estoque.
           </p>
+        ) : mode === "approve" ? (
+          <div className="space-y-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <label className="text-sm font-medium leading-none text-foreground/80">
+                Unidades destinadas *
+              </label>
+              <span
+                className={cn(
+                  "text-xs font-medium",
+                  fechou ? "text-green-500" : "text-muted-foreground"
+                )}
+              >
+                {selecionadas.length} de {pedidas} selecionada(s)
+              </span>
+            </div>
+
+            {units.length < pedidas && (
+              <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-500">
+                Há {units.length} unidade(s) disponível(is) e o pedido é de {pedidas}.
+                Reduza o pedido com o técnico ou cadastre mais unidades.
+              </p>
+            )}
+
+            <div className="max-h-52 space-y-1.5 overflow-y-auto rounded-xl border border-border p-2">
+              {units.map((u) => {
+                const marcada = selecionadas.includes(u.id);
+                const bloqueada = !marcada && selecionadas.length >= pedidas;
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => toggle(u.id)}
+                    disabled={bloqueada}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                      marcada
+                        ? "border-primary bg-primary/5"
+                        : "border-transparent hover:bg-secondary/40",
+                      bloqueada && "cursor-not-allowed opacity-40"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex h-4 w-4 shrink-0 items-center justify-center rounded border",
+                        marcada ? "border-primary bg-primary" : "border-border"
+                      )}
+                    >
+                      {marcada && (
+                        <Check className="h-3 w-3 text-primary-foreground" />
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="font-medium">{u.code}</span>
+                      {u.patrimony_code && (
+                        <span className="text-muted-foreground"> · {u.patrimony_code}</span>
+                      )}
+                      {u.location && (
+                        <span className="block text-xs text-muted-foreground">
+                          {u.location}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         ) : (
-          <SelectNative
-            label={mode === "approve" ? "Unidade destinada *" : "Unidade entregue"}
-            value={unitId}
-            onChange={(e) => setUnitId(e.target.value)}
-          >
-            <option value="">Escolha...</option>
-            {units.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.code}
-                {u.patrimony_code ? ` · ${u.patrimony_code}` : ""}
-                {u.location ? ` — ${u.location}` : ""}
-              </option>
-            ))}
-          </SelectNative>
+          <p className="rounded-lg border border-border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
+            {selecionadas.length > 0
+              ? `${selecionadas.length} unidade(s) reservada(s) para este pedido serão entregues.`
+              : "As unidades reservadas na aprovação serão entregues."}
+          </p>
         )}
 
         {mode === "deliver" && (
@@ -463,7 +538,11 @@ function SelecionarUnidadeDialog({
           <Button variant="outline" onClick={onClose}>
             Cancelar
           </Button>
-          <Button onClick={submit} isLoading={saving}>
+          <Button
+            onClick={submit}
+            isLoading={saving}
+            disabled={mode === "approve" && !isQuantityMode && !fechou}
+          >
             {mode === "approve" ? "Aprovar e reservar" : "Confirmar entrega"}
           </Button>
         </div>

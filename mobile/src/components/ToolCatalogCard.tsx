@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolInventory } from '../lib/types';
+import { availableFor } from '../stores/tool-cart';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -26,8 +27,11 @@ export function ToolCatalogCard({
   onChangeQuantity,
 }: ToolCatalogCardProps) {
   const photo = tool.photo_url || tool.image_url || null;
-  const available = tool.quantity_available ?? 1;
+  // Disponibilidade real vinda do servidor. Antes o fallback era `?? 1`, que
+  // INVENTAVA uma unidade quando o campo faltasse.
+  const available = availableFor(tool);
   const inCart = cartQuantity > 0;
+  const noLimite = cartQuantity >= available;
 
   return (
     <View style={styles.card}>
@@ -77,22 +81,31 @@ export function ToolCatalogCard({
               }}
             />
             <TouchableOpacity
-              style={styles.qtyButton}
+              style={[styles.qtyButton, noLimite && styles.qtyButtonDisabled]}
               onPress={() => onChangeQuantity(cartQuantity + 1)}
+              disabled={noLimite}
               accessibilityLabel="Aumentar quantidade"
             >
-              <Ionicons name="add" size={16} color={colors.text} />
+              <Ionicons
+                name="add"
+                size={16}
+                color={noLimite ? colors.textDark : colors.text}
+              />
             </TouchableOpacity>
             <View style={styles.addedTag}>
               <Ionicons name="checkmark-circle" size={14} color={colors.success} />
               <Text style={styles.addedText}>No carrinho</Text>
             </View>
           </View>
-        ) : (
+        ) : available > 0 ? (
           <TouchableOpacity style={styles.addButton} onPress={onAdd}>
             <Ionicons name="add-circle" size={16} color={colors.black} />
             <Text style={styles.addButtonText}>Adicionar</Text>
           </TouchableOpacity>
+        ) : (
+          <View style={[styles.addButton, styles.addButtonDisabled]}>
+            <Text style={styles.unavailableText}>Indisponível</Text>
+          </View>
         )}
       </View>
     </View>
@@ -161,6 +174,18 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: colors.primary,
     marginTop: 4,
+  },
+  addButtonDisabled: {
+    backgroundColor: colors.cardAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  unavailableText: {
+    ...typography.buttonSm,
+    color: colors.textDark,
+  },
+  qtyButtonDisabled: {
+    opacity: 0.4,
   },
   addButtonText: {
     ...typography.buttonSm,

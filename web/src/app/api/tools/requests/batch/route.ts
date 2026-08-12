@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { getAvailabilityByTool } from "@/lib/tools/availability";
 
 type RequestPriority = "low" | "medium" | "high" | "urgent";
 
@@ -72,12 +73,48 @@ export async function POST(request: NextRequest) {
       throw new AuthError(400, `Ferramentas nao encontradas: ${missing.join(", ")}`);
     }
 
+    // Jessica 12/08: "o Iago solicitou 3 parafusadeiras, porém no estoque
+    // havia apenas 1 disponível. O sistema não deve permitir."
+    //
+    // O servidor é a autoridade: o app pode estar com o catálogo velho, e dois
+    // técnicos podem pedir a última unidade ao mesmo tempo. Além do estoque
+    // livre, descontamos o que já está pedido e ainda não foi resolvido —
+    // senão a mesma unidade é prometida duas vezes.
+    const availability = await getAvailabilityByTool(supabase, toolIds);
+
+    const { data: emAberto } = await supabase
+      .from("tool_requests")
+      .select("tool_id, quantity")
+      .in("tool_id", toolIds)
+      .in("status", ["pending", "approved", "separating", "awaiting_pickup"]);
+
+    const reservadoEmPedidos = new Map<string, number>();
+    for (const r of (emAberto ?? []) as Array<{ tool_id: string; quantity: number }>) {
+      reservadoEmPedidos.set(
+        r.tool_id,
+        (reservadoEmPedidos.get(r.tool_id) ?? 0) + (Number(r.quantity) || 0)
+      );
+    }
+
     const rows = items.map((it) => {
       const qty = Number(it.quantity);
       if (!Number.isFinite(qty) || qty < 1) {
         throw new AuthError(400, "quantity invalida em um dos itens");
       }
       const tool = toolMap.get(it.tool_id)!;
+
+      const disponivel = availability.get(it.tool_id)?.available_quantity ?? 0;
+      const jaPedido = reservadoEmPedidos.get(it.tool_id) ?? 0;
+      const livre = Math.max(0, disponivel - jaPedido);
+
+      if (qty > livre) {
+        throw new AuthError(
+          400,
+          livre === 0
+            ? `${tool.name}: não há unidades disponíveis no momento.`
+            : `${tool.name}: você pediu ${Math.floor(qty)}, mas há apenas ${livre} disponível(is).`
+        );
+      }
       const justification =
         (it.justification && it.justification.toString().trim()) ||
         sharedJustification ||
