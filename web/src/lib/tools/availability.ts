@@ -78,9 +78,18 @@ export async function getAvailabilityByTool(
     if (mode === "controlled") {
       available = freeUnitsByTool.get(t.id) ?? 0;
     } else {
-      // No modo quantidade o status do tipo ainda vale: manutenção e baixa
-      // mexem nele, e aí o saldo não pode ser oferecido.
-      available = t.status === "available" ? Number(t.quantity_available ?? 0) : 0;
+      // No modo quantidade quem manda é o saldo. O status do tipo só bloqueia
+      // quando a ferramenta inteira saiu de operação.
+      //
+      // `in_custody` NÃO entra nessa lista de propósito: o bug antigo marcava o
+      // tipo inteiro como em custódia ao entregar uma unidade, e quatro tipos
+      // ficaram presos nesse estado com saldo cheio (Lápis com 100, Trena com
+      // 10...). Custódia de item por quantidade é registrada em tool_custody,
+      // não no status do tipo.
+      const FORA_DE_OPERACAO = ["maintenance", "retired", "damaged", "missing"];
+      available = FORA_DE_OPERACAO.includes(String(t.status))
+        ? 0
+        : Number(t.quantity_available ?? 0);
     }
     result.set(t.id, {
       tool_id: t.id,
