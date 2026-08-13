@@ -26,12 +26,15 @@ export async function GET(request: NextRequest) {
       Math.min(90, parseInt(sp.get("horizon") ?? "60", 10) || 60)
     );
 
+    const allowWeekend = sp.get("allow_weekend") === "true";
+
     const supabase = getAdminClient();
     const teams = await computeTeamAvailability(supabase, {
       specialty_id: specialtyId || null,
       days_needed: daysNeeded,
       from,
       horizon,
+      allow_weekend: allowWeekend,
     });
 
     return jsonResponse({

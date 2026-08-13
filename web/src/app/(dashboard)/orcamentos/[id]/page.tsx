@@ -12,6 +12,7 @@ import {
   Clock,
   Loader2,
   Download,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -593,8 +594,15 @@ export default function OrcamentoDetailPage() {
                 <>
                   <p className="text-sm text-muted-foreground">
                     Ao pagar, a Ordem de Serviço é gerada e entra na fila de
-                    execução.
+                    execução. Depois disso o orçamento não pode mais ser editado.
                   </p>
+                  {/* Enquanto não pago, a loja corrige o que precisar
+                      (Jessica 12/08). */}
+                  <Link href={`/orcamentos/novo?id=${quote.id}`} className="block">
+                    <Button variant="outline" className="w-full">
+                      <Pencil className="h-4 w-4" /> Editar orçamento
+                    </Button>
+                  </Link>
                   <Button
                     onClick={handlePay}
                     isLoading={processing}

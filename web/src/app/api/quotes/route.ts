@@ -4,6 +4,7 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolveQuotePayload } from "@/lib/quotes/build-quote";
 
 interface IncomingItem {
   service_id?: string;
@@ -94,156 +95,17 @@ export async function POST(request: NextRequest) {
       throw new AuthError(400, "Adicione ao menos um serviço ao orçamento");
     }
 
-    // Busca os serviços do catálogo (preço comercial).
-    const serviceIds = [
-      ...new Set(
-        (body.items as IncomingItem[])
-          .map((it) => it.service_id)
-          .filter((v): v is string => typeof v === "string")
-      ),
-    ];
-    if (serviceIds.length === 0) {
-      throw new AuthError(400, "Itens inválidos");
-    }
-
-    const { data: services } = await supabase
-      .from("services")
-      .select("id, name, unit, commercial_price, estimated_time_hours, is_active")
-      .in("id", serviceIds);
-
-    type SvcRow = {
-      id: string;
-      name: string;
-      unit: string;
-      commercial_price: number;
-      estimated_time_hours: number;
-      is_active: boolean;
-    };
-    const byId = new Map(
-      ((services as SvcRow[] | null) || []).map((s) => [s.id, s])
+    // Resolve itens, valida UF, recalcula e confere a janela de execução.
+    // Mesmo caminho usado pelo PUT — duplicar aqui faria as duas cópias
+    // divergirem no primeiro ajuste de regra.
+    const { itemRows, modality, calc, totalFinal } = await resolveQuotePayload(
+      supabase,
+      body
     );
-
-    const itemRows: Array<{
-      service_id: string;
-      service_name: string;
-      unit: string | null;
-      unit_price: number;
-      quantity: number;
-    }> = [];
-    const calcItems: Array<{
-      service_id: string;
-      quantity: number;
-      commercial_price: number;
-      estimated_time_hours: number;
-      unit?: string;
-    }> = [];
-    let subtotal_services = 0;
-
-    for (const it of body.items as IncomingItem[]) {
-      const svc = it.service_id ? byId.get(it.service_id) : undefined;
-      if (!svc || !svc.is_active) {
-        throw new AuthError(400, "Serviço inválido ou inativo no orçamento");
-      }
-      const quantity = Math.max(0, Number(it.quantity) || 0);
-      if (quantity <= 0) continue;
-      const unitPrice = Number(svc.commercial_price) || 0;
-      subtotal_services += unitPrice * quantity;
-      itemRows.push({
-        service_id: svc.id,
-        service_name: svc.name,
-        unit: svc.unit ?? null,
-        unit_price: unitPrice,
-        quantity,
-      });
-      calcItems.push({
-        service_id: svc.id,
-        quantity,
-        commercial_price: unitPrice,
-        estimated_time_hours: Number(svc.estimated_time_hours) || 0,
-        unit: svc.unit,
-      });
-    }
-
-    if (itemRows.length === 0) {
-      throw new AuthError(400, "Informe a quantidade dos serviços");
-    }
-
-    // Modalidade e calculo (Fase 2): se vier modality, calcula full breakdown.
-    let modality: "reallliza" | "homologados" | null = null;
-    if (body.modality === "reallliza" || body.modality === "homologados") {
-      modality = body.modality;
-    }
-
-    // Cobertura UF (Jessica 24/06): plataforma vs Reallliza atendem sao
-    // configuraveis. Bloqueia se UF nao coberta pela plataforma. Bloqueia
-    // modalidade 'reallliza' se UF nao coberta pela Reallliza. Skip se
-    // sem endereco (draft pre-selecao) — a validacao final acontece no
-    // primeiro POST com endereco preenchido.
-    const uf = body.address_state
-      ? String(body.address_state).toUpperCase()
-      : null;
-    if (uf) {
-      const { isStateAvailable } = await import("@/lib/quotes/uf-scope");
-      const platformOk = await isStateAvailable(uf, "platform");
-      if (!platformOk) {
-        throw new AuthError(
-          400,
-          `A plataforma ainda nao opera em ${uf}. Contate o administrador.`
-        );
-      }
-      if (modality === "reallliza") {
-        const reallizaOk = await isStateAvailable(uf, "reallliza");
-        if (!reallizaOk) {
-          throw new AuthError(
-            400,
-            `Reallliza nao atende ${uf} diretamente. Escolha "Publicar pra homologados".`
-          );
-        }
-      }
-    }
-
-    type CalcResult = {
-      subtotal_services: number;
-      total_hours: number;
-      total_days: number;
-      travel_distance_km: number;
-      travel_cost: number;
-      stay_count: number;
-      stay_cost: number;
-      is_special_hour: boolean;
-      special_hour_extra: number;
-      total_amount: number;
-      platform_fee_pct: number;
-      platform_fee_amount: number;
-      payout_amount: number;
-    };
-    let calc: CalcResult | null = null;
-    if (modality) {
-      const { calculateQuote } = await import("@/lib/quotes/calculator");
-      calc = await calculateQuote({
-        modality,
-        items: calcItems,
-        service_address_zip: body.address_zip ?? null,
-        service_address_city: body.address_city ?? null,
-        service_address_state: body.address_state ?? null,
-        service_address_street: body.address_street ?? null,
-        service_date: body.service_date ?? null,
-        service_time: body.service_time ?? null,
-        allow_weekend: !!body.allow_weekend,
-        manual_total_amount:
-          typeof body.manual_total_amount === "number"
-            ? body.manual_total_amount
-            : null,
-      });
-    }
 
     // CPF/CNPJ: armazena so digitos
     const sanitizeDoc = (v: unknown) =>
-      typeof v === "string" ? v.replace(/\D/g, "").slice(0, 14) : null;
-
-    const totalFinal = calc
-      ? calc.total_amount
-      : Math.round(subtotal_services * 100) / 100;
+      typeof v === "string" ? v.replace(/D/g, "").slice(0, 14) : null;
 
     const insertPayload: Record<string, unknown> = {
       partner_id: partnerId,

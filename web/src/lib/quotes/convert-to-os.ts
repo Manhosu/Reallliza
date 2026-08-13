@@ -9,6 +9,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { pickDominantSpecialty } from "./dominant-specialty";
 import { computeTeamAvailability } from "@/lib/teams/team-availability";
+import { buildContiguousRun, findNextValidStart } from "./schedule-window";
 
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -473,33 +474,65 @@ async function scheduleReallizaJobs(
     notes: string;
   }> = [];
 
-  let current = new Date(`${opts.service_date}T00:00:00`);
-  let placed = 0;
-  let safety = 0;
-  while (placed < totalDays && safety < 90) {
-    safety++;
-    const dateStr = current.toISOString().slice(0, 10);
-    const dow = current.getDay();
-    // Jessica 03/08: se allow_weekend, so' pula feriado (nao pula sab/dom).
-    // Senao (padrao), pula sabado (6), domingo (0) e feriado.
-    const skipWeekend = !opts.allow_weekend && (dow === 0 || dow === 6);
-    const isHoliday = holidaySet.has(dateStr);
-    if (!skipWeekend && !isHoliday) {
-      inserts.push({
-        service_order_id: serviceOrderId,
-        technician_id: null, // equipe distribui internamente
-        team_id: opts.team_id ?? null,
-        date: dateStr,
-        start_time: startTime,
-        end_time: endTime,
-        status: "scheduled",
-        source: "quote_paid",
-        notes: `Auto-agendado da quote (${placed + 1}/${totalDays})`,
-      });
-      placed++;
+  // Dias em que a equipe já está comprometida. Antes o agendamento gravava
+  // por cima de qualquer ocupação — nem consultava `schedules`.
+  const blockedSet = new Set<string>();
+  if (opts.team_id) {
+    const { data: ocupados } = await supabase
+      .from("schedules")
+      .select("date")
+      .eq("team_id", opts.team_id)
+      .gte("date", opts.service_date)
+      .in("status", ["scheduled", "confirmed", "in_progress"]);
+    for (const s of (ocupados ?? []) as Array<{ date: string }>) {
+      blockedSet.add(s.date);
     }
-    current.setDate(current.getDate() + 1);
   }
+
+  // Jessica 12/08: os dias têm de ser CONTÍNUOS. A regra antiga contava dias
+  // ÚTEIS — começando numa sexta, o serviço pulava o fim de semana e voltava na
+  // segunda, deixando um buraco no meio da execução.
+  const rules = {
+    allowWeekend: !!opts.allow_weekend,
+    holidays: holidaySet,
+    blocked: blockedSet,
+  };
+
+  let inicio = opts.service_date;
+  let run = buildContiguousRun(inicio, totalDays, rules);
+
+  if (!run) {
+    // A validação na criação do orçamento já barra isso. Se mesmo assim chegou
+    // aqui (orçamento antigo, feriado cadastrado depois), empurra para o
+    // primeiro início que comporta o serviço inteiro — melhor que agendar com
+    // buracos ou não agendar nada. Fica registrado para o operador ver.
+    const alternativa = findNextValidStart(inicio, totalDays, rules);
+    if (!alternativa) {
+      console.error(
+        `scheduleReallizaJobs: sem sequência de ${totalDays} dia(s) a partir de ${inicio}`
+      );
+      return empty;
+    }
+    console.warn(
+      `scheduleReallizaJobs: ${inicio} não comporta ${totalDays} dias seguidos; deslocado para ${alternativa}`
+    );
+    inicio = alternativa;
+    run = buildContiguousRun(inicio, totalDays, rules)!;
+  }
+
+  run.forEach((dateStr, i) => {
+    inserts.push({
+      service_order_id: serviceOrderId,
+      technician_id: null, // equipe distribui internamente
+      team_id: opts.team_id ?? null,
+      date: dateStr,
+      start_time: startTime,
+      end_time: endTime,
+      status: "scheduled",
+      source: "quote_paid",
+      notes: `Auto-agendado da quote (${i + 1}/${totalDays})`,
+    });
+  });
 
   if (inserts.length === 0) return empty;
 

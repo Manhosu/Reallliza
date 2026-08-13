@@ -1,4 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  buildContiguousRun,
+  toIsoDate,
+  fromIsoDate,
+  type WorkdayRules,
+} from "@/lib/quotes/schedule-window";
 
 export interface AvailableWindow {
   start: string;
@@ -12,45 +18,36 @@ export interface TeamAvailability {
   color: string;
   member_count: number;
   blocked_days: string[];
+  /** Feriados no horizonte — o seletor precisa deles para montar o bloco. */
+  holidays: string[];
   available_windows: AvailableWindow[];
 }
 
-function fmtISO(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
-}
-
-function isWeekend(iso: string): boolean {
-  const d = new Date(`${iso}T00:00:00`);
-  const dow = d.getDay();
-  return dow === 0 || dow === 6;
-}
-
 /**
- * A partir de startISO, tenta montar bloco de N dias úteis consecutivos
- * pulando sábado, domingo, feriados e dias bloqueados.
- * Retorna array de N ISOs se conseguir; null se estourar horizonte.
+ * Primeira janela de N dias CONTÍNUOS a partir de startISO.
+ *
+ * Jessica 12/08: a versão anterior montava "N dias úteis", pulando o que não
+ * servia e seguindo em frente — a janela saía com o fim de semana no meio.
+ * Agora a sequência tem de ser ininterrupta; se o dia de início não comportar
+ * o serviço inteiro, tenta o dia seguinte, até o horizonte.
  */
 function tryBuildWorkdayBlock(
   startISO: string,
   daysNeeded: number,
-  holidays: Set<string>,
-  blocked: Set<string>,
+  rules: WorkdayRules,
   horizonISO: string
 ): AvailableWindow | null {
-  const days: string[] = [];
-  const cursor = new Date(`${startISO}T00:00:00`);
-  const horizonDate = new Date(`${horizonISO}T00:00:00`);
-  while (days.length < daysNeeded) {
-    if (cursor > horizonDate) return null;
-    const iso = fmtISO(cursor);
-    const skip = isWeekend(iso) || holidays.has(iso) || blocked.has(iso);
-    if (!skip) days.push(iso);
+  const cursor = fromIsoDate(startISO);
+  const horizonDate = fromIsoDate(horizonISO);
+
+  while (cursor <= horizonDate) {
+    const run = buildContiguousRun(toIsoDate(cursor), daysNeeded, rules);
+    if (run) {
+      return { start: run[0], end: run[run.length - 1], workdays: run };
+    }
     cursor.setDate(cursor.getDate() + 1);
   }
-  return { start: days[0], end: days[days.length - 1], workdays: days };
+  return null;
 }
 
 /**
@@ -65,13 +62,19 @@ export async function computeTeamAvailability(
     days_needed: number;
     from: string;
     horizon?: number;
+    /**
+     * Cliente autorizou execução em fim de semana. Faltava aqui: a janela
+     * mostrada na tela sempre pulava sábado e domingo, mesmo em orçamento com
+     * allow_weekend, e não batia com o que o backend ia agendar.
+     */
+    allow_weekend?: boolean;
   }
 ): Promise<TeamAvailability[]> {
   const horizon = input.horizon ?? 60;
-  const fromDate = new Date(`${input.from}T00:00:00`);
+  const fromDate = fromIsoDate(input.from);
   const horizonDate = new Date(fromDate);
   horizonDate.setDate(horizonDate.getDate() + horizon);
-  const horizonISO = fmtISO(horizonDate);
+  const horizonISO = toIsoDate(horizonDate);
 
   // Lista equipes ativas
   const { data: teams } = await supabase
@@ -158,21 +161,24 @@ export async function computeTeamAvailability(
       ((scheds ?? []) as Array<{ date: string }>).map((s) => s.date)
     );
 
-    // Constrói primeiras 5 janelas de N dias úteis consecutivos livres
+    // Primeiras 5 janelas de N dias CONTÍNUOS livres
+    const rules: WorkdayRules = {
+      allowWeekend: !!input.allow_weekend,
+      holidays,
+      blocked,
+    };
     const windows: AvailableWindow[] = [];
     const cursor = new Date(fromDate);
     while (windows.length < 5 && cursor <= horizonDate) {
       const win = tryBuildWorkdayBlock(
-        fmtISO(cursor),
+        toIsoDate(cursor),
         input.days_needed,
-        holidays,
-        blocked,
+        rules,
         horizonISO
       );
       if (!win) break;
       windows.push(win);
-      // avança 1 dia útil a partir do início do bloco encontrado
-      const next = new Date(`${win.start}T00:00:00`);
+      const next = fromIsoDate(win.start);
       next.setDate(next.getDate() + 1);
       cursor.setTime(next.getTime());
     }
@@ -183,6 +189,9 @@ export async function computeTeamAvailability(
       color: t.color,
       member_count: techIds.length,
       blocked_days: Array.from(blocked),
+      // O seletor precisa dos feriados para não oferecer início que não cabe —
+      // antes ele montava o bloco com um conjunto de feriados vazio.
+      holidays: Array.from(holidays),
       available_windows: windows,
     });
   }

@@ -173,6 +173,18 @@ export const quotesApi = {
   create(payload: CreateQuotePayload) {
     return apiClient.post<Quote>("/quotes", payload);
   },
+  /**
+   * Edita um orçamento ainda não pago. O servidor recusa quando o status já
+   * saiu de draft/awaiting_payment (Jessica 12/08).
+   */
+  update(id: string, payload: CreateQuotePayload) {
+    return apiClient.put<{
+      id: string;
+      total_amount: number;
+      payment_cancelled: boolean;
+    }>(`/quotes/${id}`, payload);
+  },
+
   pay(id: string) {
     return apiClient.post<PayQuoteResult>(`/quotes/${id}/pay`, {});
   },

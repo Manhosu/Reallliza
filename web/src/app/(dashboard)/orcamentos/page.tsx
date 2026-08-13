@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, FileText, Clock } from "lucide-react";
+import { Plus, FileText, Clock, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -117,39 +117,57 @@ export default function OrcamentosPage() {
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ delay: Math.min(idx * 0.04, 0.3) }}
                 >
-                  <Link href={`/orcamentos/${q.id}`}>
-                    <Card hover>
-                      <CardContent className="flex flex-wrap items-center gap-4 p-4">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                          <FileText className="h-5 w-5 text-primary" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-medium">
-                              Orçamento #{q.quote_number}
-                            </p>
-                            <span
-                              className={cn(
-                                "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                                st.cls
-                              )}
-                            >
-                              {st.label}
-                            </span>
-                          </div>
-                          <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Clock className="h-3 w-3" />
-                            {new Date(q.created_at).toLocaleDateString("pt-BR")}
-                            {" · "}
-                            {q.client_name}
+                  {/* O card inteiro era um <Link>. Como o botão Editar não pode
+                      ficar aninhado dentro de âncora, o link virou overlay. */}
+                  <Card hover className="relative">
+                    <CardContent className="flex flex-wrap items-center gap-4 p-4">
+                      <Link
+                        href={`/orcamentos/${q.id}`}
+                        className="absolute inset-0 z-0"
+                        aria-label={`Abrir orçamento ${q.quote_number}`}
+                      />
+                      <div className="pointer-events-none flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                        <FileText className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="pointer-events-none min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">
+                            Orçamento #{q.quote_number}
                           </p>
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                              st.cls
+                            )}
+                          >
+                            {st.label}
+                          </span>
                         </div>
-                        <p className="text-base font-semibold">
-                          {formatBRL(q.total_amount)}
+                        <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          {new Date(q.created_at).toLocaleDateString("pt-BR")}
+                          {" · "}
+                          {q.client_name}
                         </p>
-                      </CardContent>
-                    </Card>
-                  </Link>
+                      </div>
+                      <p className="pointer-events-none text-base font-semibold">
+                        {formatBRL(q.total_amount)}
+                      </p>
+                      {/* Só antes de pago (Jessica 12/08). Depois disso o
+                          orçamento é o registro que originou a OS. */}
+                      {(q.status === "draft" || q.status === "awaiting_payment") && (
+                        <Link
+                          href={`/orcamentos/novo?id=${q.id}`}
+                          className="relative z-10"
+                        >
+                          <Button size="sm" variant="outline">
+                            <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                            Editar
+                          </Button>
+                        </Link>
+                      )}
+                    </CardContent>
+                  </Card>
                 </motion.div>
               );
             })}

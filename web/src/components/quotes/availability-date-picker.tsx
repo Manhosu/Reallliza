@@ -6,6 +6,7 @@ import { Calendar, ChevronLeft, ChevronRight, X, Users } from "lucide-react";
 import { apiClient } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { buildContiguousRun } from "@/lib/quotes/schedule-window";
 
 // Compat: modo legado (single date) chamando /calendar/availability
 interface LegacyDayInfo {
@@ -34,6 +35,7 @@ interface TeamAvailability {
   color: string;
   member_count: number;
   blocked_days: string[];
+  holidays: string[];
   available_windows: AvailableWindow[];
 }
 interface TeamAvailResponse {
@@ -84,8 +86,15 @@ function daysGrid(anchor: Date) {
 }
 
 /**
- * Constroi bloco de N dias uteis consecutivos a partir de startISO,
- * pulando fim de semana, feriados e dias bloqueados.
+ * Bloco de N dias CONTÍNUOS a partir de startISO, ou null se não couber.
+ *
+ * Jessica 12/08: antes isto contava dias ÚTEIS — o laço avançava e só
+ * empilhava os dias válidos, então um serviço de 5 dias começando na sexta
+ * saía como 28/08, 31/08, 01/09, 02/09 e 03/09, com o fim de semana no meio.
+ * Agora a sequência tem de ser ininterrupta; se não for, aquele início não
+ * pode ser escolhido.
+ *
+ * Usa a mesma função da validação do orçamento e da geração dos agendamentos.
  */
 function tryBuildBlock(
   startISO: string,
@@ -94,20 +103,11 @@ function tryBuildBlock(
   blocked: Set<string>,
   allowWeekend = false
 ): string[] | null {
-  const days: string[] = [];
-  const cursor = new Date(`${startISO}T00:00:00`);
-  let safety = 0;
-  while (days.length < daysNeeded && safety < 120) {
-    const iso = fmtISO(cursor);
-    const skip =
-      (!allowWeekend && isWeekend(iso)) ||
-      holidays.has(iso) ||
-      blocked.has(iso);
-    if (!skip) days.push(iso);
-    cursor.setDate(cursor.getDate() + 1);
-    safety++;
-  }
-  return days.length === daysNeeded ? days : null;
+  return buildContiguousRun(startISO, daysNeeded, {
+    allowWeekend,
+    holidays,
+    blocked,
+  });
 }
 
 export function AvailabilityDatePicker({
@@ -142,7 +142,7 @@ export function AvailabilityDatePicker({
       const from = fmtISO(first);
       if (specialtyId) {
         const res = await apiClient.get<TeamAvailResponse>(
-          `/calendar/team-availability?specialty_id=${specialtyId}&days_needed=${daysNeeded}&from=${from}&horizon=60`
+          `/calendar/team-availability?specialty_id=${specialtyId}&days_needed=${daysNeeded}&from=${from}&horizon=60&allow_weekend=${allowWeekend}`
         );
         setTeamData(res);
         if (res.teams.length > 0 && !selectedTeamId) {
@@ -160,7 +160,7 @@ export function AvailabilityDatePicker({
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anchor, specialtyId, daysNeeded]);
+  }, [anchor, specialtyId, daysNeeded, allowWeekend]);
 
   useEffect(() => {
     if (open) load();
@@ -193,7 +193,10 @@ export function AvailabilityDatePicker({
     ? teamData?.teams.find((t) => t.team_id === selectedTeamId)
     : null;
   const blocked = new Set<string>(activeTeam?.blocked_days ?? []);
-  const holidays = new Set<string>(); // team-availability ja considera na janela
+  // Feriados vêm da rota agora. Antes este conjunto era vazio com a
+  // justificativa de que a janela já os considerava — mas tryBuildBlock,
+  // chamado no clique, montava o bloco sem eles.
+  const holidays = new Set<string>(activeTeam?.holidays ?? []);
 
   const selectedSet = new Set<string>(currentBlock);
 

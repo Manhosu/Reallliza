@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Minus, Plus, ArrowLeft, AlertCircle, Package, Calculator, Building2, Users } from "lucide-react";
@@ -145,8 +145,15 @@ async function fetchViaCep(cep: string): Promise<ViaCepResponse | null> {
   }
 }
 
-export default function NovoOrcamentoPage() {
+function NovoOrcamentoContent() {
   const router = useRouter();
+  // Jessica 12/08: a mesma tela serve para editar. `?id=` liga o modo edição —
+  // carrega o orçamento, prefill e salva com PUT em vez de POST.
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("id");
+  const isEdit = !!editId;
+  const [loadingQuote, setLoadingQuote] = useState(false);
+
   const [services, setServices] = useState<Service[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [clientName, setClientName] = useState("");
@@ -224,6 +231,91 @@ export default function NovoOrcamentoPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Modo edição: carrega o orçamento existente e preenche o formulário.
+  // Só entra aqui quando `services` já chegou — as quantidades são indexadas
+  // por service_id e precisam do catálogo carregado.
+  useEffect(() => {
+    if (!editId || services.length === 0) return;
+    let cancelled = false;
+
+    (async () => {
+      setLoadingQuote(true);
+      try {
+        const q = (await quotesApi.getById(editId)) as unknown as Record<string, unknown>;
+        if (cancelled) return;
+
+        const status = String(q.status ?? "");
+        if (status !== "draft" && status !== "awaiting_payment") {
+          toast.error("Este orçamento já foi pago e não pode ser editado.");
+          router.replace(`/orcamentos/${editId}`);
+          return;
+        }
+
+        const s = (v: unknown) => (typeof v === "string" ? v : "");
+        setClientName(s(q.client_name));
+        setClientPhone(s(q.client_phone));
+        setClientWhatsapp(s(q.client_whatsapp));
+        setClientEmail(s(q.client_email));
+        setClientDocument(s(q.client_document));
+        setAddressStreet(s(q.address_street));
+        setAddressNumber(s(q.address_number));
+        setAddressComplement(s(q.address_complement));
+        setAddressNeighborhood(s(q.address_neighborhood));
+        setAddressCity(s(q.address_city));
+        setAddressState(s(q.address_state));
+        setAddressZip(s(q.address_zip));
+        setNotes(s(q.notes));
+        setServiceDate(s(q.service_date));
+        setServiceTime(s(q.service_time));
+        setAllowWeekend(!!q.allow_weekend);
+        setRegionCity(s(q.region_city));
+        setRegionState(s(q.region_state));
+        setServiceType(s(q.service_type));
+        setRooms(s(q.rooms));
+        setMaterialDescription(s(q.material_description));
+        setExecutionStartDate(s(q.execution_start_date));
+        setImportantNotes(s(q.important_notes));
+        setGeneralNotes(s(q.general_notes));
+        if (q.total_area_m2 != null) setTotalAreaM2(String(q.total_area_m2));
+        if (q.modality === "reallliza" || q.modality === "homologados") {
+          setModality(q.modality);
+        }
+        if (Array.isArray(q.project_files)) {
+          setProjectFiles(q.project_files as FileAttachment[]);
+        }
+        if (Array.isArray(q.material_files)) {
+          setMaterialFiles(q.material_files as FileAttachment[]);
+        }
+
+        const itens = (q.items ?? []) as Array<{
+          service_id: string;
+          quantity: number;
+        }>;
+        setQuantities(
+          Object.fromEntries(
+            itens
+              .filter((i) => i.service_id)
+              .map((i) => [i.service_id, Number(i.quantity) || 0])
+          )
+        );
+
+        // O rascunho do localStorage é de outro fluxo; não pode sobrescrever
+        // o que veio do orçamento sendo editado.
+        setDraftRestored(true);
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Não foi possível carregar o orçamento"
+        );
+      } finally {
+        if (!cancelled) setLoadingQuote(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editId, services.length, router]);
 
   // Cobertura UF (Jessica 24/06) — busca availability sempre que addressState mudar.
   // Se UF esta desabilitada na Reallliza, o botao "Reallliza executa" some.
@@ -496,7 +588,7 @@ export default function NovoOrcamentoPage() {
     }
 
     try {
-      const quote = await quotesApi.create({
+      const payload = {
         client_name: clientName.trim(),
         client_phone: clientPhone.replace(/\D/g, "") || undefined,
         client_whatsapp: clientWhatsapp.replace(/\D/g, "") || undefined,
@@ -535,10 +627,27 @@ export default function NovoOrcamentoPage() {
         // Anexos (Jessica 16/07)
         project_files: projectFiles.length > 0 ? projectFiles : undefined,
         material_files: materialFiles.length > 0 ? materialFiles : undefined,
-      });
-      toast.success("Orçamento criado");
-      try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
-      router.push(`/orcamentos/${quote.id}`);
+      };
+
+      let quoteId: string;
+      if (isEdit && editId) {
+        const res = await quotesApi.update(editId, payload);
+        quoteId = editId;
+        if (res.payment_cancelled) {
+          toast.success("Orçamento atualizado", {
+            description:
+              "A cobrança anterior foi cancelada porque o valor mudou. Gere o pagamento novamente.",
+          });
+        } else {
+          toast.success("Orçamento atualizado");
+        }
+      } else {
+        const quote = await quotesApi.create(payload);
+        quoteId = quote.id;
+        toast.success("Orçamento criado");
+        try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+      }
+      router.push(`/orcamentos/${quoteId}`);
     } catch (err: unknown) {
       if (err instanceof ApiError && err.status === 401) {
         toast.error("Sua sessão expirou. Faça login novamente.", {
@@ -569,7 +678,7 @@ export default function NovoOrcamentoPage() {
           <ArrowLeft className="h-4 w-4" /> Orçamentos
         </Link>
         <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-          Novo Orçamento
+          {isEdit ? "Editar Orçamento" : "Novo Orçamento"}
         </h1>
       </motion.div>
 
@@ -896,6 +1005,10 @@ export default function NovoOrcamentoPage() {
                       <AvailabilityDatePicker
                         value={serviceDate}
                         onChange={(val) => {
+                          // Guardar só o início é suficiente: como os dias são
+                          // contínuos, a sequência inteira é determinística a
+                          // partir dele, e o servidor a reconstrói com a mesma
+                          // regra (lib/quotes/schedule-window).
                           if (Array.isArray(val)) {
                             setServiceDate(val[0] ?? "");
                           } else {
@@ -1369,5 +1482,19 @@ export default function NovoOrcamentoPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function NovoOrcamentoPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex justify-center py-20">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      }
+    >
+      <NovoOrcamentoContent />
+    </Suspense>
   );
 }
