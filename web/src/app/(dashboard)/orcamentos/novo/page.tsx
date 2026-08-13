@@ -1427,7 +1427,7 @@ function NovoOrcamentoContent() {
                 isLoading={saving}
                 className="w-full"
               >
-                Gerar orçamento
+                {isEdit ? "Salvar alterações" : "Gerar orçamento"}
               </Button>
             </CardContent>
           </Card>
