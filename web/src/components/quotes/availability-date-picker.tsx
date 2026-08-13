@@ -378,8 +378,18 @@ export function AvailabilityDatePicker({
 
                     // Modo novo (team)
                     const teamWeekend = specialtyId ? isWeekend(iso) : false;
+                    const isHoliday = specialtyId && holidays.has(iso);
+                    // Jessica 12/08: o dia só serve se a execução INTEIRA couber
+                    // em dias seguidos a partir dele. Antes a célula ficava verde
+                    // e o clique não fazia nada — tryBuildBlock devolvia null e
+                    // handleClick saía calado, então o dia parecia quebrado.
+                    const cabeBloco =
+                      !specialtyId ||
+                      isPast ||
+                      !!tryBuildBlock(iso, daysNeeded, holidays, blocked, allowWeekend);
                     const teamBusy =
-                      specialtyId && (isPast || isBlockedByTeam || teamWeekend);
+                      specialtyId &&
+                      (isPast || isBlockedByTeam || teamWeekend || isHoliday || !cabeBloco);
 
                     const busy = specialtyId ? teamBusy : legacyBusy;
                     const weekend = specialtyId ? teamWeekend : legacyWeekend;
@@ -393,9 +403,13 @@ export function AvailabilityDatePicker({
                         title={
                           isBlockedByTeam
                             ? `Equipe ${activeTeam?.name ?? ""} ocupada`
-                            : weekend
-                              ? "Fim de semana"
-                              : legacyInfo?.holiday_name ?? ""
+                            : isHoliday
+                              ? "Feriado"
+                              : weekend
+                                ? "Fim de semana"
+                                : !cabeBloco
+                                  ? `Não cabem ${daysNeeded} dias seguidos a partir daqui`
+                                  : legacyInfo?.holiday_name ?? ""
                         }
                         className={cn(
                           "aspect-square rounded-md text-xs font-medium transition relative",
