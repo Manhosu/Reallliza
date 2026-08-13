@@ -86,6 +86,27 @@ export async function PATCH(
     if (body.name !== undefined) updatePayload.name = String(body.name).trim();
     if (body.description !== undefined) updatePayload.description = body.description?.trim() || null;
     if (body.is_active !== undefined) updatePayload.is_active = !!body.is_active;
+    if (body.is_draft !== undefined) updatePayload.is_draft = !!body.is_draft;
+
+    // Publicar um rascunho vazio deixaria a OS com um template sem etapa
+    // nenhuma — a instanciação não criaria nada e o técnico abriria a OS sem
+    // roteiro. Confere as etapas que vão ficar depois deste PATCH.
+    if (body.is_draft === false) {
+      const etapasDepois = Array.isArray(body.items)
+        ? body.items.length
+        : ((
+            await supabase
+              .from("step_template_items")
+              .select("id", { count: "exact", head: true })
+              .eq("group_id", id)
+          ).count ?? 0);
+      if (etapasDepois === 0) {
+        throw new AuthError(
+          400,
+          "Adicione ao menos uma etapa antes de publicar o template."
+        );
+      }
+    }
 
     if (Object.keys(updatePayload).length > 0) {
       const { error: gErr } = await supabase

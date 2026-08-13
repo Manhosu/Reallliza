@@ -122,6 +122,17 @@ async function request<T>(options: RequestOptions): Promise<T> {
       (errorBody?.message as string) ||
       (errorBody?.error as string) ||
       res.statusText;
+    // Sem token, a requisição sai sem o header e volta "Authorization header
+    // is missing" — mensagem que não diz nada a quem está usando o sistema.
+    // Isso acontece quando getSession() falha (o lock do Supabase estoura em
+    // 10s com várias abas abertas) e o erro é engolido pelo catch de lá.
+    if (res.status === 401 && !token) {
+      throw new ApiError(
+        401,
+        "Não foi possível confirmar sua sessão. Recarregue a página (F5) e tente de novo.",
+        errorBody
+      );
+    }
     throw new ApiError(res.status, message, errorBody);
   }
 

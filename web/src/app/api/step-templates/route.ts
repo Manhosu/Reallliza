@@ -36,6 +36,9 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const includeInactive = searchParams.get("include_inactive") === "true";
+    // Rascunhos só aparecem para quem está gerenciando templates. O seletor da
+    // OS não pode oferecer um template pela metade.
+    const includeDrafts = searchParams.get("include_drafts") === "true";
     const search = searchParams.get("search");
 
     const supabase = getAdminClient();
@@ -45,13 +48,16 @@ export async function GET(request: NextRequest) {
       .select(
         `
         *,
-        items:step_template_items(id, step_key, name, description, order_index, photos_required_min, final_photos_required_min, occurrence_enabled, is_required)
+        items:step_template_items(id, step_key, name, description, order_index, photos_required_min, final_photos_required_min, occurrence_enabled, is_required, wait_time_minutes)
       `
       )
       .order("created_at", { ascending: false });
 
     if (!includeInactive) {
       query = query.eq("is_active", true);
+    }
+    if (!includeDrafts) {
+      query = query.eq("is_draft", false);
     }
     if (search) {
       query = query.ilike("name", `%${search}%`);
@@ -89,10 +95,14 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
+    const isDraft = !!body.is_draft;
+
     if (!body.name || typeof body.name !== "string" || !body.name.trim()) {
       throw new AuthError(400, "Nome do template é obrigatório");
     }
-    if (!Array.isArray(body.items) || body.items.length === 0) {
+    // Rascunho pode estar pela metade — é o ponto dele. A exigência de ter
+    // etapa vale na publicação.
+    if (!isDraft && (!Array.isArray(body.items) || body.items.length === 0)) {
       throw new AuthError(400, "Adicione ao menos uma etapa");
     }
 
@@ -104,6 +114,7 @@ export async function POST(request: NextRequest) {
         name: body.name.trim(),
         description: body.description?.trim() || null,
         is_active: body.is_active !== undefined ? !!body.is_active : true,
+        is_draft: isDraft,
         created_by: user.id,
       })
       .select()
@@ -117,7 +128,7 @@ export async function POST(request: NextRequest) {
       throw new Error("Falha ao criar template");
     }
 
-    const incoming: IncomingItem[] = body.items;
+    const incoming: IncomingItem[] = Array.isArray(body.items) ? body.items : [];
     const usedKeys = new Set<string>();
     const itemsRows = incoming.map((it, idx) => {
       let key = (it.step_key || slugifyKey(it.name)).toUpperCase();
@@ -144,10 +155,9 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    const { data: items, error: iErr } = await supabase
-      .from("step_template_items")
-      .insert(itemsRows)
-      .select();
+    const { data: items, error: iErr } = itemsRows.length
+      ? await supabase.from("step_template_items").insert(itemsRows).select()
+      : { data: [], error: null };
 
     if (iErr) {
       // Rollback do grupo se itens falharem

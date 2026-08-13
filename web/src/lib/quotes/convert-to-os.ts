@@ -13,6 +13,12 @@ import { buildContiguousRun, findNextValidStart } from "./schedule-window";
 
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
 
+/** ISO (2026-08-24) para o formato que a operação lê (24/08/2026). */
+function formatarData(iso: string): string {
+  const [a, m, d] = iso.split("-");
+  return `${d}/${m}/${a}`;
+}
+
 export interface ConvertResult {
   ok: boolean;
   service_order_id?: string;
@@ -52,6 +58,10 @@ export async function convertQuoteToServiceOrder(
   // reallliza + service_date + categorias vinculadas a specialty. Fallback:
   // status 'awaiting_assignment' pra admin resolver manual.
   let autoAssignedTeamId: string | null = null;
+  // Início real da execução. Costumava ser sempre `quote.service_date`, mesmo
+  // quando a equipe já estava comprometida ali — era o que empilhava duas OS
+  // no mesmo dia (Jessica 13/08).
+  let scheduleStart: string | null = null;
   if (
     quote.modality === "reallliza" &&
     quote.service_date &&
@@ -75,12 +85,31 @@ export async function convertQuoteToServiceOrder(
           days_needed: daysNeeded,
           from: quote.service_date as string,
           horizon: 60,
+          // Faltava passar: as janelas vinham calculadas como se fim de semana
+          // nunca fosse permitido, então não batiam com o que seria agendado.
+          allow_weekend: !!(quote as { allow_weekend?: boolean }).allow_weekend,
         });
-        const matched = teams.find(
-          (t) => t.available_windows[0]?.start === (quote.service_date as string)
+
+        // Preferência é a data que a loja pediu. Se nenhuma equipe tem a
+        // sequência inteira livre ali, vale a janela mais próxima — antes o
+        // match exigia início exato, e como a busca de janela agora exige dias
+        // contíguos e livres, um dia ocupado deixaria a OS sem equipe nenhuma.
+        const comJanela = teams.filter((t) => t.available_windows.length > 0);
+        const exata = comJanela.find(
+          (t) => t.available_windows[0].start === (quote.service_date as string)
         );
-        if (matched) {
-          autoAssignedTeamId = matched.team_id;
+        const maisCedo = comJanela.reduce<(typeof comJanela)[number] | null>(
+          (melhor, t) =>
+            !melhor ||
+            t.available_windows[0].start < melhor.available_windows[0].start
+              ? t
+              : melhor,
+          null
+        );
+        const escolhida = exata ?? maisCedo;
+        if (escolhida) {
+          autoAssignedTeamId = escolhida.team_id;
+          scheduleStart = escolhida.available_windows[0].start;
         }
       }
     } catch (err) {
@@ -89,6 +118,13 @@ export async function convertQuoteToServiceOrder(
       );
     }
   }
+
+  // Mudar a data em silêncio é pior que mudar avisando: quem abrir a OS
+  // precisa entender por que a execução não começa no dia que a loja pediu.
+  const avisoDeslocamento =
+    scheduleStart && scheduleStart !== quote.service_date
+      ? `Início reagendado de ${formatarData(quote.service_date as string)} para ${formatarData(scheduleStart)}: a equipe não tinha a sequência de dias livre na data pedida.`
+      : null;
 
   const initialStatus =
     quote.modality === "reallliza"
@@ -118,7 +154,9 @@ export async function convertQuoteToServiceOrder(
       address_city: quote.address_city,
       address_state: quote.address_state,
       address_zip: quote.address_zip,
-      notes: quote.notes,
+      notes: avisoDeslocamento
+        ? [quote.notes, avisoDeslocamento].filter(Boolean).join("\n\n")
+        : quote.notes,
       material_files: materialFiles,
       project_files: projectFiles,
       created_by: createdBy,
@@ -183,7 +221,9 @@ export async function convertQuoteToServiceOrder(
     Number(quote.total_hours) > 0
   ) {
     const scheduled = await scheduleReallizaJobs(supabase, os.id, {
-      service_date: quote.service_date as string,
+      // A janela escolhida manda; `quote.service_date` só quando não houve
+      // equipe qualificada com agenda livre.
+      service_date: scheduleStart ?? (quote.service_date as string),
       service_time: (quote.service_time as string | null) ?? "08:00",
       total_hours: Number(quote.total_hours),
       partner_id: (quote.partner_id as string | null) ?? null,

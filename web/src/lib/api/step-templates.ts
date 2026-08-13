@@ -21,6 +21,8 @@ export interface StepTemplateGroup {
   name: string;
   description: string | null;
   is_active: boolean;
+  /** Em edição: não aparece no seletor de template da OS. */
+  is_draft: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -45,6 +47,8 @@ export interface CreateStepTemplatePayload {
   name: string;
   description?: string;
   is_active?: boolean;
+  /** Grava pela metade, sem exigir etapas. */
+  is_draft?: boolean;
   items: StepTemplateItemPayload[];
 }
 
@@ -52,11 +56,17 @@ export interface UpdateStepTemplatePayload {
   name?: string;
   description?: string;
   is_active?: boolean;
+  /** `false` publica o rascunho (exige ao menos uma etapa). */
+  is_draft?: boolean;
   items?: StepTemplateItemPayload[];
 }
 
 export const stepTemplatesApi = {
-  list(params?: { include_inactive?: boolean; search?: string }) {
+  list(params?: {
+    include_inactive?: boolean;
+    include_drafts?: boolean;
+    search?: string;
+  }) {
     return apiClient.get<StepTemplateGroup[]>(
       "/step-templates",
       params as Record<string, unknown>

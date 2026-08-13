@@ -16,6 +16,8 @@ import {
   ListChecks,
   Camera,
   Hammer,
+  Save,
+  FileEdit,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -58,6 +60,54 @@ function emptyItem(orderIndex: number): DraftItem {
   };
 }
 
+/**
+ * Cópia local do que está sendo digitado.
+ *
+ * Jessica 13/08: "fica carregando, não salva e acaba perdendo todas as
+ * informações que eu já preenchi". O rascunho no servidor resolve o caso de
+ * sair da tela de propósito; isto aqui é a rede embaixo — sobrevive a recarga,
+ * queda de conexão e ao próprio erro de salvamento, porque não depende de
+ * chamada nenhuma. Gravado a cada tecla, apagado só quando o salvamento
+ * confirma.
+ */
+const RASCUNHO_LOCAL = "reallliza:template-execucao:rascunho";
+
+interface RascunhoLocal {
+  templateId: string | null;
+  name: string;
+  description: string;
+  items: DraftItem[];
+  em: number;
+}
+
+function lerRascunhoLocal(): RascunhoLocal | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const cru = window.localStorage.getItem(RASCUNHO_LOCAL);
+    if (!cru) return null;
+    const r = JSON.parse(cru) as RascunhoLocal;
+    return Array.isArray(r?.items) ? r : null;
+  } catch {
+    return null;
+  }
+}
+
+function gravarRascunhoLocal(r: RascunhoLocal) {
+  try {
+    window.localStorage.setItem(RASCUNHO_LOCAL, JSON.stringify(r));
+  } catch {
+    // cota estourada ou modo privado — não vale derrubar o formulário por isso
+  }
+}
+
+function limparRascunhoLocal() {
+  try {
+    window.localStorage.removeItem(RASCUNHO_LOCAL);
+  } catch {
+    /* idem */
+  }
+}
+
 interface TemplateFormProps {
   open: boolean;
   template: StepTemplateGroup | null;
@@ -71,10 +121,24 @@ function TemplateForm({ open, template, onClose, onSaved }: TemplateFormProps) {
   const [description, setDescription] = useState("");
   const [items, setItems] = useState<DraftItem[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recuperado, setRecuperado] = useState(false);
 
   useEffect(() => {
     if (open) {
+      // Sobrou rascunho local do mesmo template (ou de um novo)? Ele é mais
+      // recente que o que veio do servidor, então tem precedência.
+      const local = lerRascunhoLocal();
+      if (local && local.templateId === (template?.id ?? null)) {
+        setName(local.name);
+        setDescription(local.description);
+        setItems(local.items.length ? local.items : [emptyItem(1)]);
+        setRecuperado(true);
+        setError(null);
+        return;
+      }
+      setRecuperado(false);
       setName(template?.name ?? "");
       setDescription(template?.description ?? "");
       setItems(
@@ -97,6 +161,25 @@ function TemplateForm({ open, template, onClose, onSaved }: TemplateFormProps) {
       setError(null);
     }
   }, [open, template]);
+
+  // Espelha o formulário no localStorage a cada mudança. Só quando há algo
+  // digitado — abrir e fechar o modal não pode criar um rascunho fantasma que
+  // depois se sobrepõe a um template de verdade.
+  useEffect(() => {
+    if (!open) return;
+    const temConteudo =
+      name.trim().length > 0 ||
+      description.trim().length > 0 ||
+      items.some((it) => it.name.trim() || (it.description ?? "").trim());
+    if (!temConteudo) return;
+    gravarRascunhoLocal({
+      templateId: template?.id ?? null,
+      name,
+      description,
+      items,
+      em: Date.now(),
+    });
+  }, [open, name, description, items, template]);
 
   function addItem() {
     setItems((prev) => [...prev, emptyItem(prev.length + 1)]);
@@ -126,6 +209,69 @@ function TemplateForm({ open, template, onClose, onSaved }: TemplateFormProps) {
     setItems((prev) =>
       prev.map((it) => (it.draftId === draftId ? { ...it, ...patch } : it))
     );
+  }
+
+  /** Monta os itens preenchidos no formato da API. */
+  function montarItens(): StepTemplateItemPayload[] {
+    return items
+      .filter((it) => it.name.trim().length > 0)
+      .map((it, idx) => ({
+        step_key: it.step_key,
+        name: it.name.trim(),
+        description: it.description?.trim() || null,
+        order_index: idx + 1,
+        photos_required_min: Math.max(0, Number(it.photos_required_min) || 0),
+        final_photos_required_min: Math.max(
+          0,
+          Number(it.final_photos_required_min) || 0
+        ),
+        occurrence_enabled: it.occurrence_enabled ?? true,
+        is_required: it.is_required ?? true,
+        wait_time_minutes: Math.max(
+          0,
+          Math.min(1440, Math.round(Number(it.wait_time_minutes ?? 0)))
+        ),
+      }));
+  }
+
+  /**
+   * Guarda como rascunho: aceita o template pela metade, sem exigir etapa.
+   * Fica na lista com o selo Rascunho até ela publicar.
+   */
+  async function handleSalvarRascunho() {
+    setError(null);
+    if (!name.trim()) {
+      setError("Dê um nome ao template para guardar o rascunho.");
+      return;
+    }
+    setSavingDraft(true);
+    try {
+      if (isEditing && template) {
+        await stepTemplatesApi.update(template.id, {
+          name: name.trim(),
+          description: description.trim() || undefined,
+          is_draft: true,
+          items: montarItens(),
+        });
+      } else {
+        await stepTemplatesApi.create({
+          name: name.trim(),
+          description: description.trim() || undefined,
+          is_draft: true,
+          items: montarItens(),
+        });
+      }
+      limparRascunhoLocal();
+      toast.success("Rascunho guardado. Ele fica na lista pra você continuar.");
+      onSaved();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro ao guardar";
+      setError(
+        `${message} — o que você preencheu continua salvo neste navegador; é só reabrir esta tela.`
+      );
+    } finally {
+      setSavingDraft(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -166,9 +312,13 @@ function TemplateForm({ open, template, onClose, onSaved }: TemplateFormProps) {
         await stepTemplatesApi.update(template.id, {
           name: name.trim(),
           description: description.trim() || undefined,
+          // Salvar publica: se era rascunho, deixa de ser.
+          is_draft: false,
           items: payloadItems,
         });
-        toast.success("Template atualizado");
+        toast.success(
+          template.is_draft ? "Template publicado" : "Template atualizado"
+        );
       } else {
         await stepTemplatesApi.create({
           name: name.trim(),
@@ -177,10 +327,14 @@ function TemplateForm({ open, template, onClose, onSaved }: TemplateFormProps) {
         });
         toast.success("Template criado");
       }
+      limparRascunhoLocal();
       onSaved();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro ao salvar";
-      setError(message);
+      // O texto do erro sozinho fazia parecer que o trabalho tinha ido embora.
+      setError(
+        `${message} — nada foi perdido: o preenchimento continua guardado neste navegador e você pode tentar de novo ou usar "Salvar rascunho".`
+      );
     } finally {
       setIsSaving(false);
     }
@@ -195,6 +349,15 @@ function TemplateForm({ open, template, onClose, onSaved }: TemplateFormProps) {
       </DialogHeader>
       <form onSubmit={handleSubmit}>
         <DialogContent className="space-y-5 pt-4">
+          {recuperado && (
+            <div className="flex items-start gap-2 rounded-xl bg-primary/10 p-3 text-sm">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span>
+                Recuperamos o que você tinha preenchido da última vez. Continue
+                de onde parou.
+              </span>
+            </div>
+          )}
           <Input
             label="Nome do template *"
             placeholder="Ex: Instalação de Piso Vinílico Colado"
@@ -394,8 +557,21 @@ function TemplateForm({ open, template, onClose, onSaved }: TemplateFormProps) {
           <Button type="button" variant="outline" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" isLoading={isSaving}>
-            {isEditing ? "Salvar alterações" : "Criar template"}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleSalvarRascunho}
+            isLoading={savingDraft}
+            disabled={isSaving}
+          >
+            <Save className="h-4 w-4" /> Salvar rascunho
+          </Button>
+          <Button type="submit" isLoading={isSaving} disabled={savingDraft}>
+            {isEditing
+              ? template?.is_draft
+                ? "Publicar template"
+                : "Salvar alterações"
+              : "Criar template"}
           </Button>
         </DialogFooter>
       </form>
@@ -415,6 +591,9 @@ export default function TemplatesExecucaoPage() {
     try {
       const data = await stepTemplatesApi.list({
         include_inactive: includeInactive,
+        // Esta é a tela de gestão: aqui os rascunhos precisam aparecer para
+        // ela continuar de onde parou. O seletor da OS não os pede.
+        include_drafts: true,
       });
       setGroups(data || []);
     } catch (err: unknown) {
@@ -574,18 +753,38 @@ export default function TemplatesExecucaoPage() {
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ delay: idx * 0.04, duration: 0.3 }}
               >
-                <Card hover className={cn("h-full", !g.is_active && "opacity-60")}>
+                <Card
+                  hover
+                  className={cn(
+                    "h-full",
+                    !g.is_active && "opacity-60",
+                    g.is_draft && "border-amber-500/40 bg-amber-500/[0.03]"
+                  )}
+                >
                   <CardContent className="flex h-full flex-col p-6">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-                          <ListChecks className="h-5 w-5 text-primary" />
+                        <div
+                          className={cn(
+                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+                            g.is_draft ? "bg-amber-500/15" : "bg-primary/10"
+                          )}
+                        >
+                          {g.is_draft ? (
+                            <FileEdit className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                          ) : (
+                            <ListChecks className="h-5 w-5 text-primary" />
+                          )}
                         </div>
                         <h3 className="font-semibold leading-snug">{g.name}</h3>
                       </div>
-                      <Badge variant={g.is_active ? "success" : "gray"}>
-                        {g.is_active ? "Ativo" : "Inativo"}
-                      </Badge>
+                      {g.is_draft ? (
+                        <Badge variant="warning">Rascunho</Badge>
+                      ) : (
+                        <Badge variant={g.is_active ? "success" : "gray"}>
+                          {g.is_active ? "Ativo" : "Inativo"}
+                        </Badge>
+                      )}
                     </div>
 
                     {g.description && (
