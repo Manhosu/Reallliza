@@ -1006,6 +1006,13 @@ export default function OsDetailPage() {
   const id = params.id as string;
   const user = useAuthStore((s) => s.user);
   const isPartner = user?.role === UserRole.PARTNER;
+  /**
+   * Loja e executor não veem dinheiro na OS (Jessica 14/08). O servidor já
+   * remove os campos; esconder aqui evita a tela imprimir "R$ 0,00" no lugar,
+   * que se lê como "o serviço não vale nada" em vez de "não é pra você".
+   */
+  const ocultarValores =
+    isPartner || user?.role === UserRole.TECHNICIAN;
 
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
@@ -1783,9 +1790,13 @@ export default function OsDetailPage() {
                               <th className="px-2 py-2 text-left">Identif.</th>
                               <th className="px-2 py-2 text-left">Descrição</th>
                               <th className="px-2 py-2 text-left">Un.</th>
-                              <th className="px-2 py-2 text-right">Valor</th>
+                              {!ocultarValores && (
+                                <th className="px-2 py-2 text-right">Valor</th>
+                              )}
                               <th className="px-2 py-2 text-right">Qtde</th>
-                              <th className="px-2 py-2 text-right">Total</th>
+                              {!ocultarValores && (
+                                <th className="px-2 py-2 text-right">Total</th>
+                              )}
                             </tr>
                           </thead>
                           <tbody>
@@ -1799,17 +1810,24 @@ export default function OsDetailPage() {
                                 <td className="px-2 py-2 text-muted-foreground">{it.identification || "-"}</td>
                                 <td className="px-2 py-2">{it.description}</td>
                                 <td className="px-2 py-2 text-muted-foreground">{it.unit || "-"}</td>
-                                <td className="px-2 py-2 text-right">{formatCurrency(Number(it.unit_value))}</td>
+                                {!ocultarValores && (
+                                  <td className="px-2 py-2 text-right">{formatCurrency(Number(it.unit_value))}</td>
+                                )}
                                 <td className="px-2 py-2 text-right">{Number(it.quantity)}</td>
-                                <td className="px-2 py-2 text-right font-semibold">
-                                  {formatCurrency(Number(it.total))}
-                                </td>
+                                {!ocultarValores && (
+                                  <td className="px-2 py-2 text-right font-semibold">
+                                    {formatCurrency(Number(it.total))}
+                                  </td>
+                                )}
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
-                      <div className="flex flex-col items-end gap-1 pt-3 border-t text-sm">
+                      <div
+                        className="flex flex-col items-end gap-1 pt-3 border-t text-sm"
+                        hidden={ocultarValores}
+                      >
                         <div className="flex items-center justify-between gap-6 w-full max-w-xs">
                           <span className="text-muted-foreground">Subtotal</span>
                           <span className="font-medium">{formatCurrency(subtotal)}</span>
@@ -2224,8 +2242,8 @@ export default function OsDetailPage() {
             </Card>
           </motion.div>
 
-          {/* Valores — oculto pra loja (Jessica 10/07) */}
-          {!isPartner && (
+          {/* Valores — oculto pra loja e pra quem executa (Jessica 10/07, 14/08) */}
+          {!ocultarValores && (
             <motion.div variants={itemVariants}>
               <Card>
                 <CardHeader className="pb-3">

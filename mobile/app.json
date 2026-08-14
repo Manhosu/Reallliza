@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#09090B"
+      "backgroundColor": "#FCFCFC"
     },
     "ios": {
       "supportsTablet": true,
@@ -29,7 +29,7 @@
       "package": "com.reallliza.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#09090B"
+        "backgroundColor": "#FCFCFC"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,

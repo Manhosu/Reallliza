@@ -53,6 +53,20 @@ function maskClientFields(
 }
 
 /**
+ * Tira o valor contratado pela loja de dentro da OS embutida na proposta.
+ * O prestador enxerga apenas o que ele mesmo propôs; o que a loja pagou é
+ * assunto da plataforma.
+ */
+function semValorDaLoja(
+  proposal: Record<string, unknown>
+): Record<string, unknown> {
+  const so = proposal.service_order as Record<string, unknown> | null;
+  if (!so) return proposal;
+  const { estimated_value: _oculto, ...resto } = so;
+  return { ...proposal, service_order: resto };
+}
+
+/**
  * GET /api/proposals
  * List proposals.
  * Admin sees all; partners see only their own proposals.
@@ -163,7 +177,14 @@ export async function GET(request: NextRequest) {
     const isPrivileged = user.role === "admin" || user.role === "manager";
     const out =
       data && !isPrivileged
-        ? data.map((p) => maskClientFields(p as Record<string, unknown>, user.id))
+        ? data.map((p) =>
+            // O `estimated_value` da OS é o valor que a LOJA contratou, e vinha
+            // embutido em toda proposta. O prestador não pode vê-lo (Jessica
+            // 14/08) — o que interessa a ele é o próprio `proposed_value`.
+            semValorDaLoja(
+              maskClientFields(p as Record<string, unknown>, user.id)
+            )
+          )
         : data || [];
 
     return jsonResponse({

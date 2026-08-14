@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/api-helpers/audit";
 import { createNotification } from "@/lib/api-helpers/notifications";
 import { createScheduleFromOs } from "@/lib/api-helpers/schedules";
 import { getUserTeamIds, buildTeamScopeFilter } from "@/lib/api-helpers/team-scope";
+import { redactOsListForRole } from "@/lib/api-helpers/redact";
 
 /**
  * GET /api/service-orders
@@ -163,8 +164,16 @@ export async function GET(request: NextRequest) {
       throw new Error("Failed to fetch service orders");
     }
 
+    // Esta listagem devolvia a linha crua pra todo mundo — loja e técnico
+    // recebiam estimated_value e final_value junto. As outras rotas de OS já
+    // redigiam; esta tinha ficado de fora.
+    const redigidas = redactOsListForRole(
+      (data ?? []) as Record<string, unknown>[],
+      user.role
+    );
+
     return jsonResponse({
-      data: data || [],
+      data: redigidas,
       meta: {
         total: count || 0,
         page,

@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
-import { redactOsListForRole } from "@/lib/api-helpers/redact";
+import { redactOsForRole } from "@/lib/api-helpers/redact";
+import { resolvePayoutsForOsList } from "@/lib/api-helpers/payout";
 import { isUserHomologado } from "@/lib/api-helpers/user-context";
 import { getUserTeamIds, buildTeamScopeFilter } from "@/lib/api-helpers/team-scope";
 
@@ -85,12 +86,27 @@ export async function GET(request: NextRequest) {
       throw new Error("Failed to fetch service orders");
     }
 
-    // Loja + homologado nao veem valores (Jessica 10/07 + 20/07)
+    // Loja, técnico e homologado não veem valores (Jessica 10/07, 20/07, 14/08)
     const isHomologado =
       user.role === "technician" ? await isUserHomologado(supabase, user.id) : false;
-    const redacted = redactOsListForRole(
-      (data ?? []) as Record<string, unknown>[],
-      { role: user.role, isHomologado }
+    const linhas = (data ?? []) as Record<string, unknown>[];
+
+    // Repasse do prestador, em uma consulta só — uma por OS transformaria a
+    // listagem em N+1.
+    const repasses = isHomologado
+      ? await resolvePayoutsForOsList(
+          supabase,
+          linhas.map((r) => String(r.id)).filter(Boolean)
+        )
+      : new Map<string, number>();
+
+    const redacted = linhas.map(
+      (r) =>
+        redactOsForRole(r, {
+          role: user.role,
+          isHomologado,
+          payoutAmount: repasses.get(String(r.id)) ?? null,
+        }) as Record<string, unknown>
     );
 
     return jsonResponse({

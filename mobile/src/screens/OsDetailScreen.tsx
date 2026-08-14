@@ -85,9 +85,11 @@ export function OsDetailScreen() {
     identification: string | null;
     description: string;
     unit: string | null;
-    unit_value: number | string;
+    /** Ausentes quando o servidor redige a OS: técnico e prestador não veem
+     *  valor de item. Nunca renderizar sem checar. */
+    unit_value?: number | string | null;
     quantity: number | string;
-    total: number | string;
+    total?: number | string | null;
   };
 
   type StepLite = { id: string; status: 'pending' | 'in_progress' | 'completed' | 'skipped' };
@@ -109,6 +111,10 @@ export function OsDetailScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isFromCache, setIsFromCache] = useState(false);
+
+  /** Só vem preenchido para o prestador homologado (ver redact.ts no web). */
+  const payoutAmount = (order as { payout_amount?: number | null } | null)
+    ?.payout_amount;
 
   const formatBRL = (n: number | string): string => {
     const v = Number(n);
@@ -845,6 +851,33 @@ export function OsDetailScreen() {
         )}
       </View>
 
+      {/* Repasse do prestador. O servidor só manda `payout_amount` pra quem é
+          homologado — é a única informação financeira que ele pode ver, e
+          nunca o que a loja pagou. O técnico da Reallliza não recebe o campo,
+          então este bloco simplesmente não aparece pra ele. */}
+      {payoutAmount != null && (
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderLeft}>
+              <Ionicons name="cash-outline" size={22} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Seu repasse</Text>
+            </View>
+          </View>
+          <Text
+            style={{
+              ...typography.h2,
+              color: colors.primary,
+              marginTop: 8,
+            }}
+          >
+            {formatBRL(payoutAmount)}
+          </Text>
+          <Text style={{ ...typography.caption, color: colors.textMuted, marginTop: 4 }}>
+            Valor líquido que você recebe pela execução deste serviço.
+          </Text>
+        </View>
+      )}
+
       {/* Itens da OS (read-only) */}
       {items.length > 0 && (
         <View style={styles.sectionCard}>
@@ -891,13 +924,19 @@ export function OsDetailScreen() {
                 <Text style={{ ...typography.bodySmBold, color: colors.text }}>
                   {it.description}
                 </Text>
+                {/* Quantidade sempre; preço só se o servidor mandou. Sem o
+                    guarda, formatBRL(undefined) imprimia "R$ 0,00" e a OS
+                    parecia zerada em vez de sem valores. */}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
                   <Text style={{ ...typography.caption, color: colors.textMuted }}>
-                    {Number(it.quantity)} {it.unit || ''} x {formatBRL(it.unit_value)}
+                    {Number(it.quantity)} {it.unit || ''}
+                    {it.unit_value != null ? ` x ${formatBRL(it.unit_value)}` : ''}
                   </Text>
-                  <Text style={{ ...typography.bodySmBold, color: colors.primary }}>
-                    {formatBRL(it.total)}
-                  </Text>
+                  {it.total != null && (
+                    <Text style={{ ...typography.bodySmBold, color: colors.primary }}>
+                      {formatBRL(it.total)}
+                    </Text>
+                  )}
                 </View>
               </View>
             ))}

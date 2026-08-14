@@ -1,11 +1,20 @@
 /**
- * Helpers pra remover campos financeiros de responses de OS quando o
- * caller nao deve ver valores unitarios/totais dos itens.
+ * Remove os campos financeiros das respostas de OS conforme quem está lendo.
  *
- * Jessica 10/07: OS pra loja nao pode exibir valores.
- * Jessica 20/07: OS pra homologado (que aceitou proposta broadcast) nao
- * deve mostrar valor unitario dos itens — homologado ve so o valor da
- * proposta aceita (offered_amount da service_proposals).
+ * Regra vigente (Jessica 14/08), que consolida os pedidos anteriores:
+ *
+ *  - Loja (partner)      → OS completa pra acompanhar, sem valor nenhum.
+ *  - Técnico da Reallliza → OS completa pra executar, sem valor nenhum.
+ *  - Prestador homologado → OS completa pra executar, sem valor de item, sem
+ *                           o valor ofertado pela loja e sem o total do
+ *                           orçamento. Vê só o repasse líquido dele.
+ *
+ * O repasse é `quotes.payout_amount` = total pago pela loja menos a taxa da
+ * plataforma. No exemplo da Jessica: loja paga 1.000, plataforma retém 20%,
+ * o prestador vê 800 — e nunca os 1.000.
+ *
+ * Isto roda no servidor de propósito: esconder no aplicativo deixaria o valor
+ * viajando na resposta, a um "ver JSON" de distância.
  */
 
 const FINANCIAL_FIELDS_OS = [
@@ -39,30 +48,46 @@ function stripFields<T extends Record<string, unknown>>(
 
 export interface RedactContext {
   role: string | null | undefined;
-  /** true quando o technician e' homologado externo (professional_type=external OR is_homologated=true) */
+  /** technician externo (professional_type=external OR is_homologated=true) */
   isHomologado?: boolean;
+  /**
+   * Repasse líquido do prestador nesta OS. Só é anexado para o homologado —
+   * é a única informação financeira que ele pode ver.
+   */
+  payoutAmount?: number | null;
 }
 
+function normalizeCtx(
+  ctxOrRole: RedactContext | string | null | undefined
+): RedactContext {
+  return typeof ctxOrRole === "string" || ctxOrRole == null
+    ? { role: ctxOrRole ?? null }
+    : ctxOrRole;
+}
+
+/**
+ * Quem não pode ver valores. Antes o técnico próprio ficava de fora e via o
+ * valor unitário e o total de cada item na tela de execução.
+ */
 function shouldRedact(ctx: RedactContext): boolean {
-  if (ctx.role === "partner") return true;
-  if (ctx.role === "technician" && ctx.isHomologado) return true;
-  return false;
+  return ctx.role === "partner" || ctx.role === "technician";
 }
 
-/** Remove valores da OS (root + service_order_items[]) quando o caller nao pode ver. */
+/** Remove valores da OS (raiz + items[]) e, pro prestador, devolve o repasse. */
 export function redactOsForRole<
   T extends Record<string, unknown> & { items?: unknown }
 >(row: T, ctxOrRole: RedactContext | string | null | undefined): T {
-  const ctx: RedactContext =
-    typeof ctxOrRole === "string" || ctxOrRole == null
-      ? { role: ctxOrRole ?? null }
-      : ctxOrRole;
+  const ctx = normalizeCtx(ctxOrRole);
   if (!shouldRedact(ctx)) return row;
+
   const cleaned = stripFields(row, FINANCIAL_FIELDS_OS);
   if (Array.isArray(cleaned.items)) {
     cleaned.items = (cleaned.items as Array<Record<string, unknown>>).map((it) =>
       stripFields(it, FINANCIAL_FIELDS_ITEM)
     );
+  }
+  if (ctx.isHomologado && ctx.payoutAmount != null) {
+    (cleaned as Record<string, unknown>).payout_amount = ctx.payoutAmount;
   }
   return cleaned;
 }
@@ -72,10 +97,7 @@ export function redactOsListForRole<T extends Record<string, unknown>>(
   rows: T[],
   ctxOrRole: RedactContext | string | null | undefined
 ): T[] {
-  const ctx: RedactContext =
-    typeof ctxOrRole === "string" || ctxOrRole == null
-      ? { role: ctxOrRole ?? null }
-      : ctxOrRole;
+  const ctx = normalizeCtx(ctxOrRole);
   if (!shouldRedact(ctx)) return rows;
   return rows.map((r) => redactOsForRole(r as Record<string, unknown>, ctx) as T);
 }
@@ -85,10 +107,7 @@ export function redactItemsForRole<T extends Record<string, unknown>>(
   items: T[],
   ctxOrRole: RedactContext | string | null | undefined
 ): T[] {
-  const ctx: RedactContext =
-    typeof ctxOrRole === "string" || ctxOrRole == null
-      ? { role: ctxOrRole ?? null }
-      : ctxOrRole;
+  const ctx = normalizeCtx(ctxOrRole);
   if (!shouldRedact(ctx)) return items;
   return items.map((it) => stripFields(it, FINANCIAL_FIELDS_ITEM) as T);
 }

@@ -7,6 +7,7 @@ import { createNotification } from "@/lib/api-helpers/notifications";
 import { createScheduleFromOs } from "@/lib/api-helpers/schedules";
 import { redactOsForRole } from "@/lib/api-helpers/redact";
 import { isUserHomologado } from "@/lib/api-helpers/user-context";
+import { resolvePayoutForOs } from "@/lib/api-helpers/payout";
 import { canTechnicianAccessOs } from "@/lib/api-helpers/team-scope";
 
 /**
@@ -109,9 +110,13 @@ export async function GET(
       payments = paymentsData || [];
     }
 
-    // Loja + homologado nao veem valores (Jessica 10/07 + 20/07) — server-side redaction
+    // Loja, técnico e homologado não veem valores (Jessica 10/07, 20/07 e
+    // 14/08). O prestador é a única exceção, e só pro repasse dele.
     const isHomologado =
       user.role === "technician" ? await isUserHomologado(supabase, user.id) : false;
+    const payoutAmount = isHomologado
+      ? await resolvePayoutForOs(supabase, id)
+      : null;
     const payload = redactOsForRole(
       {
         ...order,
@@ -120,7 +125,7 @@ export async function GET(
         items: items || [],
         payments,
       } as Record<string, unknown>,
-      { role: user.role, isHomologado }
+      { role: user.role, isHomologado, payoutAmount }
     );
 
     return jsonResponse(payload);
