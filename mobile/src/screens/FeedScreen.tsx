@@ -1,703 +1,528 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  RefreshControl,
-  ActivityIndicator,
-  Image,
-  TouchableOpacity,
-  Share,
-  Alert,
+  View, Text, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator,
+  StyleSheet, Share, Linking, Alert, type ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { useNavigation } from '@react-navigation/native';
-import { apiClient, ApiError } from '../lib/api';
-import { PaginatedResponse, ServiceOrder, getOsTipo } from '../lib/types';
-import { EmptyState } from '../components/EmptyState';
-import { FeedVideo } from '../components/FeedVideo';
-import { HeaderBellButton } from '../components/HeaderBellButton';
-import { useAuthStore } from '../stores/auth-store';
+import { apiClient } from '../lib/api';
+import { feedTracker } from '../lib/feed-tracker';
+import { FeedCarousel, type MidiaFeed } from '../components/FeedCarousel';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { getOsTipo, type ServiceOrder, type PaginatedResponse } from '../lib/types';
 
-// ============================================================
-// Types
-// ============================================================
+/**
+ * Feed do profissional.
+ *
+ * Reconstruído sobre o modelo novo: carrossel de verdade, reações com tipo,
+ * salvar, compartilhar contado e botões de ação da publicação.
+ *
+ * Duas coisas invisíveis, mas centrais:
+ *
+ * 1. Impressão só conta quando metade do card fica visível por um segundo —
+ *    o critério de mercado. Sem isso, rolar rápido inflaria a métrica com
+ *    publicações que ninguém leu.
+ *
+ * 2. Um único vídeo toca por vez, o do card mais visível. Vinte reprodutores
+ *    vivos esgotam o decodificador e travam aparelho de entrada.
+ */
 
-interface FeedAuthor {
+interface CtaFeed {
   id: string;
-  full_name: string;
-  avatar_url: string | null;
+  position: number;
+  cta_type: string;
+  label: string;
+  target_url: string | null;
+  target_route: string | null;
+  coupon_code: string | null;
 }
 
-interface FeedPost {
+interface PostFeed {
   id: string;
   title: string;
   content: string;
-  audience: 'all' | 'employees' | 'partners';
+  media?: MidiaFeed[];
+  ctas?: CtaFeed[];
+  category?: { name: string; color: string | null } | null;
+  sponsor?: { name: string; logo_url: string | null } | null;
+  is_sponsored: boolean;
   is_pinned: boolean;
-  is_published: boolean;
-  media_urls: string[] | null;
-  author_id: string;
-  author: FeedAuthor;
-  created_at: string;
-  updated_at: string;
+  comments_enabled: boolean;
+  reactions_enabled: boolean;
   like_count: number;
   comment_count: number;
-  liked_by_me: boolean;
+  save_count: number;
+  share_count: number;
+  my_reaction: string | null;
+  saved_by_me: boolean;
+  created_at: string;
+  published_at: string | null;
+  author?: { full_name: string; avatar_url: string | null } | null;
 }
 
-const AUDIENCE_LABELS: Record<string, string> = {
-  all: 'Todos',
-  employees: 'Funcionarios',
-  partners: 'Parceiros',
-};
+const REACOES: Array<{ tipo: string; icone: keyof typeof Ionicons.glyphMap; rotulo: string }> = [
+  { tipo: 'like', icone: 'thumbs-up', rotulo: 'Curti' },
+  { tipo: 'love', icone: 'heart', rotulo: 'Amei' },
+  { tipo: 'celebrate', icone: 'trophy', rotulo: 'Parabéns' },
+  { tipo: 'insightful', icone: 'bulb', rotulo: 'Aprendi' },
+  { tipo: 'support', icone: 'hand-left', rotulo: 'Apoio' },
+];
 
-const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv'];
-
-function isVideoUrl(url: string): boolean {
-  const lower = url.toLowerCase();
-  return VIDEO_EXTENSIONS.some((ext) => lower.includes(ext));
+function tempoRelativo(iso: string): string {
+  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d} d`;
+  return new Date(iso).toLocaleDateString('pt-BR');
 }
-
-const AUDIENCE_COLORS: Record<string, string> = {
-  all: colors.info,
-  employees: colors.primary,
-  partners: colors.success,
-};
-
-// ============================================================
-// Component
-// ============================================================
 
 export function FeedScreen() {
   const navigation = useNavigation<any>();
-  const profile = useAuthStore((s) => s.profile);
-  const firstName = profile?.full_name?.split(' ')[0] || '';
-  const [posts, setPosts] = useState<FeedPost[]>([]);
-  const [periciasPendentes, setPericiasPendentes] = useState<number>(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [posts, setPosts] = useState<PostFeed[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [temMais, setTemMais] = useState(true);
+  const [carregando, setCarregando] = useState(true);
+  const [atualizando, setAtualizando] = useState(false);
+  const [carregandoMais, setCarregandoMais] = useState(false);
+  const [periciasPendentes, setPericiasPendentes] = useState(0);
+  const [seletorReacao, setSeletorReacao] = useState<string | null>(null);
+  const [cardAtivo, setCardAtivo] = useState<string | null>(null);
 
-  const fetchPosts = useCallback(
-    async (pageNum: number, isRefresh = false) => {
-      try {
-        const response = await apiClient.get<PaginatedResponse<FeedPost>>(
-          '/feed',
-          { page: pageNum, limit: 20 },
-        );
-
-        if (isRefresh || pageNum === 1) {
-          setPosts(response.data);
-        } else {
-          setPosts(prev => [...prev, ...response.data]);
-        }
-
-        setHasMore(pageNum < response.meta.total_pages);
-        setPage(pageNum);
-      } catch (error) {
-        console.error('Error fetching feed:', error);
-      }
-    },
-    [],
-  );
-
-  const fetchPericiasPendentes = useCallback(async () => {
+  const buscar = useCallback(async (proxCursor: string | null, substituir: boolean) => {
     try {
-      const data = await apiClient.get<PaginatedResponse<ServiceOrder>>(
-        '/service-orders/my',
-        { page: 1, limit: 50 },
-      );
+      const r = await apiClient.get<{
+        data: PostFeed[]; next_cursor: string | null; has_more: boolean;
+      }>('/feed', proxCursor ? { cursor: proxCursor, limit: 20 } : { limit: 20 });
+
+      setPosts((atual) => (substituir ? r.data : [...atual, ...r.data]));
+      setCursor(r.next_cursor);
+      setTemMais(r.has_more);
+    } catch {
+      if (substituir) setPosts([]);
+    }
+  }, []);
+
+  const buscarPericias = useCallback(async () => {
+    try {
+      const data = await apiClient.get<PaginatedResponse<ServiceOrder>>('/service-orders/my', {
+        page: 1, limit: 50,
+      });
       const pendentes = (data?.data || []).filter(
         (o) =>
           getOsTipo(o) === 'PERICIA' &&
-          o.status !== 'completed' &&
-          o.status !== 'cancelled' &&
-          o.status !== 'rejected',
+          o.status !== 'completed' && o.status !== 'cancelled' && o.status !== 'rejected'
       );
       setPericiasPendentes(pendentes.length);
     } catch {
-      // silencioso
+      // silencioso: o feed não pode sumir porque a lista de perícias falhou
     }
   }, []);
 
   useEffect(() => {
-    setIsLoading(true);
-    fetchPosts(1).finally(() => setIsLoading(false));
-    fetchPericiasPendentes();
-  }, [fetchPosts, fetchPericiasPendentes]);
+    feedTracker.iniciar();
+    feedTracker.novaSessao();
+    Promise.all([buscar(null, true), buscarPericias()]).finally(() => setCarregando(false));
+    return () => feedTracker.parar();
+  }, [buscar, buscarPericias]);
 
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await Promise.all([fetchPosts(1, true), fetchPericiasPendentes()]);
-    setIsRefreshing(false);
-  };
+  const atualizar = useCallback(async () => {
+    setAtualizando(true);
+    feedTracker.novaSessao();
+    await Promise.all([buscar(null, true), buscarPericias()]);
+    setAtualizando(false);
+  }, [buscar, buscarPericias]);
 
-  const handleLoadMore = async () => {
-    if (!hasMore || isLoadingMore) return;
-    setIsLoadingMore(true);
-    await fetchPosts(page + 1);
-    setIsLoadingMore(false);
-  };
+  const carregarMais = useCallback(async () => {
+    if (!temMais || carregandoMais || !cursor) return;
+    setCarregandoMais(true);
+    await buscar(cursor, false);
+    setCarregandoMais(false);
+  }, [temMais, carregandoMais, cursor, buscar]);
 
-  const formatDate = (dateStr: string): string => {
-    try {
-      return format(new Date(dateStr), "dd 'de' MMM, HH:mm", {
-        locale: ptBR,
-      });
-    } catch {
-      return dateStr;
-    }
-  };
+  // 50% visível por 1 segundo — o critério de "impressão contável" do mercado.
+  const configVisibilidade = useRef({
+    itemVisiblePercentThreshold: 50,
+    minimumViewTime: 1000,
+  }).current;
 
-  const handleToggleLike = async (post: FeedPost) => {
-    // optimistic update
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === post.id
-          ? {
-              ...p,
-              liked_by_me: !p.liked_by_me,
-              like_count: p.like_count + (p.liked_by_me ? -1 : 1),
-            }
-          : p,
-      ),
-    );
-    try {
-      const r = await apiClient.post<{ liked: boolean; like_count: number }>(
-        `/feed/${post.id}/like`,
-      );
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === post.id
-            ? { ...p, liked_by_me: r.liked, like_count: r.like_count }
-            : p,
-        ),
-      );
-    } catch (error) {
-      // rollback
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === post.id
-            ? {
-                ...p,
-                liked_by_me: post.liked_by_me,
-                like_count: post.like_count,
-              }
-            : p,
-        ),
-      );
-      const msg =
-        error instanceof ApiError ? error.message : 'Erro ao curtir';
-      Alert.alert('Ops', msg);
-    }
-  };
-
-  const handleOpenComments = (post: FeedPost) => {
-    navigation.navigate('Comments' as never, {
-      postId: post.id,
-      postTitle: post.title,
-    } as never);
-  };
-
-  const handleShare = async (post: FeedPost) => {
-    try {
-      const lines: string[] = [];
-      lines.push(`📢 ${post.title}`);
-      lines.push('');
-      lines.push(post.content);
-      if (post.author?.full_name) {
-        lines.push('');
-        lines.push(`— ${post.author.full_name}`);
+  const aoMudarVisiveis = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      for (const v of viewableItems) {
+        const p = v.item as PostFeed;
+        if (p?.id) feedTracker.registrar('impression', p.id);
       }
-      if (post.media_urls && post.media_urls.length > 0) {
-        lines.push('');
-        lines.push(`Mídia: ${post.media_urls[0]}`);
-      }
-      await Share.share({
-        message: lines.join('\n'),
-        title: post.title,
-      });
-    } catch {
-      // user canceled — ignore
+      // O primeiro item visível é quem pode tocar vídeo.
+      const primeiro = viewableItems[0]?.item as PostFeed | undefined;
+      setCardAtivo(primeiro?.id ?? null);
     }
-  };
+  ).current;
 
-  const renderPost = ({ item }: { item: FeedPost }) => {
-    const firstMedia = item.media_urls?.[0];
-    const hasImage = firstMedia && !isVideoUrl(firstMedia);
-    const hasVideo = firstMedia && isVideoUrl(firstMedia);
+  function atualizarLocal(id: string, patch: Partial<PostFeed>) {
+    setPosts((atual) => atual.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  }
+
+  async function reagir(post: PostFeed, tipo: string | null) {
+    setSeletorReacao(null);
+    const anterior = { my_reaction: post.my_reaction, like_count: post.like_count };
+    // Otimista: o toque precisa responder na hora, mesmo em obra com sinal ruim.
+    const desfazendo = post.my_reaction === tipo || tipo === null;
+    atualizarLocal(post.id, {
+      my_reaction: desfazendo ? null : tipo,
+      like_count: post.like_count + (desfazendo ? -1 : post.my_reaction ? 0 : 1),
+    });
+    try {
+      const r = await apiClient.post<{ my_reaction: string | null; like_count: number }>(
+        `/feed/${post.id}/react`, { reaction: tipo }
+      );
+      atualizarLocal(post.id, { my_reaction: r.my_reaction, like_count: r.like_count });
+    } catch {
+      atualizarLocal(post.id, anterior);
+    }
+  }
+
+  async function salvar(post: PostFeed) {
+    const anterior = { saved_by_me: post.saved_by_me, save_count: post.save_count };
+    atualizarLocal(post.id, {
+      saved_by_me: !post.saved_by_me,
+      save_count: post.save_count + (post.saved_by_me ? -1 : 1),
+    });
+    try {
+      const r = await apiClient.post<{ saved: boolean; save_count: number }>(
+        `/feed/${post.id}/save`, {}
+      );
+      atualizarLocal(post.id, { saved_by_me: r.saved, save_count: r.save_count });
+    } catch {
+      atualizarLocal(post.id, anterior);
+    }
+  }
+
+  async function compartilhar(post: PostFeed) {
+    try {
+      const r = await Share.share({ message: `${post.title}\n\n${post.content}` });
+      // Só conta se o compartilhamento aconteceu de fato — abrir a folha e
+      // desistir não é compartilhar.
+      if (r.action === Share.sharedAction) {
+        await apiClient.post(`/feed/${post.id}/share`, { channel: 'native' });
+        atualizarLocal(post.id, { share_count: post.share_count + 1 });
+      }
+    } catch {
+      // usuário cancelou
+    }
+  }
+
+  async function acionarCta(post: PostFeed, cta: CtaFeed) {
+    feedTracker.registrar('click', post.id, { cta_id: cta.id });
+
+    if (cta.coupon_code) {
+      Alert.alert('Cupom', `Use o código: ${cta.coupon_code}`);
+      return;
+    }
+    if (cta.target_route) {
+      navigation.navigate(cta.target_route as never);
+      return;
+    }
+    if (cta.target_url) {
+      feedTracker.registrar('link_open', post.id, { cta_id: cta.id });
+      Linking.openURL(cta.target_url).catch(() =>
+        Alert.alert('Não foi possível abrir', 'O link parece inválido.')
+      );
+    }
+  }
+
+  const renderPost = ({ item }: { item: PostFeed }) => {
+    const midias = item.media ?? [];
+    const ativo = cardAtivo === item.id;
+    const reacaoAtual = REACOES.find((r) => r.tipo === item.my_reaction);
 
     return (
-      <View style={styles.postCard}>
-        {/* Pinned indicator */}
-        {item.is_pinned && (
-          <View style={styles.pinnedBanner}>
-            <Ionicons name="pin" size={14} color={colors.primary} />
-            <Text style={styles.pinnedText}>Fixado</Text>
+      <View style={estilos.card}>
+        {/* cabeçalho */}
+        <View style={estilos.cabecalho}>
+          <View style={estilos.avatar}>
+            <Ionicons name="person" size={18} color={colors.textMuted} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={estilos.autor} numberOfLines={1}>
+              {item.sponsor?.name ?? item.author?.full_name ?? 'Reallliza'}
+            </Text>
+            <View style={estilos.linhaMeta}>
+              <Text style={estilos.meta}>
+                {tempoRelativo(item.published_at ?? item.created_at)}
+              </Text>
+              {item.category && (
+                <>
+                  <Text style={estilos.meta}> · </Text>
+                  <Text style={[estilos.meta, { color: item.category.color ?? colors.primary }]}>
+                    {item.category.name}
+                  </Text>
+                </>
+              )}
+            </View>
+          </View>
+          {item.is_pinned && <Ionicons name="pin" size={15} color={colors.primary} />}
+        </View>
+
+        {item.is_sponsored && (
+          <View style={estilos.selo}>
+            <Text style={estilos.seloTexto}>PATROCINADO</Text>
           </View>
         )}
 
-        {/* Imagem grande dominante (estilo social) */}
-        {hasImage && (
-          <Image
-            source={{ uri: firstMedia }}
-            style={styles.heroImage}
-            resizeMode="cover"
+        {midias.length > 0 && (
+          <FeedCarousel
+            midias={midias}
+            ativo={ativo}
+            onTrocarSlide={(i, m) =>
+              feedTracker.registrar('carousel_swipe', item.id, { media_id: m.id, value_num: i })
+            }
+            onAbrirDocumento={(m) => {
+              feedTracker.registrar('download', item.id, { media_id: m.id });
+              if (m.public_url) Linking.openURL(m.public_url).catch(() => {});
+            }}
           />
         )}
-        {hasVideo && firstMedia && (
-          <FeedVideo uri={firstMedia} style={styles.heroVideo} />
+
+        <View style={estilos.corpo}>
+          <Text style={estilos.titulo}>{item.title}</Text>
+          <Text style={estilos.conteudo}>{item.content}</Text>
+        </View>
+
+        {(item.ctas ?? []).length > 0 && (
+          <View style={estilos.ctas}>
+            {(item.ctas ?? []).map((c) => (
+              <TouchableOpacity
+                key={c.id}
+                style={estilos.botaoCta}
+                onPress={() => acionarCta(item, c)}
+                activeOpacity={0.85}
+              >
+                <Text style={estilos.textoCta}>{c.label}</Text>
+                <Ionicons name="arrow-forward" size={14} color={colors.black} />
+              </TouchableOpacity>
+            ))}
+          </View>
         )}
 
-        {/* Header: author + date */}
-        <View style={styles.postBody}>
-          <View style={styles.postHeader}>
-            <View style={styles.authorInfo}>
-              <View style={styles.authorAvatar}>
-                <Ionicons name="person" size={16} color={colors.textMuted} />
-              </View>
-              <View>
-                <Text style={styles.authorName}>
-                  {item.author?.full_name ?? 'Autor desconhecido'}
-                </Text>
-                <Text style={styles.postDate}>{formatDate(item.created_at)}</Text>
-              </View>
-            </View>
-
-            <View
-              style={[
-                styles.audienceBadge,
-                {
-                  backgroundColor:
-                    (AUDIENCE_COLORS[item.audience] || colors.info) + '20',
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.audienceBadgeText,
-                  { color: AUDIENCE_COLORS[item.audience] || colors.info },
-                ]}
+        {/* seletor de reação */}
+        {seletorReacao === item.id && (
+          <View style={estilos.seletor}>
+            {REACOES.map((r) => (
+              <TouchableOpacity
+                key={r.tipo}
+                style={estilos.opcaoReacao}
+                onPress={() => reagir(item, r.tipo)}
               >
-                {AUDIENCE_LABELS[item.audience] || item.audience}
-              </Text>
-            </View>
+                <Ionicons
+                  name={r.icone}
+                  size={20}
+                  color={item.my_reaction === r.tipo ? colors.primary : colors.textMuted}
+                />
+                <Text style={estilos.rotuloReacao}>{r.rotulo}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
+        )}
 
-          <Text style={styles.postTitle}>{item.title}</Text>
-          <Text style={styles.postContent} numberOfLines={6}>
-            {item.content}
-          </Text>
-
-          {/* Mídias adicionais (após a primeira) — thumbnails */}
-          {item.media_urls && item.media_urls.length > 1 && (
-            <View style={styles.mediaContainer}>
-              {item.media_urls.slice(1).map((url, i) =>
-                isVideoUrl(url) ? (
-                  <FeedVideo
-                    key={i}
-                    uri={url}
-                    style={styles.videoThumbnail}
-                  />
-                ) : (
-                  <Image
-                    key={i}
-                    source={{ uri: url }}
-                    style={styles.mediaThumbnail}
-                    resizeMode="cover"
-                  />
-                ),
-              )}
-            </View>
-          )}
-
-          {/* Contadores */}
-          {(item.like_count > 0 || item.comment_count > 0) && (
-            <View style={styles.engagementSummary}>
-              {item.like_count > 0 && (
-                <Text style={styles.engagementSummaryText}>
-                  {item.like_count}{' '}
-                  {item.like_count === 1 ? 'curtida' : 'curtidas'}
-                </Text>
-              )}
-              {item.comment_count > 0 && (
-                <Text style={styles.engagementSummaryText}>
-                  {item.comment_count}{' '}
-                  {item.comment_count === 1
-                    ? 'comentário'
-                    : 'comentários'}
-                </Text>
-              )}
-            </View>
-          )}
-
-          {/* Ações: curtir / comentar / compartilhar */}
-          <View style={styles.actionsRow}>
+        <View style={estilos.acoes}>
+          {item.reactions_enabled && (
             <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => handleToggleLike(item)}
-              activeOpacity={0.7}
+              style={estilos.acao}
+              onPress={() => reagir(item, item.my_reaction ? null : 'like')}
+              onLongPress={() => setSeletorReacao(seletorReacao === item.id ? null : item.id)}
+              delayLongPress={250}
             >
               <Ionicons
-                name={item.liked_by_me ? 'heart' : 'heart-outline'}
-                size={22}
-                color={item.liked_by_me ? colors.danger : colors.text}
+                name={reacaoAtual ? reacaoAtual.icone : 'thumbs-up-outline'}
+                size={19}
+                color={item.my_reaction ? colors.primary : colors.textMuted}
               />
-              <Text
-                style={[
-                  styles.actionLabel,
-                  item.liked_by_me && { color: colors.danger },
-                ]}
-              >
-                Curtir
+              <Text style={[estilos.textoAcao, item.my_reaction ? { color: colors.primary } : null]}>
+                {item.like_count > 0 ? item.like_count : 'Reagir'}
               </Text>
             </TouchableOpacity>
+          )}
 
+          {item.comments_enabled && (
             <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => handleOpenComments(item)}
-              activeOpacity={0.7}
+              style={estilos.acao}
+              onPress={() => {
+                feedTracker.registrar('expand', item.id);
+                navigation.navigate('Comments' as never, { postId: item.id, postTitle: item.title } as never);
+              }}
             >
-              <Ionicons
-                name="chatbubble-outline"
-                size={22}
-                color={colors.text}
-              />
-              <Text style={styles.actionLabel}>Comentar</Text>
+              <Ionicons name="chatbubble-outline" size={19} color={colors.textMuted} />
+              <Text style={estilos.textoAcao}>
+                {item.comment_count > 0 ? item.comment_count : 'Comentar'}
+              </Text>
             </TouchableOpacity>
+          )}
 
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => handleShare(item)}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name="share-social-outline"
-                size={22}
-                color={colors.text}
-              />
-              <Text style={styles.actionLabel}>Compartilhar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    );
-  };
-
-  const renderFooter = () => {
-    if (!isLoadingMore) return null;
-    return (
-      <View style={styles.loadingMore}>
-        <ActivityIndicator size="small" color={colors.primary} />
-      </View>
-    );
-  };
-
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
-      <View style={styles.container}>
-        {/* Header com saudação personalizada */}
-        <View style={styles.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.greeting}>Olá,</Text>
-            <Text style={styles.headerTitle} numberOfLines={1}>
-              {firstName ? firstName : 'Profissional'}
+          <TouchableOpacity style={estilos.acao} onPress={() => compartilhar(item)}>
+            <Ionicons name="share-social-outline" size={19} color={colors.textMuted} />
+            <Text style={estilos.textoAcao}>
+              {item.share_count > 0 ? item.share_count : 'Enviar'}
             </Text>
-          </View>
-          <HeaderBellButton />
-        </View>
+          </TouchableOpacity>
 
-        {/* Card destaque de chamados de perícia pendentes */}
-        {periciasPendentes > 0 && (
-          <TouchableOpacity
-            style={styles.periciaHighlight}
-            onPress={() => navigation.navigate('PericiasTab' as never)}
-            activeOpacity={0.85}
-          >
-            <View style={styles.periciaIconWrap}>
-              <Ionicons name="search" size={22} color={colors.black} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.periciaTitle}>
-                {periciasPendentes === 1
-                  ? 'Você tem 1 chamado de perícia pendente'
-                  : `Você tem ${periciasPendentes} chamados de perícia pendentes`}
-              </Text>
-              <Text style={styles.periciaSubtitle}>
-                Toque para ver na aba Serviços
-              </Text>
-            </View>
+          <TouchableOpacity style={estilos.acao} onPress={() => salvar(item)}>
             <Ionicons
-              name="chevron-forward"
-              size={20}
-              color={colors.black}
+              name={item.saved_by_me ? 'bookmark' : 'bookmark-outline'}
+              size={19}
+              color={item.saved_by_me ? colors.primary : colors.textMuted}
             />
           </TouchableOpacity>
-        )}
-
-        {/* Posts List */}
-        {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
-        ) : (
-          <FlatList
-            data={posts}
-            keyExtractor={item => item.id}
-            renderItem={renderPost}
-            contentContainerStyle={
-              posts.length === 0
-                ? styles.emptyContainer
-                : styles.listContent
-            }
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefreshing}
-                onRefresh={handleRefresh}
-                tintColor={colors.primary}
-                colors={[colors.primary]}
-                progressBackgroundColor={colors.card}
-              />
-            }
-            onEndReached={handleLoadMore}
-            onEndReachedThreshold={0.3}
-            ListFooterComponent={renderFooter}
-            ListEmptyComponent={
-              <EmptyState
-                icon="newspaper-outline"
-                title="Nenhuma publicacao"
-                message="Nao existem publicacoes no feed no momento."
-              />
-            }
-          />
-        )}
+        </View>
       </View>
+    );
+  };
+
+  if (carregando) {
+    return (
+      <SafeAreaView style={estilos.tela} edges={['top']}>
+        <View style={estilos.centro}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={estilos.tela} edges={['top']}>
+      <FlatList
+        data={posts}
+        keyExtractor={(p) => p.id}
+        renderItem={renderPost}
+        contentContainerStyle={posts.length === 0 ? estilos.vazioContainer : estilos.lista}
+        showsVerticalScrollIndicator={false}
+        viewabilityConfig={configVisibilidade}
+        onViewableItemsChanged={aoMudarVisiveis}
+        onEndReached={carregarMais}
+        onEndReachedThreshold={0.5}
+        refreshControl={
+          <RefreshControl refreshing={atualizando} onRefresh={atualizar} tintColor={colors.primary} />
+        }
+        ListHeaderComponent={
+          periciasPendentes > 0 ? (
+            <TouchableOpacity
+              style={estilos.aviso}
+              onPress={() => navigation.navigate('PericiasTab' as never)}
+              activeOpacity={0.85}
+            >
+              <View style={estilos.avisoIcone}>
+                <Ionicons name="search" size={19} color={colors.black} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={estilos.avisoTitulo}>
+                  {periciasPendentes === 1
+                    ? 'Você tem 1 chamado de perícia pendente'
+                    : `Você tem ${periciasPendentes} chamados de perícia pendentes`}
+                </Text>
+                <Text style={estilos.avisoSubtitulo}>Toque para ver</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.black} />
+            </TouchableOpacity>
+          ) : null
+        }
+        ListEmptyComponent={
+          <View style={estilos.centro}>
+            <Ionicons name="newspaper-outline" size={44} color={colors.textMuted} />
+            <Text style={estilos.vazioTitulo}>Nada por aqui ainda</Text>
+            <Text style={estilos.vazioTexto}>
+              Comunicados, treinamentos e novidades aparecem nesta tela.
+            </Text>
+          </View>
+        }
+        ListFooterComponent={
+          carregandoMais ? (
+            <View style={{ paddingVertical: 20 }}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : null
+        }
+      />
     </SafeAreaView>
   );
 }
 
-// ============================================================
-// Styles
-// ============================================================
+const estilos = StyleSheet.create({
+  tela: { flex: 1, backgroundColor: colors.background },
+  centro: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },
+  lista: { paddingVertical: 12, gap: 12 },
+  vazioContainer: { flexGrow: 1 },
+  vazioTitulo: { ...typography.bodyBold, color: colors.text, marginTop: 8 },
+  vazioTexto: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  greeting: {
-    ...typography.caption,
-    color: colors.textMuted,
-    marginBottom: -2,
-  },
-  headerTitle: {
-    ...typography.h3,
-    color: colors.primary,
-  },
-  periciaHighlight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: colors.primary,
-    marginHorizontal: 16,
-    marginTop: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
-  },
-  periciaIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  periciaTitle: {
-    ...typography.bodySmBold,
-    color: colors.black,
-  },
-  periciaSubtitle: {
-    ...typography.tiny,
-    color: 'rgba(0,0,0,0.7)',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyContainer: {
-    flexGrow: 1,
-  },
-  listContent: {
-    padding: 16,
-    gap: 12,
-  },
-  postCard: {
+  card: {
     backgroundColor: colors.card,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: 12,
+    marginHorizontal: 12,
     overflow: 'hidden',
   },
-  postBody: {
-    padding: 16,
+  cabecalho: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 },
+  avatar: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center',
   },
-  heroImage: {
-    width: '100%',
-    aspectRatio: 1,
+  autor: { ...typography.bodySmBold, color: colors.text },
+  linhaMeta: { flexDirection: 'row', alignItems: 'center' },
+  meta: { ...typography.tiny, color: colors.textMuted },
+
+  selo: {
+    alignSelf: 'flex-start',
+    marginLeft: 12, marginBottom: 8,
+    paddingHorizontal: 7, paddingVertical: 2,
+    borderRadius: 4,
     backgroundColor: colors.cardAlt,
   },
-  heroVideo: {
-    width: '100%',
-    aspectRatio: 16 / 9,
-    backgroundColor: '#000',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
+  seloTexto: { fontSize: 9, fontWeight: '700', letterSpacing: 0.6, color: colors.textMuted },
+
+  corpo: { paddingHorizontal: 12, paddingTop: 10, gap: 4 },
+  titulo: { ...typography.bodyBold, color: colors.text },
+  conteudo: { ...typography.bodySm, color: colors.textMuted, lineHeight: 20 },
+
+  ctas: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 12 },
+  botaoCta: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10,
   },
-  heroVideoLabel: {
-    ...typography.bodySmBold,
-    color: colors.white,
+  textoCta: { ...typography.captionBold, color: colors.black },
+
+  seletor: {
+    flexDirection: 'row', justifyContent: 'space-around',
+    paddingVertical: 10, marginHorizontal: 12,
+    backgroundColor: colors.cardAlt, borderRadius: 12,
   },
-  pinnedBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    backgroundColor: colors.primary + '12',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+  opcaoReacao: { alignItems: 'center', gap: 3 },
+  rotuloReacao: { fontSize: 10, color: colors.textMuted },
+
+  acoes: {
+    flexDirection: 'row', alignItems: 'center', gap: 20,
+    paddingHorizontal: 14, paddingVertical: 11,
+    borderTopWidth: 1, borderTopColor: colors.border, marginTop: 10,
   },
-  pinnedText: {
-    ...typography.captionBold,
-    color: colors.primary,
+  acao: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  textoAcao: { ...typography.caption, color: colors.textMuted },
+
+  aviso: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: colors.primary,
+    marginHorizontal: 12, marginBottom: 12,
+    paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14,
   },
-  postHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+  avisoIcone: {
+    width: 38, height: 38, borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.18)', alignItems: 'center', justifyContent: 'center',
   },
-  authorInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-  authorAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  authorName: {
-    ...typography.bodySmBold,
-    color: colors.text,
-  },
-  postDate: {
-    ...typography.caption,
-    color: colors.textMuted,
-  },
-  audienceBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  audienceBadgeText: {
-    ...typography.captionBold,
-  },
-  postTitle: {
-    ...typography.bodyBold,
-    color: colors.text,
-    marginBottom: 6,
-  },
-  postContent: {
-    ...typography.bodySm,
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  mediaContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 10,
-  },
-  mediaThumbnail: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-    backgroundColor: colors.border,
-  },
-  videoThumbnail: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-    backgroundColor: colors.borderLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  videoLabel: {
-    ...typography.tiny,
-    color: colors.white,
-    marginTop: 2,
-  },
-  loadingMore: {
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  engagementSummary: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  engagementSummaryText: {
-    ...typography.caption,
-    color: colors.textMuted,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-  },
-  actionLabel: {
-    ...typography.bodySmBold,
-    color: colors.text,
-  },
+  avisoTitulo: { ...typography.bodySmBold, color: colors.black },
+  avisoSubtitulo: { ...typography.tiny, color: 'rgba(0,0,0,0.7)' },
 });
+
+export default FeedScreen;

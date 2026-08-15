@@ -1,957 +1,839 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { motion } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus,
-  Search,
-  Megaphone,
-  Pin,
-  Users,
-  Edit,
-  Trash2,
-  Calendar,
-  Paperclip,
-  X,
-  Film,
-  Loader2,
+  Plus, Pencil, Trash2, Send, PauseCircle, BarChart3, Copy,
+  CalendarClock, Pin, Image as ImageIcon, Video, FileText, X,
+  ArrowUp, ArrowDown, AlertCircle, Megaphone, Eye, Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
-import { EmptyState } from "@/components/ui/empty-state";
-import { feedApi } from "@/lib/api";
-import { getAccessToken, BASE_URL } from "@/lib/api/client";
-import { useAuthStore } from "@/stores/auth-store";
 import {
-  type FeedPost,
-  FeedAudience,
-  FEED_AUDIENCE_LABELS,
-  UserRole,
-} from "@/lib/types";
-import { usePaginatedApi } from "@/hooks/use-api";
+  Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter,
+} from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { cn } from "@/lib/utils";
+import { feedApi } from "@/lib/api";
+import type { FeedPost, FeedMeta, FeedMedia, FeedInsights } from "@/lib/api/feed";
 
-// ============================================================
-// Helpers
-// ============================================================
+/**
+ * Central de Conteúdo do Feed.
+ *
+ * A tela anterior era um mural: título, texto e mídia solta. Aqui a
+ * publicação tem ciclo de vida (rascunho → agendada → publicada → pausada →
+ * arquivada), categoria, público-alvo, carrossel ordenável e desempenho.
+ *
+ * Publicar é botão separado de salvar, de propósito: publicar resolve a
+ * audiência e pode disparar notificação para todo o público. Misturar com
+ * "salvar" produz publicação acidental.
+ */
 
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function getAuthorInitials(name: string): string {
-  return name
-    .split(" ")
-    .slice(0, 2)
-    .map((w) => w.charAt(0))
-    .join("")
-    .toUpperCase();
-}
-
-const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".avi", ".mkv"];
-
-function isVideoUrl(url: string): boolean {
-  try {
-    const pathname = new URL(url).pathname.toLowerCase();
-    return VIDEO_EXTENSIONS.some((ext) => pathname.endsWith(ext));
-  } catch {
-    return VIDEO_EXTENSIONS.some((ext) => url.toLowerCase().includes(ext));
-  }
-}
-
-const AUDIENCE_BADGE_VARIANT: Record<
-  FeedAudience,
-  "info" | "purple" | "orange"
-> = {
-  [FeedAudience.ALL]: "info",
-  [FeedAudience.EMPLOYEES]: "purple",
-  [FeedAudience.PARTNERS]: "orange",
+const ESTADO: Record<string, { rotulo: string; cor: string }> = {
+  draft:     { rotulo: "Rascunho",   cor: "bg-muted text-muted-foreground" },
+  scheduled: { rotulo: "Agendada",   cor: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
+  published: { rotulo: "No ar",      cor: "bg-green-500/15 text-green-600 dark:text-green-400" },
+  paused:    { rotulo: "Pausada",    cor: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
+  archived:  { rotulo: "Arquivada",  cor: "bg-red-500/15 text-red-600 dark:text-red-400" },
 };
 
+function paraInputDateTime(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 // ============================================================
-// Card Skeleton
+// Editor
 // ============================================================
 
-function FeedCardSkeleton() {
+interface EditorProps {
+  aberto: boolean;
+  post: FeedPost | null;
+  meta: FeedMeta | null;
+  onFechar: () => void;
+  onSalvo: () => void;
+}
+
+function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
+  const editando = !!post;
+  const [titulo, setTitulo] = useState("");
+  const [conteudo, setConteudo] = useState("");
+  const [categoria, setCategoria] = useState("");
+  const [audiencia, setAudiencia] = useState("");
+  const [patrocinador, setPatrocinador] = useState("");
+  const [agendarPara, setAgendarPara] = useState("");
+  const [encerrarEm, setEncerrarEm] = useState("");
+  const [fixarAte, setFixarAte] = useState("");
+  const [notificar, setNotificar] = useState(false);
+  const [comentarios, setComentarios] = useState(true);
+  const [midias, setMidias] = useState<FeedMedia[]>([]);
+  const [salvando, setSalvando] = useState(false);
+  const [publicando, setPublicando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const inputArquivo = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!aberto) return;
+    setTitulo(post?.title ?? "");
+    setConteudo(post?.content ?? "");
+    setCategoria(post?.category_id ?? "");
+    setAudiencia(post?.audience_rule_id ?? "");
+    setPatrocinador(post?.sponsor_id ?? "");
+    setAgendarPara(paraInputDateTime(post?.publish_at ?? null));
+    setEncerrarEm(paraInputDateTime(post?.unpublish_at ?? null));
+    setFixarAte(paraInputDateTime(post?.pinned_until ?? null));
+    setNotificar(post?.notify_on_publish ?? false);
+    setComentarios(post?.comments_enabled ?? true);
+    setMidias(post?.media ?? []);
+    setErro(null);
+  }, [aberto, post]);
+
+  const catSelecionada = meta?.categorias.find((c) => c.id === categoria);
+  const exigePatrocinador = !!catSelecionada?.requires_sponsor;
+
+  function montarPayload() {
+    return {
+      title: titulo.trim(),
+      content: conteudo.trim(),
+      category_id: categoria || null,
+      audience_rule_id: audiencia || null,
+      sponsor_id: patrocinador || null,
+      publish_at: agendarPara ? new Date(agendarPara).toISOString() : null,
+      unpublish_at: encerrarEm ? new Date(encerrarEm).toISOString() : null,
+      pinned_until: fixarAte ? new Date(fixarAte).toISOString() : null,
+      notify_on_publish: notificar,
+      comments_enabled: comentarios,
+    };
+  }
+
+  function validar(): string | null {
+    if (!titulo.trim()) return "Dê um título à publicação.";
+    if (!conteudo.trim()) return "Escreva o conteúdo da publicação.";
+    if (exigePatrocinador && !patrocinador) {
+      return `A categoria "${catSelecionada?.name}" exige escolher um patrocinador.`;
+    }
+    return null;
+  }
+
+  async function salvar(): Promise<string | null> {
+    const problema = validar();
+    if (problema) { setErro(problema); return null; }
+
+    setSalvando(true);
+    setErro(null);
+    try {
+      const payload = montarPayload();
+      const salvo = editando && post
+        ? await feedApi.update(post.id, payload)
+        : await feedApi.create(payload);
+      toast.success(editando ? "Publicação salva" : "Rascunho criado");
+      onSalvo();
+      return salvo.id;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Erro ao salvar";
+      setErro(msg);
+      return null;
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function publicar() {
+    const id = post?.id ?? (await salvar());
+    if (!id) return;
+
+    setPublicando(true);
+    setErro(null);
+    try {
+      const r = await feedApi.publish(id, agendarPara ? new Date(agendarPara).toISOString() : null);
+      toast.success(
+        r.status === "scheduled"
+          ? `Agendada para ${new Date(r.publish_at!).toLocaleString("pt-BR")}`
+          : r.audiencia_alcancada
+            ? `No ar para ${r.audiencia_alcancada} pessoas`
+            : "No ar"
+      );
+      onSalvo();
+      onFechar();
+    } catch (e: unknown) {
+      setErro(e instanceof Error ? e.message : "Erro ao publicar");
+    } finally {
+      setPublicando(false);
+    }
+  }
+
+  async function enviarArquivos(lista: FileList | null) {
+    if (!lista || lista.length === 0) return;
+    const id = post?.id ?? (await salvar());
+    if (!id) {
+      setErro("Salve o rascunho antes de anexar mídia.");
+      return;
+    }
+    setEnviando(true);
+    setErro(null);
+    try {
+      for (const arquivo of Array.from(lista)) {
+        // Dimensões e duração são medidas aqui porque só o navegador as
+        // conhece — e sem a duração não há como calcular quartil de vídeo.
+        const extras = await medirArquivo(arquivo);
+        const midia = await feedApi.uploadMedia(id, arquivo, extras);
+        setMidias((m) => [...m, midia]);
+      }
+      toast.success("Mídia anexada");
+    } catch (e: unknown) {
+      setErro(e instanceof Error ? e.message : "Erro ao enviar o arquivo");
+    } finally {
+      setEnviando(false);
+      if (inputArquivo.current) inputArquivo.current.value = "";
+    }
+  }
+
+  async function removerMidia(id: string) {
+    try {
+      await feedApi.removeMedia(id);
+      setMidias((m) => m.filter((x) => x.id !== id));
+    } catch {
+      toast.error("Não foi possível remover");
+    }
+  }
+
   return (
-    <Card>
-      <CardContent className="p-6 space-y-4">
-        <div className="flex items-start gap-3">
-          <Skeleton className="h-10 w-10 rounded-full" />
-          <div className="flex-1 space-y-2">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-3 w-24" />
+    <Dialog open={aberto} onClose={onFechar} size="lg">
+      <DialogHeader>
+        <DialogTitle>
+          {editando ? "Editar publicação" : "Nova publicação"}
+        </DialogTitle>
+      </DialogHeader>
+
+      <DialogContent className="space-y-5 pt-4">
+        {erro && (
+          <div className="flex items-start gap-2 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{erro}</span>
           </div>
-          <Skeleton className="h-6 w-16 rounded-full" />
-        </div>
-        <Skeleton className="h-5 w-3/4" />
+        )}
+
+        <Input
+          label="Título *"
+          placeholder="Ex.: Novo sistema de etapas na execução"
+          value={titulo}
+          onChange={(e) => setTitulo(e.target.value)}
+        />
+
         <div className="space-y-2">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-5/6" />
-          <Skeleton className="h-4 w-2/3" />
+          <label className="text-sm font-medium text-foreground/80">Conteúdo *</label>
+          <textarea
+            className="w-full min-h-28 rounded-md border border-input bg-background p-3 text-sm"
+            placeholder="O texto que o profissional vai ler no aplicativo"
+            value={conteudo}
+            onChange={(e) => setConteudo(e.target.value)}
+          />
         </div>
-      </CardContent>
-    </Card>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground/80">Categoria</label>
+            <select
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={categoria}
+              onChange={(e) => setCategoria(e.target.value)}
+            >
+              <option value="">Sem categoria</option>
+              {meta?.categorias.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground/80">Quem vai ver</label>
+            <select
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={audiencia}
+              onChange={(e) => setAudiencia(e.target.value)}
+            >
+              <option value="">Todos os usuários</option>
+              {meta?.audiencias.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                  {a.estimated_size != null ? ` (~${a.estimated_size})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {exigePatrocinador && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground/80">
+              Patrocinador * <span className="text-muted-foreground">— a categoria exige</span>
+            </label>
+            <select
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={patrocinador}
+              onChange={(e) => setPatrocinador(e.target.value)}
+            >
+              <option value="">Escolha o patrocinador</option>
+              {meta?.patrocinadores.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* ---- Mídia ---- */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-foreground/80">
+              Mídia {midias.length > 1 && <span className="text-muted-foreground">— carrossel de {midias.length}</span>}
+            </label>
+            <Button
+              type="button" variant="outline" size="sm"
+              isLoading={enviando}
+              onClick={() => inputArquivo.current?.click()}
+            >
+              <Plus className="h-3.5 w-3.5" /> Anexar
+            </Button>
+            <input
+              ref={inputArquivo} type="file" multiple className="hidden"
+              accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,application/pdf"
+              onChange={(e) => enviarArquivos(e.target.files)}
+            />
+          </div>
+
+          {midias.length === 0 ? (
+            <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+              Imagem, vídeo ou PDF. Até 100 MB por arquivo.
+            </p>
+          ) : (
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {midias.map((m, i) => (
+                <div key={m.id} className="group relative aspect-square overflow-hidden rounded-lg border bg-muted">
+                  {m.kind === "image" && m.public_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={m.public_url} alt={m.alt_text ?? ""} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full flex-col items-center justify-center gap-1 p-2 text-muted-foreground">
+                      {m.kind === "video" ? <Video className="h-6 w-6" /> : <FileText className="h-6 w-6" />}
+                      <span className="line-clamp-2 text-center text-[10px]">{m.file_name}</span>
+                    </div>
+                  )}
+                  <span className="absolute left-1 top-1 rounded bg-black/70 px-1.5 text-[10px] font-medium text-white">
+                    {i + 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removerMidia(m.id)}
+                    aria-label={`Remover mídia ${i + 1}`}
+                    className="absolute right-1 top-1 rounded bg-black/70 p-1 text-white opacity-0 transition group-hover:opacity-100"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ---- Programação ---- */}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-2">
+            <label className="flex items-center gap-1.5 text-sm font-medium text-foreground/80">
+              <CalendarClock className="h-3.5 w-3.5" /> Publicar em
+            </label>
+            <input
+              type="datetime-local"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={agendarPara}
+              onChange={(e) => setAgendarPara(e.target.value)}
+            />
+            <p className="text-[11px] text-muted-foreground">Vazio publica na hora.</p>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground/80">Encerrar em</label>
+            <input
+              type="datetime-local"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={encerrarEm}
+              onChange={(e) => setEncerrarEm(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="flex items-center gap-1.5 text-sm font-medium text-foreground/80">
+              <Pin className="h-3.5 w-3.5" /> Fixar até
+            </label>
+            <input
+              type="datetime-local"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={fixarAte}
+              onChange={(e) => setFixarAte(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2 rounded-xl border p-3">
+          <label className="flex cursor-pointer items-start gap-2 text-sm">
+            <input
+              type="checkbox" className="mt-1"
+              checked={notificar}
+              onChange={(e) => setNotificar(e.target.checked)}
+            />
+            <span>
+              <b>Avisar por notificação</b>
+              <span className="block text-xs text-muted-foreground">
+                Manda um aviso no celular de todo o público escolhido. Use com parcimônia.
+              </span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={comentarios}
+              onChange={(e) => setComentarios(e.target.checked)}
+            />
+            Permitir comentários
+          </label>
+        </div>
+      </DialogContent>
+
+      <DialogFooter className="border-t">
+        <Button type="button" variant="outline" onClick={onFechar}>Cancelar</Button>
+        <Button type="button" variant="outline" isLoading={salvando} onClick={() => salvar()}>
+          Salvar rascunho
+        </Button>
+        <Button type="button" isLoading={publicando} onClick={publicar}>
+          <Send className="h-4 w-4" />
+          {agendarPara ? "Agendar" : "Publicar agora"}
+        </Button>
+      </DialogFooter>
+    </Dialog>
+  );
+}
+
+/** Lê dimensões e duração no navegador — o servidor não tem como saber. */
+async function medirArquivo(
+  arquivo: File
+): Promise<{ width?: number; height?: number; duration_seconds?: number }> {
+  if (arquivo.type.startsWith("image/")) {
+    return new Promise((resolve) => {
+      const img = new window.Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => resolve({});
+      img.src = URL.createObjectURL(arquivo);
+    });
+  }
+  if (arquivo.type.startsWith("video/")) {
+    return new Promise((resolve) => {
+      const v = document.createElement("video");
+      v.preload = "metadata";
+      v.onloadedmetadata = () =>
+        resolve({ width: v.videoWidth, height: v.videoHeight, duration_seconds: v.duration });
+      v.onerror = () => resolve({});
+      v.src = URL.createObjectURL(arquivo);
+    });
+  }
+  return {};
+}
+
+// ============================================================
+// Painel de desempenho
+// ============================================================
+
+function PainelInsights({ post, onFechar }: { post: FeedPost; onFechar: () => void }) {
+  const [dados, setDados] = useState<FeedInsights | null>(null);
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    feedApi
+      .insights(post.id)
+      .then(setDados)
+      .catch(() => toast.error("Não foi possível carregar o desempenho"))
+      .finally(() => setCarregando(false));
+  }, [post.id]);
+
+  const t = dados?.totais;
+
+  return (
+    <Dialog open onClose={onFechar} size="lg">
+      <DialogHeader>
+        <DialogTitle>Desempenho — {post.title}</DialogTitle>
+      </DialogHeader>
+      <DialogContent className="space-y-5 pt-4">
+        {carregando ? (
+          <div className="h-32 animate-pulse rounded-xl bg-muted" />
+        ) : !t ? (
+          <p className="text-sm text-muted-foreground">Sem dados ainda.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-4">
+              {[
+                ["Impressões", t.impressoes],
+                ["Alcance único", t.alcance_unico],
+                ["Visualizações", t.visualizacoes],
+                ["Cliques", t.cliques],
+                ["Reações", t.reacoes],
+                ["Comentários", t.comentarios],
+                ["Compartilhamentos", t.compartilhamentos],
+                ["Salvamentos", t.salvamentos],
+              ].map(([rotulo, valor]) => (
+                <div key={String(rotulo)} className="bg-background p-3">
+                  <p className="text-xl font-semibold tabular-nums">{valor as number}</p>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{rotulo}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border p-3">
+                <p className="text-lg font-semibold tabular-nums">{t.ctr_impressao}%</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Taxa de clique <span className="block">sobre impressões</span>
+                </p>
+              </div>
+              <div className="rounded-xl border p-3">
+                <p className="text-lg font-semibold tabular-nums">{t.ctr_alcance}%</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Taxa de clique <span className="block">sobre alcance</span>
+                </p>
+              </div>
+              <div className="rounded-xl border p-3">
+                <p className="text-lg font-semibold tabular-nums">{t.taxa_engajamento}%</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Engajamento <span className="block">sobre alcance</span>
+                </p>
+              </div>
+            </div>
+
+            {t.video.inicios > 0 && (
+              <div className="space-y-2 rounded-xl border p-3">
+                <p className="text-sm font-medium">Vídeo</p>
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  {([["25%", t.video.q25], ["50%", t.video.q50], ["75%", t.video.q75], ["100%", t.video.completos]] as const).map(
+                    ([r, v]) => (
+                      <div key={r}>
+                        <p className="text-base font-semibold tabular-nums">
+                          {t.video.inicios > 0 ? Math.round((v / t.video.inicios) * 100) : 0}%
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">assistiu {r}</p>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+
+            {Object.entries(dados.recortes).map(([tipo, linhas]) => (
+              <div key={tipo} className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {tipo === "uf" ? "Por estado" : tipo === "level" ? "Por nível" : tipo === "role" ? "Por perfil" : "Por plataforma"}
+                </p>
+                <div className="space-y-1">
+                  {linhas.slice(0, 6).map((l) => (
+                    <div key={l.valor} className="flex items-center justify-between text-sm">
+                      <span>{l.valor}</span>
+                      <span className="tabular-nums text-muted-foreground">
+                        {l.impressoes} impressões · {l.cliques} cliques
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+      </DialogContent>
+      <DialogFooter className="border-t">
+        <Button variant="outline" onClick={onFechar}>Fechar</Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 
 // ============================================================
-// Feed Page
+// Tela
 // ============================================================
 
 export default function FeedPage() {
-  const user = useAuthStore((s) => s.user);
-  const isAdmin = user?.role === UserRole.ADMIN;
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [meta, setMeta] = useState<FeedMeta | null>(null);
+  const [carregando, setCarregando] = useState(true);
+  const [editorAberto, setEditorAberto] = useState(false);
+  const [emEdicao, setEmEdicao] = useState<FeedPost | null>(null);
+  const [insightsDe, setInsightsDe] = useState<FeedPost | null>(null);
+  const [filtro, setFiltro] = useState<string>("todos");
+  const [busca, setBusca] = useState("");
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    try {
+      const [lista, m] = await Promise.all([
+        feedApi.list({ include_drafts: true, limit: 50 }),
+        meta ? Promise.resolve(meta) : feedApi.meta(),
+      ]);
+      setPosts(lista.data);
+      setMeta(m);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao carregar o feed");
+    } finally {
+      setCarregando(false);
+    }
+    // `meta` é buscado uma vez; incluí-lo nas dependências recarregaria em laço
+  }, [meta]);
 
-  // Modal states
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [editingPost, setEditingPost] = useState<FeedPost | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  // Lightbox para imagens — clicar abre overlay interno (sem ir pra outro navegador)
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-
-  // Create form
-  const [createForm, setCreateForm] = useState({
-    title: "",
-    content: "",
-    audience: FeedAudience.ALL as string,
-    is_pinned: false,
-  });
-  const [createMediaUrls, setCreateMediaUrls] = useState<string[]>([]);
-  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
-
-  // Edit form
-  const [editForm, setEditForm] = useState({
-    title: "",
-    content: "",
-    audience: FeedAudience.ALL as string,
-    is_pinned: false,
-  });
-  const [editMediaUrls, setEditMediaUrls] = useState<string[]>([]);
-
-  // Debounce search input
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 400);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+    carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const fetcher = useCallback(
-    (page: number, limit: number) => {
-      return feedApi.list({ page, limit });
-    },
-    []
-  );
-
-  const {
-    data: posts,
-    meta,
-    isLoading,
-    page,
-    setPage,
-    mutate,
-  } = usePaginatedApi<FeedPost>(fetcher, 1, 10, []);
-
-  const totalPosts = meta?.total ?? 0;
-
-  // Client-side search filter
-  const filteredPosts =
-    posts && debouncedSearch
-      ? posts.filter(
-          (p) =>
-            p.title.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-            p.content.toLowerCase().includes(debouncedSearch.toLowerCase())
-        )
-      : posts;
-
-  // ============================================================
-  // Handlers
-  // ============================================================
-
-  const uploadMediaFile = async (file: File): Promise<string | null> => {
-    try {
-      const token = await getAccessToken();
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch(`${BASE_URL}/feed/upload`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as Record<string, string>).message || "Erro no upload");
-      }
-
-      const data = (await res.json()) as { url: string };
-      return data.url;
-    } catch (err: any) {
-      toast.error(err?.message || "Erro ao fazer upload do arquivo");
-      return null;
-    }
-  };
-
-  const handleMediaUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-    target: "create" | "edit"
-  ) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setIsUploadingMedia(true);
-    const newUrls: string[] = [];
-
-    for (const file of Array.from(files)) {
-      const url = await uploadMediaFile(file);
-      if (url) newUrls.push(url);
-    }
-
-    if (target === "create") {
-      setCreateMediaUrls((prev) => [...prev, ...newUrls]);
-    } else {
-      setEditMediaUrls((prev) => [...prev, ...newUrls]);
-    }
-    setIsUploadingMedia(false);
-
-    // Reset file input
-    e.target.value = "";
-  };
-
-  const handleCreate = async () => {
-    if (!createForm.title.trim() || !createForm.content.trim()) {
-      toast.error("Titulo e conteudo sao obrigatorios");
-      return;
-    }
-
-    setIsCreating(true);
-    try {
-      await feedApi.create({
-        title: createForm.title,
-        content: createForm.content,
-        audience: createForm.audience,
-        is_pinned: createForm.is_pinned,
-        media_urls: createMediaUrls.length > 0 ? createMediaUrls : undefined,
-      });
-      toast.success("Publicacao criada com sucesso!");
-      setShowCreateModal(false);
-      setCreateForm({
-        title: "",
-        content: "",
-        audience: FeedAudience.ALL,
-        is_pinned: false,
-      });
-      setCreateMediaUrls([]);
-      mutate();
-    } catch (err: any) {
-      toast.error(err?.message || "Erro ao criar publicacao");
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  const handleOpenEdit = (post: FeedPost) => {
-    setEditingPost(post);
-    setEditForm({
-      title: post.title,
-      content: post.content,
-      audience: post.audience,
-      is_pinned: post.is_pinned,
+  const visiveis = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    return posts.filter((p) => {
+      if (filtro !== "todos" && p.status !== filtro) return false;
+      if (!termo) return true;
+      return (
+        p.title.toLowerCase().includes(termo) ||
+        p.content.toLowerCase().includes(termo)
+      );
     });
-    setEditMediaUrls(post.media_urls || []);
-  };
+  }, [posts, filtro, busca]);
 
-  const handleUpdate = async () => {
-    if (!editingPost) return;
-    if (!editForm.title.trim() || !editForm.content.trim()) {
-      toast.error("Titulo e conteudo sao obrigatorios");
-      return;
-    }
-
-    setIsUpdating(true);
+  async function abrirEdicao(p: FeedPost) {
     try {
-      await feedApi.update(editingPost.id, {
-        title: editForm.title,
-        content: editForm.content,
-        audience: editForm.audience as FeedAudience,
-        is_pinned: editForm.is_pinned,
-        media_urls: editMediaUrls.length > 0 ? editMediaUrls : [],
+      // Recarrega o detalhe: a listagem não traz mídia com todos os campos.
+      const completo = await feedApi.getById(p.id);
+      setEmEdicao(completo);
+      setEditorAberto(true);
+    } catch {
+      toast.error("Não foi possível abrir a publicação");
+    }
+  }
+
+  async function duplicar(p: FeedPost) {
+    try {
+      const completo = await feedApi.getById(p.id);
+      const novo = await feedApi.create({
+        title: `${completo.title} (cópia)`,
+        content: completo.content,
+        category_id: completo.category_id,
+        audience_rule_id: completo.audience_rule_id,
+        sponsor_id: completo.sponsor_id,
+        comments_enabled: completo.comments_enabled,
       });
-      toast.success("Publicacao atualizada com sucesso!");
-      setEditingPost(null);
-      mutate();
-    } catch (err: any) {
-      toast.error(err?.message || "Erro ao atualizar publicacao");
-    } finally {
-      setIsUpdating(false);
+      toast.success("Cópia criada como rascunho");
+      await carregar();
+      abrirEdicao(novo);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao duplicar");
     }
-  };
+  }
 
-  const handleDelete = async (post: FeedPost) => {
-    if (!confirm("Tem certeza que deseja excluir esta publicacao?")) return;
-
-    setDeletingId(post.id);
+  async function pausar(p: FeedPost) {
     try {
-      await feedApi.delete(post.id);
-      toast.success("Publicacao excluida com sucesso!");
-      mutate();
-    } catch (err: any) {
-      toast.error(err?.message || "Erro ao excluir publicacao");
-    } finally {
-      setDeletingId(null);
+      await feedApi.pause(p.id);
+      toast.success("Publicação pausada");
+      carregar();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao pausar");
     }
-  };
+  }
+
+  async function publicar(p: FeedPost) {
+    try {
+      const r = await feedApi.publish(p.id);
+      toast.success(
+        r.audiencia_alcancada ? `No ar para ${r.audiencia_alcancada} pessoas` : "No ar"
+      );
+      carregar();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao publicar");
+    }
+  }
+
+  async function remover(p: FeedPost) {
+    try {
+      const r = await feedApi.remove(p.id);
+      toast.success(r.arquivado ? "Publicação arquivada" : "Rascunho excluído");
+      carregar();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao excluir");
+    }
+  }
+
+  const contagem = (s: string) =>
+    s === "todos" ? posts.length : posts.filter((p) => p.status === s).length;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
         className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
       >
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-            Feed Corporativo
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Central de Conteúdo</h1>
           <p className="text-muted-foreground">
-            {isLoading
-              ? "Carregando..."
-              : `${totalPosts} ${totalPosts === 1 ? "publicacao" : "publicacoes"}`}
+            Publicações do feed dos profissionais — com público-alvo, agendamento e desempenho.
           </p>
         </div>
-        {isAdmin && (
-          <Button onClick={() => setShowCreateModal(true)}>
-            <Plus className="h-4 w-4" />
-            Nova Publicacao
-          </Button>
-        )}
+        <Button onClick={() => { setEmEdicao(null); setEditorAberto(true); }}>
+          <Plus className="h-4 w-4" /> Nova publicação
+        </Button>
       </motion.div>
 
-      {/* Search Bar */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1, duration: 0.4 }}
-      >
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Buscar publicacao..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className={cn(
-              "flex h-11 w-full rounded-xl border border-input bg-background pl-10 pr-4 text-sm",
-              "placeholder:text-muted-foreground",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0",
-              "focus-visible:border-primary",
-              "transition-all duration-200"
-            )}
-          />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-wrap gap-1.5">
+          {["todos", "draft", "scheduled", "published", "paused"].map((s) => (
+            <button
+              key={s}
+              onClick={() => setFiltro(s)}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-medium transition",
+                filtro === s
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/70"
+              )}
+            >
+              {s === "todos" ? "Todas" : ESTADO[s].rotulo} ({contagem(s)})
+            </button>
+          ))}
         </div>
-      </motion.div>
+        <div className="sm:ml-auto sm:w-64">
+          <Input placeholder="Buscar" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        </div>
+      </div>
 
-      {/* Feed Cards */}
-      {isLoading ? (
-        <div className="space-y-4 max-w-3xl">
+      {carregando ? (
+        <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <FeedCardSkeleton key={i} />
+            <Card key={i}><CardContent className="p-4"><div className="h-20 animate-pulse rounded bg-muted" /></CardContent></Card>
           ))}
         </div>
-      ) : !filteredPosts || filteredPosts.length === 0 ? (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2, duration: 0.4 }}
-        >
-          <Card>
-            <CardContent>
-              <EmptyState
-                icon={<Megaphone className="h-6 w-6" />}
-                title="Nenhuma publicacao encontrada"
-                description={
-                  isAdmin
-                    ? "Crie a primeira publicacao para o feed corporativo."
-                    : "Nenhuma publicacao disponivel no momento."
-                }
-                action={
-                  isAdmin ? (
-                    <Button onClick={() => setShowCreateModal(true)}>
-                      <Plus className="h-4 w-4" />
-                      Nova Publicacao
-                    </Button>
-                  ) : undefined
-                }
-              />
-            </CardContent>
-          </Card>
-        </motion.div>
+      ) : visiveis.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={<Megaphone className="h-6 w-6" />}
+            title={posts.length === 0 ? "Nenhuma publicação ainda" : "Nada neste filtro"}
+            description={
+              posts.length === 0
+                ? "Crie a primeira publicação do feed. Ela aparece no aplicativo dos profissionais."
+                : "Ajuste o filtro ou a busca."
+            }
+            action={
+              posts.length === 0 ? (
+                <Button onClick={() => { setEmEdicao(null); setEditorAberto(true); }}>
+                  <Plus className="h-4 w-4" /> Nova publicação
+                </Button>
+              ) : undefined
+            }
+          />
+        </Card>
       ) : (
-        <div className="space-y-4 max-w-3xl">
-          {filteredPosts.map((post, index) => (
-            <motion.div
-              key={post.id}
-              initial={{ opacity: 0, y: 20, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ delay: 0.15 + index * 0.07, duration: 0.4 }}
-            >
-              <Card hover className="group relative overflow-hidden">
-                {/* Pinned accent */}
-                {post.is_pinned && (
-                  <div className="absolute inset-x-0 top-0 h-[2px] bg-amber-500" />
-                )}
-
-                <CardContent className="p-6 space-y-4">
-                  {/* Author row */}
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary text-sm font-bold">
-                      {post.author
-                        ? getAuthorInitials(post.author.full_name)
-                        : "?"}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold leading-snug truncate">
-                        {post.author?.full_name ?? "Autor desconhecido"}
-                      </p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Calendar className="h-3 w-3 shrink-0" />
-                        <span>{formatDate(post.created_at)}</span>
+        <div className="space-y-3">
+          <AnimatePresence>
+            {visiveis.map((p, i) => {
+              const st = ESTADO[p.status] ?? ESTADO.draft;
+              const capa = p.media?.[0];
+              return (
+                <motion.div
+                  key={p.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ delay: Math.min(i * 0.03, 0.25) }}
+                >
+                  <Card hover>
+                    <CardContent className="flex flex-col gap-3 p-4 sm:flex-row">
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
+                        {capa?.kind === "image" && capa.public_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={capa.public_url} alt="" className="h-full w-full object-cover" />
+                        ) : capa?.kind === "video" ? (
+                          <Video className="h-6 w-6 text-muted-foreground" />
+                        ) : (
+                          <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                        )}
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {post.is_pinned && (
-                        <div
-                          className="flex items-center gap-1 text-amber-500"
-                          title="Fixado"
-                        >
-                          <Pin className="h-4 w-4" />
+
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", st.cor)}>
+                            {st.rotulo}
+                          </span>
+                          {p.is_pinned && (
+                            <Badge variant="warning" size="sm"><Pin className="mr-1 h-3 w-3" />Fixada</Badge>
+                          )}
+                          {p.is_sponsored && <Badge variant="info" size="sm">Patrocinado</Badge>}
+                          {p.category && (
+                            <span className="text-[11px] text-muted-foreground">{p.category.name}</span>
+                          )}
                         </div>
-                      )}
-                      <Badge
-                        variant={AUDIENCE_BADGE_VARIANT[post.audience]}
-                        size="sm"
-                      >
-                        <Users className="h-3 w-3 mr-1" />
-                        {FEED_AUDIENCE_LABELS[post.audience]}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {/* Title */}
-                  <h3 className="text-base font-bold leading-snug">
-                    {post.title}
-                  </h3>
-
-                  {/* Content */}
-                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
-                    {post.content}
-                  </p>
-
-                  {/* Media — videos rodam inline; imagens abrem lightbox interno */}
-                  {post.media_urls && post.media_urls.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {post.media_urls.map((url, i) =>
-                        isVideoUrl(url) ? (
-                          <div
-                            key={i}
-                            className="relative overflow-hidden rounded-lg border border-border"
-                          >
-                            <video
-                              src={url}
-                              controls
-                              preload="metadata"
-                              className="max-h-60 max-w-full rounded-lg"
-                            />
-                          </div>
-                        ) : (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => setLightboxUrl(url)}
-                            className="block overflow-hidden rounded-lg border border-border hover:border-primary transition-colors"
-                            title="Abrir imagem"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={url}
-                              alt={`Midia ${i + 1}`}
-                              className="h-20 w-20 object-cover"
-                            />
-                          </button>
-                        )
-                      )}
-                    </div>
-                  )}
-
-                  {/* Admin actions */}
-                  {isAdmin && (
-                    <div className="flex items-center justify-end gap-3 border-t pt-4">
-                      <button
-                        onClick={() => handleOpenEdit(post)}
-                        className="flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
-                      >
-                        <Edit className="h-3 w-3" />
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => handleDelete(post)}
-                        disabled={deletingId === post.id}
-                        className="flex items-center gap-1 text-xs font-medium text-destructive transition-colors hover:text-destructive/80 disabled:opacity-50"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        Excluir
-                      </button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-
-          {/* Pagination */}
-          {meta && meta.total_pages > 1 && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3, duration: 0.4 }}
-              className="flex items-center justify-center gap-2 pt-4"
-            >
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage(page - 1)}
-              >
-                Anterior
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                Pagina {page} de {meta.total_pages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= meta.total_pages}
-                onClick={() => setPage(page + 1)}
-              >
-                Proxima
-              </Button>
-            </motion.div>
-          )}
-        </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* CREATE POST MODAL */}
-      {/* ============================================================ */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setShowCreateModal(false)}
-          />
-          <div className="relative z-10 w-full max-w-lg rounded-xl bg-card border p-6 shadow-xl mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-semibold mb-4">Nova Publicacao</h2>
-            <div className="space-y-4">
-              {/* Title */}
-              <div className="w-full space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">
-                  Titulo *
-                </label>
-                <input
-                  type="text"
-                  placeholder="Titulo da publicacao"
-                  value={createForm.title}
-                  onChange={(e) =>
-                    setCreateForm({ ...createForm, title: e.target.value })
-                  }
-                  className={cn(
-                    "flex h-11 w-full rounded-xl border border-input bg-background px-4 text-sm",
-                    "placeholder:text-muted-foreground",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0",
-                    "focus-visible:border-primary",
-                    "transition-all duration-200"
-                  )}
-                />
-              </div>
-
-              {/* Content */}
-              <div className="w-full space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">
-                  Conteudo *
-                </label>
-                <textarea
-                  placeholder="Escreva o conteudo da publicacao..."
-                  value={createForm.content}
-                  onChange={(e) =>
-                    setCreateForm({ ...createForm, content: e.target.value })
-                  }
-                  rows={5}
-                  className={cn(
-                    "flex w-full rounded-xl border border-input bg-background px-4 py-3 text-sm",
-                    "placeholder:text-muted-foreground",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0",
-                    "focus-visible:border-primary",
-                    "transition-all duration-200 resize-none"
-                  )}
-                />
-              </div>
-
-              {/* Audience */}
-              <div className="w-full space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">
-                  Publico-alvo
-                </label>
-                <select
-                  value={createForm.audience}
-                  onChange={(e) =>
-                    setCreateForm({ ...createForm, audience: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-200"
-                >
-                  <option value={FeedAudience.ALL}>
-                    {FEED_AUDIENCE_LABELS[FeedAudience.ALL]}
-                  </option>
-                  <option value={FeedAudience.EMPLOYEES}>
-                    {FEED_AUDIENCE_LABELS[FeedAudience.EMPLOYEES]}
-                  </option>
-                  <option value={FeedAudience.PARTNERS}>
-                    {FEED_AUDIENCE_LABELS[FeedAudience.PARTNERS]}
-                  </option>
-                </select>
-              </div>
-
-              {/* Media upload */}
-              <div className="w-full space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">
-                  Midia (imagens ou videos)
-                </label>
-                <div className="flex items-center gap-2">
-                  <label className={cn(
-                    "flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-input cursor-pointer text-sm text-muted-foreground",
-                    "hover:border-primary hover:text-foreground transition-colors",
-                    isUploadingMedia && "opacity-50 pointer-events-none"
-                  )}>
-                    {isUploadingMedia ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Paperclip className="h-4 w-4" />
-                    )}
-                    {isUploadingMedia ? "Enviando..." : "Anexar arquivo"}
-                    <input
-                      type="file"
-                      accept="image/*,video/mp4,video/webm,video/quicktime"
-                      multiple
-                      onChange={(e) => handleMediaUpload(e, "create")}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-                {createMediaUrls.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {createMediaUrls.map((url, i) => (
-                      <div key={i} className="relative group">
-                        {isVideoUrl(url) ? (
-                          <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center border">
-                            <Film className="h-6 w-6 text-muted-foreground" />
-                          </div>
-                        ) : (
-                          <img
-                            src={url}
-                            alt={`Midia ${i + 1}`}
-                            className="h-16 w-16 object-cover rounded-lg border"
-                          />
-                        )}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setCreateMediaUrls((prev) =>
-                              prev.filter((_, idx) => idx !== i)
-                            )
-                          }
-                          className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
+                        <p className="truncate font-medium">{p.title}</p>
+                        <p className="line-clamp-1 text-xs text-muted-foreground">{p.content}</p>
+                        <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-muted-foreground">
+                          {p.audience && (
+                            <span className="flex items-center gap-1"><Users className="h-3 w-3" />{p.audience.name}</span>
+                          )}
+                          <span className="flex items-center gap-1"><Eye className="h-3 w-3" />{p.impression_count} impressões</span>
+                          <span>{p.like_count} reações</span>
+                          <span>{p.comment_count} comentários</span>
+                          {p.publish_at && p.status === "scheduled" && (
+                            <span className="flex items-center gap-1">
+                              <CalendarClock className="h-3 w-3" />
+                              {new Date(p.publish_at).toLocaleString("pt-BR")}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
 
-              {/* Pinned toggle */}
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={createForm.is_pinned}
-                  onClick={() =>
-                    setCreateForm({
-                      ...createForm,
-                      is_pinned: !createForm.is_pinned,
-                    })
-                  }
-                  className={cn(
-                    "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200",
-                    createForm.is_pinned ? "bg-primary" : "bg-muted"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform duration-200",
-                      createForm.is_pinned ? "translate-x-5" : "translate-x-0"
-                    )}
-                  />
-                </button>
-                <div className="flex items-center gap-1.5">
-                  <Pin className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium text-foreground/80">
-                    Fixar no topo
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <Button
-                variant="outline"
-                onClick={() => setShowCreateModal(false)}
-              >
-                Cancelar
-              </Button>
-              <Button onClick={handleCreate} isLoading={isCreating} disabled={isUploadingMedia}>
-                Publicar
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* EDIT POST MODAL */}
-      {/* ============================================================ */}
-      {editingPost && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setEditingPost(null)}
-          />
-          <div className="relative z-10 w-full max-w-lg rounded-xl bg-card border p-6 shadow-xl mx-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-semibold mb-4">Editar Publicacao</h2>
-            <div className="space-y-4">
-              {/* Title */}
-              <div className="w-full space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">
-                  Titulo *
-                </label>
-                <input
-                  type="text"
-                  placeholder="Titulo da publicacao"
-                  value={editForm.title}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, title: e.target.value })
-                  }
-                  className={cn(
-                    "flex h-11 w-full rounded-xl border border-input bg-background px-4 text-sm",
-                    "placeholder:text-muted-foreground",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0",
-                    "focus-visible:border-primary",
-                    "transition-all duration-200"
-                  )}
-                />
-              </div>
-
-              {/* Content */}
-              <div className="w-full space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">
-                  Conteudo *
-                </label>
-                <textarea
-                  placeholder="Escreva o conteudo da publicacao..."
-                  value={editForm.content}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, content: e.target.value })
-                  }
-                  rows={5}
-                  className={cn(
-                    "flex w-full rounded-xl border border-input bg-background px-4 py-3 text-sm",
-                    "placeholder:text-muted-foreground",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0",
-                    "focus-visible:border-primary",
-                    "transition-all duration-200 resize-none"
-                  )}
-                />
-              </div>
-
-              {/* Audience */}
-              <div className="w-full space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">
-                  Publico-alvo
-                </label>
-                <select
-                  value={editForm.audience}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, audience: e.target.value })
-                  }
-                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-200"
-                >
-                  <option value={FeedAudience.ALL}>
-                    {FEED_AUDIENCE_LABELS[FeedAudience.ALL]}
-                  </option>
-                  <option value={FeedAudience.EMPLOYEES}>
-                    {FEED_AUDIENCE_LABELS[FeedAudience.EMPLOYEES]}
-                  </option>
-                  <option value={FeedAudience.PARTNERS}>
-                    {FEED_AUDIENCE_LABELS[FeedAudience.PARTNERS]}
-                  </option>
-                </select>
-              </div>
-
-              {/* Media upload */}
-              <div className="w-full space-y-2">
-                <label className="text-sm font-medium leading-none text-foreground/80">
-                  Midia (imagens ou videos)
-                </label>
-                <div className="flex items-center gap-2">
-                  <label className={cn(
-                    "flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-input cursor-pointer text-sm text-muted-foreground",
-                    "hover:border-primary hover:text-foreground transition-colors",
-                    isUploadingMedia && "opacity-50 pointer-events-none"
-                  )}>
-                    {isUploadingMedia ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Paperclip className="h-4 w-4" />
-                    )}
-                    {isUploadingMedia ? "Enviando..." : "Anexar arquivo"}
-                    <input
-                      type="file"
-                      accept="image/*,video/mp4,video/webm,video/quicktime"
-                      multiple
-                      onChange={(e) => handleMediaUpload(e, "edit")}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-                {editMediaUrls.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {editMediaUrls.map((url, i) => (
-                      <div key={i} className="relative group">
-                        {isVideoUrl(url) ? (
-                          <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center border">
-                            <Film className="h-6 w-6 text-muted-foreground" />
-                          </div>
-                        ) : (
-                          <img
-                            src={url}
-                            alt={`Midia ${i + 1}`}
-                            className="h-16 w-16 object-cover rounded-lg border"
-                          />
+                      <div className="flex flex-wrap items-start gap-1.5">
+                        {p.status === "published" && (
+                          <Button variant="outline" size="sm" onClick={() => setInsightsDe(p)}>
+                            <BarChart3 className="h-3.5 w-3.5" />
+                          </Button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setEditMediaUrls((prev) =>
-                              prev.filter((_, idx) => idx !== i)
-                            )
-                          }
-                          className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
+                        {(p.status === "draft" || p.status === "paused") && (
+                          <Button size="sm" onClick={() => publicar(p)}>
+                            <Send className="mr-1 h-3.5 w-3.5" />Publicar
+                          </Button>
+                        )}
+                        {p.status === "published" && (
+                          <Button variant="outline" size="sm" onClick={() => pausar(p)}>
+                            <PauseCircle className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        <Button variant="outline" size="sm" onClick={() => abrirEdicao(p)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => duplicar(p)}>
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => remover(p)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Pinned toggle */}
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={editForm.is_pinned}
-                  onClick={() =>
-                    setEditForm({
-                      ...editForm,
-                      is_pinned: !editForm.is_pinned,
-                    })
-                  }
-                  className={cn(
-                    "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200",
-                    editForm.is_pinned ? "bg-primary" : "bg-muted"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform duration-200",
-                      editForm.is_pinned ? "translate-x-5" : "translate-x-0"
-                    )}
-                  />
-                </button>
-                <div className="flex items-center gap-1.5">
-                  <Pin className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium text-foreground/80">
-                    Fixar no topo
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <Button variant="outline" onClick={() => setEditingPost(null)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleUpdate} isLoading={isUpdating} disabled={isUploadingMedia}>
-                Salvar Alteracoes
-              </Button>
-            </div>
-          </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
         </div>
       )}
 
-      {/* Lightbox de imagem do feed (Jessica 22/06 — antes abria browser) */}
-      {lightboxUrl && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-6"
-          onClick={() => setLightboxUrl(null)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === "Escape" && setLightboxUrl(null)}
-        >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setLightboxUrl(null);
-            }}
-            className="absolute top-4 right-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
-            aria-label="Fechar"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={lightboxUrl}
-            alt="Visualização"
-            className="max-h-full max-w-full rounded-lg object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      )}
+      <Editor
+        aberto={editorAberto}
+        post={emEdicao}
+        meta={meta}
+        onFechar={() => setEditorAberto(false)}
+        onSalvo={carregar}
+      />
+      {insightsDe && <PainelInsights post={insightsDe} onFechar={() => setInsightsDe(null)} />}
     </div>
   );
 }
