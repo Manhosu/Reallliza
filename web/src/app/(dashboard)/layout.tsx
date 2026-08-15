@@ -49,10 +49,10 @@ import {
   BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { UserRole, type Notification } from "@/lib/types";
+import { UserRole, OsStatus, type Notification } from "@/lib/types";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
-import { notificationsApi } from "@/lib/api";
+import { notificationsApi, serviceOrdersApi } from "@/lib/api";
 import { TermsModal } from "@/components/terms-modal";
 
 // ============================================================
@@ -409,20 +409,22 @@ export default function DashboardLayout({
     if (!user || user.role !== UserRole.ADMIN) return;
     let cancelled = false;
 
+    // Usa o cliente da API, que anexa o token. A versão anterior chamava
+    // `fetch` cru com `credentials: "include"` — mas a API autentica por
+    // token Bearer, não por cookie. O contador tomava 401 a cada 30 segundos
+    // e nunca chegou a mostrar número nenhum.
     const fetchAwaiting = async () => {
       try {
-        const res = await fetch(
-          "/api/service-orders?status=awaiting_assignment&limit=1",
-          { credentials: "include" }
-        );
-        if (!res.ok) return;
-        const data = await res.json();
+        const data = await serviceOrdersApi.list({
+          status: OsStatus.AWAITING_ASSIGNMENT,
+          limit: 1,
+        });
         const total = Number(
-          data?.meta?.total ?? data?.total ?? (Array.isArray(data?.data) ? data.data.length : 0)
+          data?.meta?.total ?? (Array.isArray(data?.data) ? data.data.length : 0)
         );
         if (!cancelled) setAwaitingAssignCount(Number.isFinite(total) ? total : 0);
       } catch {
-        // silencioso
+        // silencioso: um contador de menu não pode derrubar a navegação
       }
     };
     fetchAwaiting();
