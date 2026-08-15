@@ -100,13 +100,10 @@ const allNavItems = [
     icon: FileText,
     roles: [UserRole.ADMIN, UserRole.PARTNER],
   },
-  {
-    label: "Solicitações",
-    href: "/solicitacoes",
-    icon: ListChecks,
-    // Removido pra loja (Jessica 10/07 — menu enxuto)
-    roles: [],
-  },
+  // "Solicitações" ficava aqui com `roles: []` desde o menu enxuto de 10/07 —
+  // ou seja, invisível para todos os papéis. Declaração removida por ser
+  // inalcançável. A página /solicitacoes segue existindo; consolidá-la com
+  // Orçamentos é decisão de produto, registrada na auditoria de arquitetura.
   {
     label: "Clientes",
     href: "/clientes",
@@ -374,16 +371,10 @@ export default function DashboardLayout({
   const navItems = useMemo(() => {
     const role = user?.role as UserRole | undefined;
     if (!role) return [];
-    const filtered = allNavItems.filter((item) => item.roles.includes(role));
-    // For partner, rename "Ordens de Serviço" to "Meus Chamados"
-    if (role === UserRole.PARTNER) {
-      return filtered.map((item) =>
-        item.href === "/os"
-          ? { ...item, label: "Meus Chamados" }
-          : item
-      );
-    }
-    return filtered;
+    // O bloco que renomeava "Ordens de Serviço" para "Meus Chamados" na visão
+    // da loja saiu daqui: `/os` não inclui `partner` nos papéis desde o menu
+    // enxuto de 10/07, então a renomeação nunca chegava a executar.
+    return allNavItems.filter((item) => item.roles.includes(role));
   }, [user?.role]);
 
   // Fetch unread notification count

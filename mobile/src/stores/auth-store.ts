@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { apiClient } from '../lib/api';
+import { unregisterPushNotifications } from '../lib/push-notifications';
 import { Profile } from '../lib/types';
 
 interface AuthState {
@@ -96,6 +97,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signOut: async () => {
     try {
       set({ isLoading: true });
+      // Desvincula o aparelho ANTES de derrubar a sessao — a rota exige
+      // autenticacao. Sem isso o token continuaria apontando para quem saiu,
+      // e a proxima pessoa no mesmo celular receberia as notificacoes dela.
+      await unregisterPushNotifications();
       await supabase.auth.signOut();
       set({
         user: null,

@@ -7,20 +7,17 @@ import {
   setupNotificationListeners,
 } from './src/lib/push-notifications';
 import { RootNavigation } from './src/navigation';
+import { useAuthStore } from './src/stores/auth-store';
 
 export default function App() {
   const navigationRef = useRef<{
     navigate: (screen: string, params?: Record<string, unknown>) => void;
   } | null>(null);
 
+  const userId = useAuthStore((s) => s.user?.id ?? null);
+
   useEffect(() => {
-    // Initialize offline sync manager
     syncManager.init();
-
-    // Register for push notifications
-    registerForPushNotifications();
-
-    // Setup notification tap listeners
     const subscription = setupNotificationListeners(navigationRef.current);
 
     return () => {
@@ -28,6 +25,17 @@ export default function App() {
       syncManager.destroy();
     };
   }, []);
+
+  // O registro do aparelho depende de sessao: a rota exige autenticacao.
+  // Antes isso rodava junto com o sync, na montagem do app — ou seja, antes
+  // do login — e o 401 era engolido. Resultado: nenhum aparelho registrado
+  // em producao e nenhuma notificacao chegando ao celular.
+  //
+  // Reagir ao id do usuario tambem cobre a troca de conta no mesmo aparelho.
+  useEffect(() => {
+    if (!userId) return;
+    registerForPushNotifications();
+  }, [userId]);
 
   return (
     <SafeAreaProvider>

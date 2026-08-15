@@ -14,6 +14,12 @@ import { recalculateTechnicianScore } from "@/lib/evaluation/recalculate";
  */
 const STATUS_TRANSITIONS: Record<string, string[]> = {
   draft: ["pending"],
+  // Faltava no mapa: a conversao de orcamento sem equipe qualificada produz
+  // este estado, e 12 das 41 OS estavam nele sem saida por aqui — qualquer
+  // transicao era recusada com "Allowed transitions: none". A designacao
+  // continua sendo o caminho normal (/assign); isto libera o cancelamento e
+  // a atribuicao direta, que antes eram impossiveis.
+  awaiting_assignment: ["assigned", "pending", "cancelled"],
   pending: ["assigned", "cancelled"],
   assigned: ["in_progress", "cancelled"],
   in_progress: ["paused", "completed", "cancelled"],

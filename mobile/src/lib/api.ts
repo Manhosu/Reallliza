@@ -256,8 +256,10 @@ export const apiClient = {
     return request<T>({ method: 'PATCH', path, body });
   },
 
-  delete<T>(path: string) {
-    return request<T>({ method: 'DELETE', path });
+  // Aceita corpo: /notifications/remove-device identifica o aparelho pelo
+  // token no body, nao pela URL.
+  delete<T>(path: string, body?: unknown) {
+    return request<T>({ method: 'DELETE', path, body });
   },
 
   upload<T>(path: string, file: UploadOptions['file'], fields?: Record<string, string>) {

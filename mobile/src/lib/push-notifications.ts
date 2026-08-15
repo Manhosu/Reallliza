@@ -22,6 +22,9 @@ Notifications.setNotificationHandler({
 // Register for push notifications
 // ============================================================
 
+/** Guardado para conseguir desvincular o aparelho no logout. */
+let ultimoToken: string | null = null;
+
 export async function registerForPushNotifications(): Promise<string | null> {
   // Push notifications only work on physical devices
   if (!Device.isDevice) {
@@ -81,9 +84,13 @@ export async function registerForPushNotifications(): Promise<string | null> {
     });
 
     const token = tokenData.data;
+    ultimoToken = token;
     console.log('[PushNotifications] Token:', token);
 
-    // Send token to backend
+    // A rota exige sessao. Quem chama e' responsavel por so' registrar depois
+    // do login — ver App.tsx. Antes isso rodava na abertura do app e o 401
+    // era engolido aqui, o que deixava device_tokens vazio em producao e
+    // nenhuma notificacao chegava ao aparelho.
     try {
       await apiClient.post('/notifications/register-device', {
         token,
@@ -95,12 +102,33 @@ export async function registerForPushNotifications(): Promise<string | null> {
         '[PushNotifications] Failed to register token with backend:',
         error,
       );
+      return null;
     }
 
     return token;
   } catch (error) {
     console.error('[PushNotifications] Registration error:', error);
     return null;
+  }
+}
+
+/**
+ * Desvincula o aparelho do usuario que esta saindo.
+ *
+ * Sem isso o token continua apontando para o usuario anterior, e a proxima
+ * pessoa a usar o mesmo aparelho recebe as notificacoes dele.
+ */
+export async function unregisterPushNotifications(): Promise<void> {
+  if (!ultimoToken) return;
+  try {
+    await apiClient.delete('/notifications/remove-device', {
+      token: ultimoToken,
+    });
+    console.log('[PushNotifications] Token removido do backend');
+  } catch (error) {
+    console.error('[PushNotifications] Falha ao remover token:', error);
+  } finally {
+    ultimoToken = null;
   }
 }
 
