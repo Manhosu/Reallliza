@@ -3,6 +3,14 @@
     {
       "path": "/api/external/webhooks/retry",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/feed/cron",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/feed/cron/notifications",
+      "schedule": "* * * * *"
     }
   ]
 }

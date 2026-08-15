@@ -1,114 +1,46 @@
 import { NextRequest } from "next/server";
-import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
+import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
-import { createNotification } from "@/lib/api-helpers/notifications";
+import { lerFeed, decodificarCursor } from "@/lib/feed/query";
 
 /**
  * GET /api/feed
- * List feed posts with pagination.
- * Filters by audience based on user role. Pinned posts first, then by created_at desc.
- * Accessible by: any authenticated user
+ *
+ * Feed do usuário, já filtrado pela audiência de cada publicação.
+ *
+ * Aceita `cursor` (recomendado) e também `page`, que fica por compatibilidade
+ * com o aplicativo já instalado nos celulares — versão antiga na loja é uma
+ * realidade de semanas, e quebrar o contrato deixaria o técnico sem feed.
  */
 export async function GET(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
-
-    const searchParams = request.nextUrl.searchParams;
-    const page = parseInt(searchParams.get("page") || "1", 10);
-    const limit = parseInt(searchParams.get("limit") || "20", 10);
-
     const supabase = getAdminClient();
-    const offset = (page - 1) * limit;
+    const sp = request.nextUrl.searchParams;
 
-    // Determine audience filter based on user role
-    const audienceFilters: string[] = ["all"];
-    if (user.role === "admin" || user.role === "technician") {
-      audienceFilters.push("employees");
-    }
-    if (user.role === "admin" || user.role === "partner") {
-      audienceFilters.push("partners");
-    }
+    const limit = Math.min(50, Math.max(1, parseInt(sp.get("limit") || "20", 10)));
+    const ehAdmin = user.role === "admin";
+    // Só o admin, e só pedindo, enxerga rascunho e agendado.
+    const incluirNaoPublicados = ehAdmin && sp.get("include_drafts") === "true";
 
-    const query = supabase
-      .from("feed_posts")
-      .select(
-        `
-        *,
-        author:profiles!feed_posts_author_id_fkey(id, full_name, avatar_url)
-      `,
-        { count: "exact" }
-      )
-      .eq("is_published", true)
-      .in("audience", audienceFilters)
-      .order("is_pinned", { ascending: false })
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    const { data, error, count } = await query;
-
-    if (error) {
-      console.error(`Failed to fetch feed posts: ${error.message}`);
-      return jsonResponse({ message: "Failed to fetch feed posts" }, 500);
-    }
-
-    const posts = data || [];
-    const postIds = posts.map((p) => p.id);
-
-    // Carregar contadores e estado de like em paralelo
-    let likeCounts = new Map<string, number>();
-    let commentCounts = new Map<string, number>();
-    const likedByMe = new Set<string>();
-
-    if (postIds.length > 0) {
-      const [likesRes, commentsRes, myLikesRes] = await Promise.all([
-        supabase
-          .from("feed_post_likes")
-          .select("post_id")
-          .in("post_id", postIds),
-        supabase
-          .from("feed_post_comments")
-          .select("post_id")
-          .in("post_id", postIds),
-        supabase
-          .from("feed_post_likes")
-          .select("post_id")
-          .eq("user_id", user.id)
-          .in("post_id", postIds),
-      ]);
-
-      if (likesRes.data) {
-        likeCounts = likesRes.data.reduce((m, r) => {
-          m.set(r.post_id, (m.get(r.post_id) || 0) + 1);
-          return m;
-        }, new Map<string, number>());
-      }
-      if (commentsRes.data) {
-        commentCounts = commentsRes.data.reduce((m, r) => {
-          m.set(r.post_id, (m.get(r.post_id) || 0) + 1);
-          return m;
-        }, new Map<string, number>());
-      }
-      if (myLikesRes.data) {
-        myLikesRes.data.forEach((r) => likedByMe.add(r.post_id));
-      }
-    }
-
-    const enriched = posts.map((p) => ({
-      ...p,
-      like_count: likeCounts.get(p.id) || 0,
-      comment_count: commentCounts.get(p.id) || 0,
-      liked_by_me: likedByMe.has(p.id),
-    }));
+    const resultado = await lerFeed(supabase, user.id, incluirNaoPublicados, {
+      limit,
+      cursor: decodificarCursor(sp.get("cursor")),
+      categoria: sp.get("category_id"),
+    });
 
     return jsonResponse({
-      data: enriched,
+      data: resultado.data,
+      next_cursor: resultado.next_cursor,
+      has_more: resultado.has_more,
+      // O app antigo lê `meta`. Sem contagem total: o count exato varria a
+      // tabela a cada rolagem e não era usado para nada além de um número.
       meta: {
-        total: count || 0,
-        page,
+        page: parseInt(sp.get("page") || "1", 10),
         limit,
-        total_pages: Math.ceil((count || 0) / limit),
+        has_more: resultado.has_more,
       },
     });
   } catch (error) {
@@ -118,8 +50,10 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/feed
- * Create a new feed post.
- * Accessible by: admin only
+ * Cria uma publicação. Só administrador.
+ *
+ * Nasce como rascunho por padrão: publicar é ato separado (POST /publish),
+ * porque publicar dispara audiência e notificação.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -127,98 +61,84 @@ export async function POST(request: NextRequest) {
     checkRole(user, ["admin"]);
 
     const body = await request.json();
-    const { title, content, media_urls, audience, is_pinned } = body;
-
-    if (!title || !content) {
-      return jsonResponse(
-        { message: "title and content are required" },
-        400
-      );
-    }
-
-    // Validate audience if provided
-    const validAudiences = ["all", "employees", "partners"];
-    if (audience && !validAudiences.includes(audience)) {
-      return jsonResponse(
-        { message: `audience must be one of: ${validAudiences.join(", ")}` },
-        400
-      );
-    }
-
     const supabase = getAdminClient();
 
-    const insertData: Record<string, unknown> = {
+    if (!body.title || !String(body.title).trim()) {
+      throw new AuthError(400, "Informe o título da publicação");
+    }
+    if (!body.content || !String(body.content).trim()) {
+      throw new AuthError(400, "Informe o conteúdo da publicação");
+    }
+
+    const status = ["draft", "scheduled", "published"].includes(body.status)
+      ? body.status
+      : "draft";
+
+    if (status === "scheduled" && !body.publish_at) {
+      throw new AuthError(400, "Publicação agendada precisa de data e hora");
+    }
+
+    // Categoria de campanha exige patrocinador — senão o selo "Patrocinado"
+    // não teria de quem falar.
+    if (body.category_id) {
+      const { data: cat } = await supabase
+        .from("feed_categories")
+        .select("requires_sponsor, name")
+        .eq("id", body.category_id)
+        .maybeSingle();
+      if (cat?.requires_sponsor && !body.campaign_id && !body.sponsor_id) {
+        throw new AuthError(
+          400,
+          `A categoria "${cat.name}" exige vincular um patrocinador ou campanha.`
+        );
+      }
+    }
+
+    const payload: Record<string, unknown> = {
       author_id: user.id,
-      title,
-      content,
+      title: String(body.title).trim(),
+      content: String(body.content).trim(),
+      status,
+      category_id: body.category_id ?? null,
+      campaign_id: body.campaign_id ?? null,
+      sponsor_id: body.sponsor_id ?? null,
+      audience_rule_id: body.audience_rule_id ?? null,
+      publish_at: body.publish_at ?? null,
+      unpublish_at: body.unpublish_at ?? null,
+      pinned_until: body.pinned_until ?? null,
+      pin_priority: Number(body.pin_priority) || 0,
+      notify_on_publish: !!body.notify_on_publish,
+      notification_title: body.notification_title ?? null,
+      notification_body: body.notification_body ?? null,
+      comments_enabled: body.comments_enabled !== false,
+      reactions_enabled: body.reactions_enabled !== false,
+      duplicated_from: body.duplicated_from ?? null,
+      published_at: status === "published" ? new Date().toISOString() : null,
+      published_by: status === "published" ? user.id : null,
+      // A coluna antiga continua obrigatória no schema; o gatilho a mantém
+      // coerente com `status`.
+      is_published: status === "published",
+      audience: "all",
     };
-    if (media_urls) insertData.media_urls = media_urls;
-    if (audience) insertData.audience = audience;
-    if (typeof is_pinned === "boolean") insertData.is_pinned = is_pinned;
 
     const { data: post, error } = await supabase
       .from("feed_posts")
-      .insert(insertData)
-      .select(
-        `
-        *,
-        author:profiles!feed_posts_author_id_fkey(id, full_name, avatar_url)
-      `
-      )
+      .insert(payload)
+      .select("*")
       .single();
 
-    if (error) {
-      console.error(`Failed to create feed post: ${error.message}`);
-      return jsonResponse({ message: "Failed to create feed post" }, 500);
+    if (error || !post) {
+      console.error(`Falha ao criar publicação: ${error?.message}`);
+      throw new Error("Falha ao criar a publicação");
     }
 
-    // Log audit
     logAudit({
       userId: user.id,
-      action: "CREATE",
+      action: "feed_post.created",
       entityType: "feed_post",
       entityId: post.id,
-      newData: post as Record<string, unknown>,
-      ipAddress: request.headers.get("x-forwarded-for"),
-      userAgent: request.headers.get("user-agent"),
+      newData: { title: post.title, status },
     });
-
-    // Send push notifications to target audience (fire-and-forget)
-    const targetAudience = post.audience || "all";
-    const roleFilter: string[] = [];
-    if (targetAudience === "all") {
-      roleFilter.push("admin", "technician", "partner");
-    } else if (targetAudience === "employees") {
-      roleFilter.push("admin", "technician");
-    } else if (targetAudience === "partners") {
-      roleFilter.push("admin", "partner");
-    }
-
-    // Fire-and-forget: send notifications to target audience
-    (async () => {
-      try {
-        const { data: recipients } = await supabase
-          .from("profiles")
-          .select("id")
-          .in("role", roleFilter)
-          .eq("status", "active")
-          .neq("id", user.id);
-
-        if (recipients) {
-          for (const r of recipients) {
-            createNotification(
-              r.id,
-              `Novo comunicado: ${post.title}`,
-              post.content.substring(0, 100),
-              "general",
-              { feed_post_id: post.id }
-            ).catch(() => {});
-          }
-        }
-      } catch {
-        // Notification failure should not break the main operation
-      }
-    })();
 
     return jsonResponse(post, 201);
   } catch (error) {
