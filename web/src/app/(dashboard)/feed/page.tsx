@@ -76,7 +76,17 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
   const [publicando, setPublicando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  /**
+   * Id da publicação criada durante esta sessão do editor.
+   *
+   * Sem isto, anexar um arquivo num rascunho novo criava a publicação e o
+   * editor continuava achando que não existia — o segundo anexo criaria uma
+   * SEGUNDA publicação, e publicar criaria uma terceira.
+   */
+  const [idCriado, setIdCriado] = useState<string | null>(null);
   const inputArquivo = useRef<HTMLInputElement>(null);
+
+  const idAtual = post?.id ?? idCriado;
 
   useEffect(() => {
     if (!aberto) return;
@@ -91,6 +101,7 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
     setNotificar(post?.notify_on_publish ?? false);
     setComentarios(post?.comments_enabled ?? true);
     setMidias(post?.media ?? []);
+    setIdCriado(null);
     setErro(null);
   }, [aberto, post]);
 
@@ -121,7 +132,16 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
     return null;
   }
 
-  async function salvar(): Promise<string | null> {
+  /**
+   * @param avisar quando falso, não recarrega a lista nem mostra aviso.
+   *
+   * Publicar chama esta função primeiro para obter o id. Se ela também
+   * recarregasse a lista, duas cargas correriam em paralelo e a de "salvo
+   * como rascunho" poderia chegar DEPOIS da de "publicado", devolvendo a
+   * tela ao estado antigo. Foi o que aconteceu ao agendar: o item ficava
+   * como rascunho até recarregar a página.
+   */
+  async function salvar(avisar = true): Promise<string | null> {
     const problema = validar();
     if (problema) { setErro(problema); return null; }
 
@@ -129,11 +149,16 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
     setErro(null);
     try {
       const payload = montarPayload();
-      const salvo = editando && post
-        ? await feedApi.update(post.id, payload)
+      // `idAtual` cobre o caso de a publicação ter nascido nesta mesma sessão
+      // do editor (ao anexar mídia, por exemplo).
+      const salvo = idAtual
+        ? await feedApi.update(idAtual, payload)
         : await feedApi.create(payload);
-      toast.success(editando ? "Publicação salva" : "Rascunho criado");
-      onSalvo();
+      if (!idAtual) setIdCriado(salvo.id);
+      if (avisar) {
+        toast.success(editando ? "Publicação salva" : "Rascunho criado");
+        onSalvo();
+      }
       return salvo.id;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Erro ao salvar";
@@ -145,7 +170,10 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
   }
 
   async function publicar() {
-    const id = post?.id ?? (await salvar());
+    // Sempre salva antes — sem isso, editar o título e clicar direto em
+    // "Publicar" publicaria a versão antiga e a alteração se perderia.
+    // Sem recarregar a lista: quem recarrega é o publicar, com o estado final.
+    const id = await salvar(false);
     if (!id) return;
 
     setPublicando(true);
@@ -170,7 +198,7 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
 
   async function enviarArquivos(lista: FileList | null) {
     if (!lista || lista.length === 0) return;
-    const id = post?.id ?? (await salvar());
+    const id = idAtual ?? (await salvar());
     if (!id) {
       setErro("Salve o rascunho antes de anexar mídia.");
       return;
