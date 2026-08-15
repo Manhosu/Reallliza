@@ -776,9 +776,12 @@ export default function FeedPage() {
                         <p className="truncate font-medium">{p.title}</p>
                         <p className="line-clamp-1 text-xs text-muted-foreground">{p.content}</p>
                         <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-muted-foreground">
-                          {p.audience && (
-                            <span className="flex items-center gap-1"><Users className="h-3 w-3" />{p.audience.name}</span>
-                          )}
+                          {/* Sem audiência definida, a publicação alcança todo mundo —
+                              dizer isso é melhor que um ícone mudo. */}
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            {p.audience?.name ?? "Todos"}
+                          </span>
                           <span className="flex items-center gap-1"><Eye className="h-3 w-3" />{p.impression_count} impressões</span>
                           <span>{p.like_count} reações</span>
                           <span>{p.comment_count} comentários</span>
