@@ -46,8 +46,8 @@ const CAMPOS_POST = `
   author:profiles!feed_posts_author_id_fkey(id, full_name, avatar_url),
   category:feed_categories(id, slug, name, icon, color),
   sponsor:feed_sponsors(id, name, logo_url, primary_color),
-  media:feed_post_media(id, position, kind, public_url, thumbnail_url, width, height, duration_seconds, alt_text, caption, file_name, mime_type, byte_size),
-  ctas:feed_post_ctas(id, position, cta_type, label, style, target_url, target_route, target_media_id, coupon_code),
+  media:feed_post_media!feed_post_media_post_id_fkey(id, position, kind, public_url, thumbnail_url, width, height, duration_seconds, alt_text, caption, file_name, mime_type, byte_size),
+  ctas:feed_post_ctas!feed_post_ctas_post_id_fkey(id, position, cta_type, label, style, target_url, target_route, target_media_id, coupon_code),
   poll:feed_polls(id, question, allow_multiple, is_anonymous, show_results, closes_at, total_votes,
                   options:feed_poll_options(id, position, label, image_url, vote_count))
 `;
