@@ -19,6 +19,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { feedApi } from "@/lib/api";
 import type { FeedPost, FeedMeta, FeedMedia, FeedInsights } from "@/lib/api/feed";
+import { useAuthStore } from "@/stores/auth-store";
+import { UserRole } from "@/lib/types";
+import { FeedLeitor } from "./leitor";
 
 /**
  * Central de Conteúdo do Feed.
@@ -588,6 +591,16 @@ function PainelInsights({ post, onFechar }: { post: FeedPost; onFechar: () => vo
 // ============================================================
 
 export default function FeedPage() {
+  const user = useAuthStore((s) => s.user);
+
+  // A rota está no menu dos três papéis, mas gerir conteúdo é do admin. Quem
+  // não é admin recebe o feed para ler — antes via os filtros de rascunho e um
+  // botão "Nova publicação" que o servidor recusaria.
+  if (user && user.role !== UserRole.ADMIN) return <FeedLeitor />;
+  return <FeedAdmin />;
+}
+
+function FeedAdmin() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [meta, setMeta] = useState<FeedMeta | null>(null);
   const [carregando, setCarregando] = useState(true);
