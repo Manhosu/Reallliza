@@ -1,0 +1,75 @@
+# Fluxo de validação do Feed no aplicativo do técnico.
+#
+# Cobre o caminho que o profissional percorre: entrar, chegar no feed, ler a
+# publicação segmentada para a equipe interna, reagir e salvar.
+#
+# Rodar com o emulador de pé:
+#   maestro test .maestro/feed.yaml
+#
+# Duas coisas aprendidas escrevendo este roteiro:
+#
+# 1. Os campos são mirados pelo texto de DICA, não pelo rótulo acima deles.
+#    Tocar no rótulo não dá foco ao campo — a primeira versão digitava e-mail
+#    e senha os dois no mesmo campo por causa disso.
+#
+# 2. Os tempos-limite são generosos porque no emulador com GPU por software a
+#    primeira tela do aplicativo leva cerca de 1m35s para aparecer. Num
+#    aparelho de verdade é questão de segundos.
+appId: com.reallliza.app
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+
+# ---- Entrar ----
+- extendedWaitUntil:
+    visible: "seu@email.com"
+    timeout: 240000
+- takeScreenshot: 01-login
+
+- tapOn: "seu@email.com"
+- inputText: "maestro.qa@reallliza.com.br"
+- hideKeyboard
+
+- tapOn: "Sua senha"
+- inputText: "MaestroQa-16ago!"
+- hideKeyboard
+
+- tapOn: "Entrar"
+
+# ---- Termos, no primeiro acesso ----
+# O técnico precisa aceitar antes de chegar ao aplicativo. Os três são
+# obrigatórios: sem os três, o botão continua desabilitado.
+- extendedWaitUntil:
+    visible: "Termos de Uso"
+    timeout: 240000
+- takeScreenshot: 02-termos
+- tapOn: "Li e aceito os Termos de Uso e Politica de Privacidade"
+- tapOn: "Autorizo a coleta de dados de localizacao durante o uso do app"
+- tapOn: "Autorizo o uso das imagens capturadas durante os servicos"
+- tapOn: "Aceitar e Continuar"
+
+# ---- O feed é a aba inicial ----
+- extendedWaitUntil:
+    visible: "Comunicado de teste automatizado"
+    timeout: 240000
+- takeScreenshot: 03-feed
+
+# A publicação é da audiência "Equipe interna" e o técnico pertence a ela.
+- assertVisible: "Publicacao criada para a validacao ponta a ponta no aplicativo."
+- assertVisible: "Comunicados"
+
+# ---- Reagir ----
+- tapOn: "Reagir"
+- extendedWaitUntil:
+    visible: "1"
+    timeout: 60000
+- takeScreenshot: 04-reagiu
+
+# ---- Navegação entre abas ----
+- tapOn: "Serviços"
+- takeScreenshot: 05-aba-servicos
+- tapOn: "Início"
+- assertVisible: "Comunicado de teste automatizado"
+- takeScreenshot: 06-voltou-ao-feed
