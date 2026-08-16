@@ -1,7 +1,7 @@
 # Carrossel, vídeo e botão de ação no aplicativo do técnico.
 #
 # Complementa feed.yaml, que cobre o caminho básico. Aqui o alvo é a mídia:
-# deslizar o carrossel, tocar o vídeo até passar dos quartis, e acionar o
+# deslizar o carrossel, deixar o vídeo correr além dos quartis, e acionar o
 # botão da publicação — os três geram evento de métrica, e é isso que
 # interessa validar.
 #
@@ -66,13 +66,17 @@ appId: com.reallliza.app
 - assertVisible: "4/4"
 - takeScreenshot: 04-video
 
-# Toca no centro do vídeo para iniciar e deixa passar dos quartis.
-# O vídeo tem 8 segundos: 12s de espera cobre 100%.
-- tapOn:
-    point: "50%,35%"
+# Não toca no vídeo: ele começa sozinho, mudo, quando o slide fica visível.
+# Um toque aqui abriria os controles nativos e poderia pausar a reprodução no
+# meio da medição. O vídeo tem 8 segundos; 14s de espera cobre os 100% com
+# folga para o carregamento pela rede.
 - waitForAnimationToEnd:
-    timeout: 12000
+    timeout: 14000
 - takeScreenshot: 05-video-tocando
+
+# O botão de som confirma que o player está montado com autoplay mudo — é ele
+# que devolve o áudio, porque os controles nativos do Android não têm volume.
+- assertVisible: "Som"
 
 # ---- Botão de ação ----
 # Gera evento de clique, que alimenta a taxa de clique da campanha.
