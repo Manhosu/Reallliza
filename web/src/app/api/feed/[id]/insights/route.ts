@@ -29,7 +29,7 @@ export async function GET(
       .maybeSingle();
     if (!post) throw new AuthError(404, "Publicação não encontrada");
 
-    const [diario, porDimensao, alcance] = await Promise.all([
+    const [diario, porDimensao, alcance, retencao] = await Promise.all([
       supabase
         .from("feed_post_daily_metrics")
         .select("*")
@@ -42,6 +42,13 @@ export async function GET(
       supabase
         .from("feed_post_reach")
         .select("user_id", { count: "exact", head: true })
+        .eq("post_id", id),
+      // Retenção por PESSOA. A agregação diária conta eventos, então alguém
+      // que reveja o vídeo três vezes aparece como três — serve para volume,
+      // não para a curva. A curva sai daqui.
+      supabase
+        .from("feed_video_retencao_v")
+        .select("media_id, espectadores, chegaram_25, chegaram_50, chegaram_75, chegaram_100, tempo_medio_ms, percentual_medio")
         .eq("post_id", id),
     ]);
 
@@ -107,6 +114,26 @@ export async function GET(
               : 0,
         },
       },
+      // Uma linha por vídeo da publicação, em espectadores distintos. É a
+      // curva que cai de 100% ao início até quem ficou até o fim.
+      retencao_video: (retencao.data ?? []).map((r) => {
+        const base = Number(r.espectadores) || 0;
+        const pct = (n: number) => (base > 0 ? Number(((n / base) * 100).toFixed(1)) : 0);
+        return {
+          media_id: r.media_id,
+          espectadores: base,
+          curva: {
+            inicio: 100,
+            p25: pct(Number(r.chegaram_25)),
+            p50: pct(Number(r.chegaram_50)),
+            p75: pct(Number(r.chegaram_75)),
+            p100: pct(Number(r.chegaram_100)),
+          },
+          assistiram_ate_o_fim: Number(r.chegaram_100) || 0,
+          tempo_medio_ms: Number(r.tempo_medio_ms) || 0,
+          percentual_medio: Number(r.percentual_medio) || 0,
+        };
+      }),
       evolucao_diaria: dias,
       recortes,
     });
