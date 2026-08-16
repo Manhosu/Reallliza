@@ -29,7 +29,7 @@
  * alto-falante devolve o som, que os controles nativos do Android nao tem.
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   type StyleProp, type ViewStyle,
@@ -84,6 +84,17 @@ export function FeedVideo({
   const avisos = useRef({ onIniciar, onQuartil, onTempoAssistido });
   avisos.current = { onIniciar, onQuartil, onTempoAssistido };
 
+  // Entrega o tempo acumulado e zera o cronometro. Precisa ser chamado em
+  // todo caminho de saida — pausa, fim do video, card fora de vista e
+  // desmontagem — senao o tempo assistido some junto com o componente.
+  const descarregarTempo = useCallback(() => {
+    if (acumuladoMs.current > 0) {
+      avisos.current.onTempoAssistido?.(Math.round(acumuladoMs.current));
+      acumuladoMs.current = 0;
+    }
+    ultimaAmostra.current = null;
+  }, []);
+
   // Toca quando o card entra em vista, pausa quando sai. Sem isso o audio
   // continua tocando enquanto o profissional ja rolou para outra publicacao.
   useEffect(() => {
@@ -96,14 +107,39 @@ export function FeedVideo({
     } catch {
       /* player pode ja ter sido liberado */
     }
-    if (!ativo) {
-      if (acumuladoMs.current > 0) {
-        avisos.current.onTempoAssistido?.(Math.round(acumuladoMs.current));
-        acumuladoMs.current = 0;
+    if (!ativo) descarregarTempo();
+  }, [ativo, autoplay, player, descarregarTempo]);
+
+  // O fim do video vem por evento, nao por amostragem.
+  //
+  // A amostragem de 1s nunca ve os 100%: quando o ultimo quadro passa, o
+  // player para, `playing` fica falso e o tique seguinte sai fora antes de
+  // calcular qualquer coisa. Na validacao os quartis de 25, 50 e 75
+  // chegaram e o de 100 — justamente o que interessa numa curva de
+  // retencao — ficou zerado nas duas execucoes.
+  //
+  // `playingChange` fecha o outro buraco: o tempo assistido so era entregue
+  // quando o card saia de vista. Quem pausava e ficava olhando a mesma
+  // publicacao nao gerava tempo nenhum.
+  useEffect(() => {
+    const aoTerminar = player.addListener('playToEnd', () => {
+      if (!quartisVistos.current.has(100)) {
+        quartisVistos.current.add(100);
+        avisos.current.onQuartil?.(100);
       }
-      ultimaAmostra.current = null;
-    }
-  }, [ativo, autoplay, player]);
+      descarregarTempo();
+    });
+    const aoTrocar = player.addListener('playingChange', ({ isPlaying }) => {
+      if (!isPlaying) descarregarTempo();
+    });
+    return () => {
+      aoTerminar.remove();
+      aoTrocar.remove();
+    };
+  }, [player, descarregarTempo]);
+
+  // Sair do aplicativo pelo botao de acao tambem e uma saida.
+  useEffect(() => descarregarTempo, [descarregarTempo]);
 
   // Amostragem de progresso. Um segundo e resolucao suficiente para quartil
   // e barato o bastante para nao pesar na rolagem.
@@ -129,7 +165,9 @@ export function FeedVideo({
         const duracao = player.duration;
         if (duracao > 0) {
           const pct = (player.currentTime / duracao) * 100;
-          for (const q of [25, 50, 75, 100] as const) {
+          // O 100 fica de fora daqui de proposito: quem o emite e o evento
+          // `playToEnd`, porque a amostragem sempre chega tarde ao fim.
+          for (const q of [25, 50, 75] as const) {
             if (pct >= q && !quartisVistos.current.has(q)) {
               quartisVistos.current.add(q);
               avisos.current.onQuartil?.(q);
