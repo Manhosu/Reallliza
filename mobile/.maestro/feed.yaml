@@ -38,17 +38,24 @@ appId: com.reallliza.app
 
 - tapOn: "Entrar"
 
-# ---- Termos, no primeiro acesso ----
-# O técnico precisa aceitar antes de chegar ao aplicativo. Os três são
-# obrigatórios: sem os três, o botão continua desabilitado.
+# ---- Termos, só no primeiro acesso ----
+# O técnico precisa aceitar antes de chegar ao aplicativo, e os três são
+# obrigatórios: sem os três, o botão continua desabilitado. Mas o aceite fica
+# gravado no servidor — `clearState` não o traz de volta, então a tela aparece
+# uma vez por conta e some. A espera aceita as duas telas possíveis (o texto é
+# tratado como expressão regular) e o bloco só roda se ela estiver ali.
 - extendedWaitUntil:
-    visible: "Termos de Uso"
+    visible: "Termos de Uso|Comunicado de teste automatizado"
     timeout: 480000
-- takeScreenshot: 02-termos
-- tapOn: "Li e aceito os Termos de Uso e Politica de Privacidade"
-- tapOn: "Autorizo a coleta de dados de localizacao durante o uso do app"
-- tapOn: "Autorizo o uso das imagens capturadas durante os servicos"
-- tapOn: "Aceitar e Continuar"
+- runFlow:
+    when:
+      visible: "Termos de Uso"
+    commands:
+      - takeScreenshot: 02-termos
+      - tapOn: "Li e aceito os Termos de Uso e Politica de Privacidade"
+      - tapOn: "Autorizo a coleta de dados de localizacao durante o uso do app"
+      - tapOn: "Autorizo o uso das imagens capturadas durante os servicos"
+      - tapOn: "Aceitar e Continuar"
 
 # ---- O feed é a aba inicial ----
 - extendedWaitUntil:

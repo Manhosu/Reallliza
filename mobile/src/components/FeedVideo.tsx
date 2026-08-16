@@ -14,6 +14,13 @@
  * O progresso alimenta a metrica de quartis (25/50/75/100%), que e uma das
  * informacoes pedidas pro painel de campanha.
  *
+ * Sem `allowsPictureInPicture`: a propriedade estava ligada, mas o plugin de
+ * configuracao do expo-video nunca entrou no app.json. O resultado era o
+ * player chamar `setPictureInPictureParams` numa activity que nao suporta
+ * PiP e tomar IllegalStateException a cada mudanca de estado — dezenas de
+ * excecoes no log por reproducao. Ninguem pediu janela flutuante pra um
+ * video mudo de oito segundos, entao a saida e desligar, nao habilitar.
+ *
  * 16/08: autoplay mudo quando o card esta visivel. O padrao anterior era tap
  * to play, e o callback de criacao do player roda uma unica vez — quando o
  * slide ainda nem entrou em tela. Resultado: o video so tocava se alguem
@@ -154,7 +161,6 @@ export function FeedVideo({
         contentFit="contain"
         nativeControls
         allowsFullscreen
-        allowsPictureInPicture
       />
       {/* Os controles nativos do Android nao trazem botao de som. Sem este,
           um video que comeca mudo fica mudo para sempre. */}

@@ -28,13 +28,22 @@ appId: com.reallliza.app
 - hideKeyboard
 - tapOn: "Entrar"
 
+# ---- Termos, só no primeiro acesso ----
+# O aceite fica gravado no servidor, então `clearState` não o traz de volta:
+# a tela aparece uma vez por conta e some para sempre. A espera aceita as
+# duas telas possíveis (o texto é tratado como expressão regular) e o bloco
+# de aceite só roda se ela realmente estiver ali.
 - extendedWaitUntil:
-    visible: "Termos de Uso"
+    visible: "Termos de Uso|Passo a passo da instalacao"
     timeout: 480000
-- tapOn: "Li e aceito os Termos de Uso e Politica de Privacidade"
-- tapOn: "Autorizo a coleta de dados de localizacao durante o uso do app"
-- tapOn: "Autorizo o uso das imagens capturadas durante os servicos"
-- tapOn: "Aceitar e Continuar"
+- runFlow:
+    when:
+      visible: "Termos de Uso"
+    commands:
+      - tapOn: "Li e aceito os Termos de Uso e Politica de Privacidade"
+      - tapOn: "Autorizo a coleta de dados de localizacao durante o uso do app"
+      - tapOn: "Autorizo o uso das imagens capturadas durante os servicos"
+      - tapOn: "Aceitar e Continuar"
 
 # ---- A publicação com mídia ----
 - extendedWaitUntil:
