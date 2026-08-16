@@ -25,7 +25,7 @@ appId: com.reallliza.app
 # ---- Entrar ----
 - extendedWaitUntil:
     visible: "seu@email.com"
-    timeout: 240000
+    timeout: 480000
 - takeScreenshot: 01-login
 
 - tapOn: "seu@email.com"
@@ -43,7 +43,7 @@ appId: com.reallliza.app
 # obrigatórios: sem os três, o botão continua desabilitado.
 - extendedWaitUntil:
     visible: "Termos de Uso"
-    timeout: 240000
+    timeout: 480000
 - takeScreenshot: 02-termos
 - tapOn: "Li e aceito os Termos de Uso e Politica de Privacidade"
 - tapOn: "Autorizo a coleta de dados de localizacao durante o uso do app"
@@ -53,7 +53,7 @@ appId: com.reallliza.app
 # ---- O feed é a aba inicial ----
 - extendedWaitUntil:
     visible: "Comunicado de teste automatizado"
-    timeout: 240000
+    timeout: 480000
 - takeScreenshot: 03-feed
 
 # A publicação é da audiência "Equipe interna" e o técnico pertence a ela.

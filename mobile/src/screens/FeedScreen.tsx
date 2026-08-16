@@ -284,6 +284,19 @@ export function FeedScreen() {
               feedTracker.registrar('download', item.id, { media_id: m.id });
               if (m.public_url) Linking.openURL(m.public_url).catch(() => {});
             }}
+            onVideoIniciar={(m) =>
+              feedTracker.registrar('video_start', item.id, { media_id: m.id })
+            }
+            onVideoQuartil={(m, q) =>
+              feedTracker.registrar(
+                q === 100 ? 'video_complete' : (`video_q${q}` as const),
+                item.id,
+                { media_id: m.id }
+              )
+            }
+            onVideoTempo={(m, ms) =>
+              feedTracker.registrar('video_watch', item.id, { media_id: m.id, value_num: ms })
+            }
           />
         )}
 

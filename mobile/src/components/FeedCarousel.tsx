@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import {
-  View, Image, ScrollView, Dimensions, Text, TouchableOpacity, StyleSheet,
+  View, Image, ScrollView, Text, TouchableOpacity, StyleSheet,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FeedVideo } from './FeedVideo';
@@ -25,9 +26,13 @@ interface Props {
   ativo: boolean;
   onTrocarSlide?: (indice: number, midia: MidiaFeed) => void;
   onAbrirDocumento?: (midia: MidiaFeed) => void;
+  /** Play efetivo do vídeo. */
+  onVideoIniciar?: (midia: MidiaFeed) => void;
+  /** Quartil alcançado — alimenta a métrica de retenção. */
+  onVideoQuartil?: (midia: MidiaFeed, quartil: 25 | 50 | 75 | 100) => void;
+  /** Milissegundos assistidos, ao pausar ou sair do slide. */
+  onVideoTempo?: (midia: MidiaFeed, ms: number) => void;
 }
-
-const LARGURA = Dimensions.get('window').width;
 
 /**
  * Carrossel de mídia da publicação.
@@ -41,23 +46,37 @@ const LARGURA = Dimensions.get('window').width;
  * reprodutor de vídeo. Vinte reprodutores vivos ao mesmo tempo esgotam o
  * decodificador de hardware e travam o aparelho de entrada.
  */
-export function FeedCarousel({ midias, ativo, onTrocarSlide, onAbrirDocumento }: Props) {
+export function FeedCarousel({
+  midias, ativo, onTrocarSlide, onAbrirDocumento,
+  onVideoIniciar, onVideoQuartil, onVideoTempo,
+}: Props) {
   const [indice, setIndice] = useState(0);
+  // Largura MEDIDA do contêiner, não a da tela: o carrossel vive dentro de um
+  // cartão com margem lateral. Usar a largura da janela fazia cada página ser
+  // mais larga que a área visível, e o carrossel parava entre dois slides,
+  // mostrando a borda do anterior.
+  const [largura, setLargura] = useState(0);
   const jaVistos = useRef(new Set<number>([0]));
+
+  const aoMedir = (e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w > 0 && w !== largura) setLargura(w);
+  };
 
   if (midias.length === 0) return null;
 
   const unica = midias.length === 1;
 
   return (
-    <View>
+    <View onLayout={aoMedir}>
       <ScrollView
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         scrollEnabled={!unica}
         onMomentumScrollEnd={(e) => {
-          const novo = Math.round(e.nativeEvent.contentOffset.x / LARGURA);
+          if (largura <= 0) return;
+          const novo = Math.round(e.nativeEvent.contentOffset.x / largura);
           if (novo === indice) return;
           setIndice(novo);
           // Só avisa a primeira vez que o slide é alcançado: ir e voltar não
@@ -70,7 +89,7 @@ export function FeedCarousel({ midias, ativo, onTrocarSlide, onAbrirDocumento }:
         scrollEventThrottle={16}
       >
         {midias.map((m, i) => (
-          <View key={m.id} style={{ width: LARGURA, aspectRatio: 1, backgroundColor: '#000' }}>
+          <View key={m.id} style={{ width: largura, aspectRatio: 1, backgroundColor: colors.cardAlt }}>
             {m.kind === 'image' && m.public_url ? (
               <Image
                 source={{ uri: m.public_url }}
@@ -79,7 +98,13 @@ export function FeedCarousel({ midias, ativo, onTrocarSlide, onAbrirDocumento }:
                 accessibilityLabel={m.alt_text ?? undefined}
               />
             ) : m.kind === 'video' && m.public_url ? (
-              <FeedVideo uri={m.public_url} ativo={ativo && i === indice} />
+              <FeedVideo
+                uri={m.public_url}
+                ativo={ativo && i === indice}
+                onIniciar={() => onVideoIniciar?.(m)}
+                onQuartil={(q) => onVideoQuartil?.(m, q)}
+                onTempoAssistido={(ms) => onVideoTempo?.(m, ms)}
+              />
             ) : (
               <TouchableOpacity
                 style={styles.documento}

@@ -1,0 +1,88 @@
+# Carrossel, vídeo e botão de ação no aplicativo do técnico.
+#
+# Complementa feed.yaml, que cobre o caminho básico. Aqui o alvo é a mídia:
+# deslizar o carrossel, tocar o vídeo até passar dos quartis, e acionar o
+# botão da publicação — os três geram evento de métrica, e é isso que
+# interessa validar.
+#
+#   maestro test .maestro/feed-midia.yaml
+appId: com.reallliza.app
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+
+# ---- Entrar ----
+# Os campos são mirados pela DICA, não pelo rótulo: tocar no rótulo não dá
+# foco ao campo. Tempos generosos porque no emulador com GPU por software a
+# primeira tela leva de 1m30s a mais de 4 minutos.
+- extendedWaitUntil:
+    visible: "seu@email.com"
+    timeout: 480000
+- tapOn: "seu@email.com"
+- inputText: "maestro.qa@reallliza.com.br"
+- hideKeyboard
+- tapOn: "Sua senha"
+- inputText: "MaestroQa-16ago!"
+- hideKeyboard
+- tapOn: "Entrar"
+
+- extendedWaitUntil:
+    visible: "Termos de Uso"
+    timeout: 480000
+- tapOn: "Li e aceito os Termos de Uso e Politica de Privacidade"
+- tapOn: "Autorizo a coleta de dados de localizacao durante o uso do app"
+- tapOn: "Autorizo o uso das imagens capturadas durante os servicos"
+- tapOn: "Aceitar e Continuar"
+
+# ---- A publicação com mídia ----
+- extendedWaitUntil:
+    visible: "Passo a passo da instalacao"
+    timeout: 480000
+- takeScreenshot: 01-carrossel-slide-1
+
+# O contador do carrossel confirma quantos itens existem.
+- assertVisible: "1/4"
+
+# ---- Deslizar o carrossel ----
+# Cada deslize gera um evento de avanço, contado uma vez por slide.
+- swipe:
+    start: "80%, 35%"
+    end: "15%, 35%"
+- assertVisible: "2/4"
+- takeScreenshot: 02-carrossel-slide-2
+
+- swipe:
+    start: "80%, 35%"
+    end: "15%, 35%"
+- assertVisible: "3/4"
+- takeScreenshot: 03-carrossel-slide-3
+
+# ---- Vídeo, no quarto item ----
+- swipe:
+    start: "80%, 35%"
+    end: "15%, 35%"
+- assertVisible: "4/4"
+- takeScreenshot: 04-video
+
+# Toca no centro do vídeo para iniciar e deixa passar dos quartis.
+# O vídeo tem 8 segundos: 12s de espera cobre 100%.
+- tapOn:
+    point: "50%,35%"
+- waitForAnimationToEnd:
+    timeout: 12000
+- takeScreenshot: 05-video-tocando
+
+# ---- Botão de ação ----
+# Gera evento de clique, que alimenta a taxa de clique da campanha.
+- scrollUntilVisible:
+    element:
+      text: "Baixar catalogo"
+    direction: DOWN
+    timeout: 30000
+- takeScreenshot: 06-botao-de-acao
+- tapOn: "Baixar catalogo"
+- waitForAnimationToEnd:
+    timeout: 8000
+- takeScreenshot: 07-apos-o-botao
