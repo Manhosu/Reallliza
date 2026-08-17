@@ -25,11 +25,15 @@ export async function GET(request: NextRequest) {
 
     const { data: denuncias, error } = await supabase
       .from("feed_comment_reports")
+      // As chaves são nomeadas porque há dois caminhos de `feed_post_comments`
+      // para `profiles` — quem escreveu e quem moderou. Sem nomear, o
+      // PostgREST recusa a consulta por ambiguidade.
       .select(
         "id, reason, details, status, created_at, " +
           "reporter:profiles!feed_comment_reports_reporter_id_fkey(id, full_name), " +
-          "comment:feed_post_comments(id, content, created_at, status, deleted_at, like_count, " +
-          "post_id, author:profiles(id, full_name))"
+          "comment:feed_post_comments!feed_comment_reports_comment_id_fkey(" +
+          "id, content, created_at, status, deleted_at, like_count, post_id, " +
+          "author:profiles!feed_post_comments_user_id_fkey(id, full_name))"
       )
       .eq("status", situacao)
       .order("created_at", { ascending: false })
@@ -93,7 +97,7 @@ export async function PATCH(request: NextRequest) {
 
     const { data: comentario } = await supabase
       .from("feed_post_comments")
-      .select("id, post_id, author_id")
+      .select("id, post_id, user_id")
       .eq("id", body.comment_id)
       .maybeSingle();
     if (!comentario) throw new AuthError(404, "Comentário não encontrado");
@@ -101,19 +105,19 @@ export async function PATCH(request: NextRequest) {
     if (body.acao === "esconder") {
       await supabase
         .from("feed_post_comments")
-        .update({ status: "hidden" })
+        .update({ status: "hidden", moderated_by: user.id })
         .eq("id", body.comment_id);
     } else if (body.acao === "remover") {
       // Remoção é lógica: o texto sai do feed e a linha fica, porque uma
       // denúncia sem o que foi denunciado é indefensável se alguém contestar.
       await supabase
         .from("feed_post_comments")
-        .update({ status: "removed", deleted_at: new Date().toISOString() })
+        .update({ status: "removed", deleted_at: new Date().toISOString(), moderated_by: user.id })
         .eq("id", body.comment_id);
     } else if (body.acao === "liberar") {
       await supabase
         .from("feed_post_comments")
-        .update({ status: "visible", deleted_at: null })
+        .update({ status: "visible", deleted_at: null, moderated_by: user.id })
         .eq("id", body.comment_id);
     }
 

@@ -165,4 +165,168 @@ export const feedApi = {
 
   removeMedia: (mediaId: string) =>
     apiClient.delete<{ success: true }>(`/feed/media/${mediaId}`),
+
+  duplicate: (id: string) =>
+    apiClient.post<{ id: string; title: string; midias: number; botoes: number; enquete: boolean }>(
+      `/feed/${id}/duplicate`,
+      {}
+    ),
+
+  votarEnquete: (pollId: string, opcoes: string[]) =>
+    apiClient.post<{ votou: boolean; resultado: FeedEnquete | null }>(
+      `/feed/polls/${pollId}/vote`,
+      { option_ids: opcoes }
+    ),
+};
+
+export interface FeedEnquete {
+  id: string;
+  question: string;
+  total_votes: number;
+  unique_voters: number;
+  show_results: string;
+  options: { id: string; position: number; label: string; vote_count: number }[];
+}
+
+export interface PainelFeed {
+  periodo: { dias: number; desde: string };
+  totais: Record<string, number>;
+  evolucao_diaria: Record<string, Record<string, number>>;
+  destaques: Record<string, { id: string; title: string; valor: number; is_sponsored: boolean }[]>;
+  campanhas_por_desempenho: {
+    id: string; name: string; status: string;
+    impressoes: number; cliques: number; leads: number;
+  }[];
+  por_categoria: { id: string; name: string; color: string | null; impressoes: number }[];
+  acesso: { dia_semana: number; hora: number; eventos: number; pessoas: number }[];
+}
+
+export interface UfDoMapa {
+  uf: string; nome: string; regiao: string;
+  profissionais: number; alcancados: number;
+  impressoes: number; interacoes: number;
+}
+
+export interface Patrocinador {
+  id: string; name: string; legal_name: string | null; cnpj: string | null;
+  sponsor_type: string; logo_url: string | null; website_url: string | null;
+  primary_color: string | null; contact_name: string | null;
+  contact_email: string | null; is_active: boolean;
+  desempenho?: { impressoes: number; cliques: number };
+  campanhas?: { total: number; ativas: number };
+}
+
+export interface Campanha {
+  id: string; sponsor_id: string; name: string; objective: string | null;
+  status: string; starts_at: string | null; ends_at: string | null;
+  budget_cents: number | null; contract_ref: string | null;
+  goal_impressions: number | null; goal_clicks: number | null; goal_leads: number | null;
+  sponsor?: { id: string; name: string; logo_url: string | null; primary_color: string | null };
+  entregue?: { impressoes: number; cliques: number; leads: number; conversoes: number };
+  progresso?: { impressoes: number | null; cliques: number | null; leads: number | null };
+}
+
+export interface Lead {
+  id: string; kind: string; name: string; email: string | null; phone: string | null;
+  uf: string | null; city_name: string | null; message: string | null;
+  status: string; created_at: string; converted_at: string | null; notes: string | null;
+  post?: { id: string; title: string } | null;
+  sponsor?: { id: string; name: string } | null;
+  campaign?: { id: string; name: string } | null;
+}
+
+export interface Catalogos {
+  rotulos: Record<string, string>;
+  ufs: { uf: string; name: string; region: string }[];
+  regioes: string[];
+  tipos_de_piso: { id: string; name: string; family: string | null }[];
+  certificacoes: { id: string; name: string; issuer: string | null }[];
+  fabricantes: { id: string; name: string; logo_url: string | null }[];
+  especialidades: { id: string; name: string }[];
+  cursos: { id: string; title: string }[];
+  parceiros: { id: string; company_name: string }[];
+  equipes: { id: string; name: string }[];
+  papeis: { valor: string; rotulo: string }[];
+  tipos_profissionais: { valor: string; rotulo: string }[];
+  niveis: { valor: string; rotulo: string }[];
+  saude_do_cadastro: {
+    perfis_ativos: number; com_uf: number; com_cidade: number;
+    com_tipo_de_piso: number; com_certificacao: number;
+    com_fabricante: number; aparelhos_registrados: number;
+  } | null;
+}
+
+/** Campanhas, patrocinadores, leads, moderação e painel. */
+export const feedGestaoApi = {
+  painel: (dias = 30, sponsorId?: string) =>
+    apiClient.get<PainelFeed>(
+      `/feed/dashboard?dias=${dias}${sponsorId ? `&sponsor_id=${sponsorId}` : ""}`
+    ),
+
+  mapa: (dias = 30) => apiClient.get<{ ufs: UfDoMapa[] }>(`/feed/mapa?dias=${dias}`),
+
+  catalogos: () => apiClient.get<Catalogos>("/feed/catalogos"),
+
+  buscarCidade: (termo: string, uf?: string) =>
+    apiClient.get<{ cidades: { ibge_code: string; name: string; uf: string }[] }>(
+      `/feed/catalogos?cidade=${encodeURIComponent(termo)}${uf ? `&uf=${uf}` : ""}`
+    ),
+
+  criarNoCatalogo: (catalogo: "certificacao" | "fabricante" | "tipo_de_piso", dados: Record<string, unknown>) =>
+    apiClient.post<{ id: string; name: string }>("/feed/catalogos", { catalogo, ...dados }),
+
+  patrocinadores: () => apiClient.get<{ patrocinadores: Patrocinador[] }>("/feed/sponsors"),
+  criarPatrocinador: (dados: Partial<Patrocinador>) =>
+    apiClient.post<Patrocinador>("/feed/sponsors", dados),
+  atualizarPatrocinador: (id: string, dados: Partial<Patrocinador>) =>
+    apiClient.patch<Patrocinador>(`/feed/sponsors/${id}`, dados),
+  removerPatrocinador: (id: string) =>
+    apiClient.delete<{ desativado?: boolean; excluido?: boolean; motivo?: string }>(
+      `/feed/sponsors/${id}`
+    ),
+
+  campanhas: (filtros?: { status?: string; sponsor_id?: string }) => {
+    const p = new URLSearchParams();
+    if (filtros?.status) p.set("status", filtros.status);
+    if (filtros?.sponsor_id) p.set("sponsor_id", filtros.sponsor_id);
+    const q = p.toString();
+    return apiClient.get<{ campanhas: Campanha[] }>(`/feed/campaigns${q ? `?${q}` : ""}`);
+  },
+  criarCampanha: (dados: Record<string, unknown>) =>
+    apiClient.post<Campanha>("/feed/campaigns", dados),
+  atualizarCampanha: (id: string, dados: Record<string, unknown>) =>
+    apiClient.patch<Campanha & { pecas_pausadas: number }>(`/feed/campaigns/${id}`, dados),
+
+  leads: (filtros?: { status?: string; sponsor_id?: string; campaign_id?: string }) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(filtros ?? {})) if (v) p.set(k, v);
+    const q = p.toString();
+    return apiClient.get<{
+      leads: Lead[];
+      resumo: { total: number; por_situacao: Record<string, number>; por_tipo: Record<string, number>; taxa_conversao: number };
+    }>(`/feed/leads${q ? `?${q}` : ""}`);
+  },
+  atualizarLead: (id: string, dados: { status?: string; notes?: string }) =>
+    apiClient.patch<Lead>("/feed/leads", { id, ...dados }),
+
+  moderacao: (status = "open") =>
+    apiClient.get<{
+      fila: { comentario: Record<string, unknown>; denuncias: Record<string, unknown>[]; motivos: string[] }[];
+      resumo: { abertas: number; resolvidas: number };
+    }>(`/feed/moderation?status=${status}`),
+  moderar: (comment_id: string, acao: "esconder" | "remover" | "liberar" | "arquivar") =>
+    apiClient.patch<{ ok: true }>("/feed/moderation", { comment_id, acao }),
+
+  /**
+   * O relatório não passa pelo cliente de API porque não é JSON: é um arquivo
+   * que o navegador precisa baixar com o nome certo.
+   */
+  urlRelatorio: (
+    tipo: "publicacoes" | "campanhas" | "leads" | "recortes",
+    filtros?: Record<string, string | number>
+  ) => {
+    const p = new URLSearchParams({ tipo });
+    for (const [k, v] of Object.entries(filtros ?? {})) p.set(k, String(v));
+    return `/api/feed/reports?${p.toString()}`;
+  },
 };

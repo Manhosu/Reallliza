@@ -43,6 +43,7 @@ import {
   ListChecks,
   UserSquare2,
   BarChart3,
+  Inbox,
   Lock,
   Cog,
   GraduationCap,
@@ -71,6 +72,27 @@ const allNavItems = [
     href: "/feed",
     icon: Megaphone,
     roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.PARTNER],
+  },
+  // As três telas de gestão do Feed só existem para administrador. O
+  // profissional vê o feed e mais nada — painel, campanha e pedido são
+  // trabalho de quem publica, não de quem lê.
+  {
+    label: "Painel do Feed",
+    href: "/feed/painel",
+    icon: BarChart3,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    label: "Campanhas",
+    href: "/feed/campanhas",
+    icon: Building2,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    label: "Pedidos e moderação",
+    href: "/feed/leads",
+    icon: Inbox,
+    roles: [UserRole.ADMIN],
   },
   {
     label: "Ordens de Serviço",
