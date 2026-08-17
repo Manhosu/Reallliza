@@ -47,6 +47,9 @@ export async function POST(
       is_pinned: _emDestaque,
       status: _situacao,
       sort_key: _ordem,
+      // Coluna calculada pelo banco a partir de patrocinador e campanha.
+      // Mandar valor para ela é erro de inserção, não escolha.
+      is_sponsored: _patrocinada,
       like_count: _curtidas,
       comment_count: _comentarios,
       share_count: _compartilhamentos,

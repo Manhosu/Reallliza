@@ -655,20 +655,31 @@ function FeedAdmin() {
     }
   }
 
+  /**
+   * A cópia é feita no servidor, não aqui.
+   *
+   * A versão anterior montava a cópia no navegador com seis campos: título,
+   * texto, categoria, público, patrocinador e permissão de comentário. Mídia,
+   * botão de ação e enquete ficavam para trás — ou seja, duplicar uma peça de
+   * campanha devolvia um texto sem as imagens nem o botão, que é exatamente o
+   * trabalho que duplicar existe para poupar.
+   */
   async function duplicar(p: FeedPost) {
     try {
-      const completo = await feedApi.getById(p.id);
-      const novo = await feedApi.create({
-        title: `${completo.title} (cópia)`,
-        content: completo.content,
-        category_id: completo.category_id,
-        audience_rule_id: completo.audience_rule_id,
-        sponsor_id: completo.sponsor_id,
-        comments_enabled: completo.comments_enabled,
-      });
-      toast.success("Cópia criada como rascunho");
+      const copia = await feedApi.duplicate(p.id);
+      const partes = [
+        copia.midias > 0 && `${copia.midias} mídia(s)`,
+        copia.botoes > 0 && `${copia.botoes} botão(ões)`,
+        copia.enquete && "enquete",
+      ].filter(Boolean);
+      toast.success(
+        partes.length
+          ? `Cópia criada como rascunho, com ${partes.join(", ")}`
+          : "Cópia criada como rascunho"
+      );
       await carregar();
-      abrirEdicao(novo);
+      const completo = await feedApi.getById(copia.id);
+      abrirEdicao(completo);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Erro ao duplicar");
     }
