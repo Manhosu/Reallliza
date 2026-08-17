@@ -74,12 +74,15 @@ export default function PainelDoFeed() {
 
   const serie = useMemo(() => {
     if (!painel) return [];
+    // Ordena pela data ISO e só depois formata. Ordenar pelo rótulo "dd/mm"
+    // põe 28/07 depois de 17/08, porque a comparação é de texto — o gráfico
+    // vira uma linha que volta no tempo na virada do mês.
     return Object.entries(painel.evolucao_diaria)
+      .sort(([a], [b]) => a.localeCompare(b))
       .map(([dia, v]) => ({
         dia: new Date(`${dia}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
         ...v,
-      }))
-      .sort((a, b) => a.dia.localeCompare(b.dia));
+      }));
   }, [painel]);
 
   const porHora = useMemo(() => {
@@ -217,11 +220,11 @@ export default function PainelDoFeed() {
                   <AreaChart data={serie}>
                     <defs>
                       <linearGradient id="gAlcance" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
-                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                        <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis dataKey="dia" fontSize={12} tickLine={false} axisLine={false} />
                     <YAxis fontSize={12} tickLine={false} axisLine={false} />
                     <Tooltip
@@ -229,7 +232,7 @@ export default function PainelDoFeed() {
                       labelFormatter={(v) => `Dia ${v}`}
                     />
                     <Area type="monotone" dataKey="impressoes" name="Impressões"
-                      stroke="hsl(var(--primary))" fill="url(#gAlcance)" strokeWidth={2} />
+                      stroke="var(--primary)" fill="url(#gAlcance)" strokeWidth={2} />
                     <Area type="monotone" dataKey="cliques" name="Cliques"
                       stroke="#2C7A55" fill="transparent" strokeWidth={2} />
                     <Area type="monotone" dataKey="leads" name="Pedidos"
@@ -251,11 +254,11 @@ export default function PainelDoFeed() {
                 ) : (
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={porHora}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                       <XAxis dataKey="hora" fontSize={11} tickLine={false} axisLine={false} interval={2} />
                       <YAxis fontSize={11} tickLine={false} axisLine={false} />
                       <Tooltip contentStyle={{ borderRadius: 8, fontSize: 13 }} />
-                      <Bar dataKey="eventos" name="Acessos" fill="hsl(var(--primary))" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="eventos" name="Acessos" fill="var(--primary)" radius={[3, 3, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -273,13 +276,13 @@ export default function PainelDoFeed() {
                 ) : (
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={porDiaDaSemana}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                       <XAxis dataKey="dia" fontSize={12} tickLine={false} axisLine={false} />
                       <YAxis fontSize={11} tickLine={false} axisLine={false} />
                       <Tooltip contentStyle={{ borderRadius: 8, fontSize: 13 }} />
                       <Bar dataKey="eventos" name="Acessos" radius={[3, 3, 0, 0]}>
                         {porDiaDaSemana.map((d, i) => (
-                          <Cell key={i} fill={i === 0 || i === 6 ? "#94A1A2" : "hsl(var(--primary))"} />
+                          <Cell key={i} fill={i === 0 || i === 6 ? "#94A1A2" : "var(--primary)"} />
                         ))}
                       </Bar>
                     </BarChart>
@@ -309,7 +312,7 @@ export default function PainelDoFeed() {
                       style={{
                         backgroundColor:
                           u.impressoes > 0
-                            ? `color-mix(in srgb, hsl(var(--primary)) ${Math.max(12, intensidade * 100)}%, transparent)`
+                            ? `color-mix(in srgb, var(--primary) ${Math.max(12, intensidade * 100)}%, transparent)`
                             : undefined,
                       }}
                     >
