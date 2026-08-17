@@ -51,6 +51,36 @@ const CAMPOS: Record<string, { coluna: string; tipo: "texto" | "numero" | "bool"
   completed_course_id:  { coluna: "completed_course_ids", tipo: "array" },
   team_id:              { coluna: "team_ids",             tipo: "array" },
   partner_id:           { coluna: "partner_ids",          tipo: "array" },
+  // Região não é digitada em lugar nenhum: sai da UF pela tabela do IBGE.
+  // Um campo só para os dois evitaria a pergunta "e se a UF disser São Paulo
+  // e a região disser Nordeste?".
+  region:               { coluna: "region",               tipo: "texto" },
+  floor_type_id:        { coluna: "floor_type_ids",       tipo: "array" },
+  certification_id:     { coluna: "certification_ids",    tipo: "array" },
+  manufacturer_id:      { coluna: "manufacturer_ids",     tipo: "array" },
+};
+
+/**
+ * Rótulos para a interface de segmentação — mesma ordem em que a Jéssica
+ * listou os recortes, para a tela conversar com o pedido.
+ */
+export const ROTULOS_CAMPO: Record<string, string> = {
+  uf: "Estado",
+  city_ibge_code: "Cidade",
+  region: "Região",
+  role: "Papel na plataforma",
+  professional_type: "Tipo de profissional",
+  specialty_id: "Categoria de serviço",
+  floor_type_id: "Tipo de piso",
+  certification_id: "Certificação",
+  completed_course_id: "Curso concluído",
+  level: "Ranking (nível)",
+  overall_score: "Nota geral",
+  manufacturer_id: "Fabricante",
+  partner_id: "Loja",
+  team_id: "Equipe",
+  is_homologated: "Homologado",
+  days_since_signup: "Dias de cadastro",
 };
 
 const PROFUNDIDADE_MAX = 3;
