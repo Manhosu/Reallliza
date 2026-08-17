@@ -74,6 +74,8 @@ export interface FeedPost {
   media?: FeedMedia[];
   ctas?: FeedCta[];
   poll?: FeedEnquete | null;
+  /** Opções que ESTA pessoa marcou na enquete. */
+  my_poll_votes?: string[];
   my_reaction?: string | null;
   saved_by_me?: boolean;
 }

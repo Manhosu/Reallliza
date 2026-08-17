@@ -11,7 +11,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { feedApi } from "@/lib/api";
-import type { FeedPost } from "@/lib/api/feed";
+import type { FeedPost, FeedCta } from "@/lib/api/feed";
+import { EnqueteDoFeed, PedidoDoFeed } from "@/components/feed/enquete-e-pedido";
+import { rastreador } from "@/lib/feed/rastreador";
+import { useAuthStore } from "@/stores/auth-store";
 
 /**
  * Feed para quem consome, não para quem publica.
@@ -41,10 +44,20 @@ function tempoRelativo(iso: string): string {
   return new Date(iso).toLocaleDateString("pt-BR");
 }
 
+/** Botões que abrem formulário em vez de navegar — igual ao aplicativo. */
+const TIPOS_DE_PEDIDO: Record<string, string> = {
+  solicitar_contato: "contato",
+  solicitar_amostra: "amostra",
+  encontrar_revendedor: "revendedor",
+  participar_treinamento: "treinamento",
+};
+
 export function FeedLeitor() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [abertoEm, setAbertoEm] = useState<string | null>(null);
+  const [pedido, setPedido] = useState<{ post: FeedPost; cta: FeedCta; tipo: string } | null>(null);
+  const perfil = useAuthStore((e) => e.user);
 
   const carregar = useCallback(async () => {
     try {
@@ -58,8 +71,18 @@ export function FeedLeitor() {
   }, []);
 
   useEffect(() => {
+    rastreador.iniciar();
+    rastreador.novaSessao();
     carregar();
+    return () => rastreador.parar();
   }, [carregar]);
+
+  // Impressão de tudo que entrou na lista. O aplicativo usa visibilidade real
+  // do cartão; aqui a lista é curta e cabe na tela, então a carga já conta —
+  // e o rastreador deduplica por sessão de qualquer forma.
+  useEffect(() => {
+    for (const p of posts) rastreador.registrar("impression", p.id);
+  }, [posts]);
 
   function aplicarLocal(id: string, patch: Partial<FeedPost>) {
     setPosts((a) => a.map((p) => (p.id === id ? { ...p, ...patch } : p)));
@@ -137,9 +160,22 @@ export function FeedLeitor() {
               >
                 <Card className="overflow-hidden">
                   <div className="flex items-center gap-3 p-4">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-xs font-semibold">
-                      {(p.sponsor?.name ?? p.author?.full_name ?? "R").slice(0, 1)}
-                    </div>
+                    {/* Numa peça patrocinada a marca É a informação. O
+                        logotipo vinha na consulta e era descartado em favor
+                        da primeira letra num círculo cinza. */}
+                    {p.sponsor?.logo_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={p.sponsor.logo_url}
+                        alt={`Logotipo de ${p.sponsor.name}`}
+                        className="h-9 w-9 shrink-0 rounded-full border object-contain"
+                        style={p.sponsor.primary_color ? { borderColor: p.sponsor.primary_color } : undefined}
+                      />
+                    ) : (
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-xs font-semibold">
+                        {(p.sponsor?.name ?? p.author?.full_name ?? "R").slice(0, 1)}
+                      </div>
+                    )}
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">
                         {p.sponsor?.name ?? p.author?.full_name ?? "Reallliza"}
@@ -189,20 +225,77 @@ export function FeedLeitor() {
                     <p className="whitespace-pre-wrap text-sm text-muted-foreground">{p.content}</p>
                   </CardContent>
 
+                  {/* O botão passou a respeitar o TIPO. Antes tudo virava um
+                      link para `target_url`, e os tipos que geram pedido —
+                      contato, amostra, revendedor, treinamento — não têm link
+                      nenhum: viravam `href="#"`, um botão que não faz nada. */}
                   {(p.ctas?.length ?? 0) > 0 && (
                     <div className="flex flex-wrap gap-2 px-4 pb-4">
-                      {p.ctas!.map((c) => (
-                        <a
-                          key={c.id}
-                          href={c.target_url ?? "#"}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
-                        >
-                          {c.label}
-                        </a>
-                      ))}
+                      {p.ctas!.map((c) => {
+                        const geraPedido = TIPOS_DE_PEDIDO[c.cta_type];
+                        if (geraPedido) {
+                          return (
+                            <button
+                              key={c.id}
+                              onClick={() => {
+                                rastreador.registrar("click", p.id, { cta_id: c.id });
+                                setPedido({ post: p, cta: c, tipo: geraPedido });
+                              }}
+                              className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+                            >
+                              {c.label}
+                            </button>
+                          );
+                        }
+                        if (c.cta_type === "utilizar_cupom" && c.coupon_code) {
+                          return (
+                            <button
+                              key={c.id}
+                              onClick={() => {
+                                rastreador.registrar("click", p.id, { cta_id: c.id });
+                                void navigator.clipboard?.writeText(c.coupon_code!);
+                                toast.success(`Cupom ${c.coupon_code} copiado`);
+                              }}
+                              className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+                            >
+                              {c.label}
+                            </button>
+                          );
+                        }
+                        const destino = c.target_url ?? c.target_route;
+                        if (!destino) return null;
+                        return (
+                          <a
+                            key={c.id}
+                            href={destino}
+                            target={c.target_url ? "_blank" : undefined}
+                            rel="noopener noreferrer"
+                            onClick={() => {
+                              rastreador.registrar("click", p.id, { cta_id: c.id });
+                              if (c.target_url) rastreador.registrar("link_open", p.id, { cta_id: c.id });
+                            }}
+                            className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+                          >
+                            {c.label}
+                          </a>
+                        );
+                      })}
                     </div>
+                  )}
+
+                  {p.poll && (
+                    <EnqueteDoFeed
+                      enquete={p.poll}
+                      meusVotos={p.my_poll_votes ?? []}
+                      aoVotar={(opcoes) => {
+                        // Sem registrar evento aqui: a rota de voto já grava
+                        // o `poll_vote`. Registrar dos dois lados contava o
+                        // mesmo voto duas vezes na métrica.
+                        setPosts((atuais) =>
+                          atuais.map((x) => (x.id === p.id ? { ...x, my_poll_votes: opcoes } : x))
+                        );
+                      }}
+                    />
                   )}
 
                   {abertoEm === p.id && (
@@ -260,6 +353,17 @@ export function FeedLeitor() {
             );
           })}
         </div>
+      )}
+
+      {pedido && (
+        <PedidoDoFeed
+          postId={pedido.post.id}
+          ctaId={pedido.cta.id}
+          tipo={pedido.tipo}
+          tituloDaPublicacao={pedido.post.title}
+          perfil={{ nome: perfil?.full_name ?? null, email: perfil?.email ?? null, telefone: null }}
+          aoFechar={() => setPedido(null)}
+        />
       )}
     </div>
   );

@@ -1,7 +1,17 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator,
-  StyleSheet, Share, Linking, Alert, type ViewToken,
+  View,
+  Image,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  RefreshControl,
+  ActivityIndicator,
+  StyleSheet,
+  Share,
+  Linking,
+  Alert,
+  type ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -52,7 +62,7 @@ interface PostFeed {
   /** Opcoes que ESTA pessoa marcou. Vem da consulta do feed. */
   my_poll_votes?: string[];
   category?: { name: string; color: string | null } | null;
-  sponsor?: { name: string; logo_url: string | null } | null;
+  sponsor?: { name: string; logo_url: string | null; primary_color?: string | null } | null;
   is_sponsored: boolean;
   is_pinned: boolean;
   comments_enabled: boolean;
@@ -293,9 +303,27 @@ export function FeedScreen() {
       <View style={estilos.card}>
         {/* cabeçalho */}
         <View style={estilos.cabecalho}>
-          <View style={estilos.avatar}>
-            <Ionicons name="person" size={18} color={colors.textMuted} />
-          </View>
+          {/* O logotipo do patrocinador vinha na consulta e era descartado:
+              todo post de fabricante saía com um ícone genérico de pessoa.
+              Numa peça patrocinada a marca É a informação — sem ela o
+              profissional não sabe de quem está lendo. */}
+          {item.sponsor?.logo_url ? (
+            <Image
+              source={{ uri: item.sponsor.logo_url }}
+              style={[
+                estilos.avatar,
+                item.sponsor.primary_color
+                  ? { borderWidth: 1.5, borderColor: item.sponsor.primary_color }
+                  : null,
+              ]}
+              resizeMode="contain"
+              accessibilityLabel={`Logotipo de ${item.sponsor.name}`}
+            />
+          ) : (
+            <View style={estilos.avatar}>
+              <Ionicons name="person" size={18} color={colors.textMuted} />
+            </View>
+          )}
           <View style={{ flex: 1 }}>
             <Text style={estilos.autor} numberOfLines={1}>
               {item.sponsor?.name ?? item.author?.full_name ?? 'Reallliza'}
