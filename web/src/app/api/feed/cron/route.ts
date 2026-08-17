@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { authenticateApiKey } from "@/lib/api-helpers/api-key-auth";
+import { resolverAudiencia } from "@/lib/feed/audience";
+import { ehChamadaDeRotina } from "@/lib/api-helpers/cron-auth";
 
 // A agregação roda dentro do banco; a função só dispara e espera. É o que
 // mantém isto dentro do tempo de execução mesmo quando o volume crescer.
@@ -16,16 +18,11 @@ export const maxDuration = 60;
  *   3. agregar os eventos em métricas do dia
  *   4. reconciliar contadores tocados nas últimas 48 h
  *
- * Autentica pelo segredo do cron, pelo cabeçalho da plataforma, ou por chave
- * de API — o mesmo padrão da tarefa de reenvio de webhook, que já existia.
+ * Autentica pelo segredo do cron ou por chave de API — o mesmo padrão da
+ * tarefa de reenvio de webhook, que já existia.
  */
 async function executar(request: NextRequest) {
-  const segredo = process.env.CRON_SECRET;
-  const autorizado =
-    (segredo && request.headers.get("authorization") === `Bearer ${segredo}`) ||
-    request.headers.get("x-vercel-cron") !== null;
-
-  if (!autorizado) {
+  if (!ehChamadaDeRotina(request)) {
     try {
       await authenticateApiKey(request);
     } catch {
@@ -74,6 +71,51 @@ async function executar(request: NextRequest) {
     p_desde: new Date(Date.now() - 48 * 3600 * 1000).toISOString(),
   });
   resultado.contadores_reconciliados = reconciliados ?? 0;
+
+  /**
+   * 5. Recalcular as audiências.
+   *
+   * Sem esta etapa a audiência congelava no instante da publicação: quem se
+   * homologava, mudava de estado ou concluía um curso depois disso nunca
+   * entrava — nem saía, ao deixar de atender a regra. Uma campanha para
+   * "homologados do Sudeste" continuava entregando à lista de semanas atrás.
+   *
+   * A função no banco só MARCA as regras (zera `computed_at`), porque o
+   * predicado é compilado aqui na aplicação — guardar SQL no banco seria
+   * injeção esperando acontecer. Quem materializa é `resolverAudiencia`.
+   */
+  await supabase.rpc("feed_recalcular_audiencias");
+
+  /**
+   * Além das marcadas, entram as que estão com a conta velha.
+   *
+   * A função no banco só marca públicos em uso por publicação ativa — o que
+   * é razoável para a materialização. Mas o seletor do editor mostra o
+   * tamanho de TODOS os públicos, inclusive os que ainda não foram usados, e
+   * um número velho ali engana na hora de decidir a campanha. Seis horas é
+   * folgado o bastante para não pesar e curto o bastante para o número não
+   * envelhecer entre um dia de trabalho e outro.
+   */
+  const seisHorasAtras = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
+  const { data: paraRecalcular } = await supabase
+    .from("feed_audience_rules")
+    .select("id, name")
+    .or(`computed_at.is.null,computed_at.lt.${seisHorasAtras}`)
+    .limit(50);
+
+  let recalculadas = 0;
+  const falhas: string[] = [];
+  for (const regra of paraRecalcular ?? []) {
+    try {
+      await resolverAudiencia(supabase, regra.id);
+      recalculadas += 1;
+    } catch (e) {
+      // Uma regra inválida não pode impedir as outras de atualizar.
+      falhas.push(`${regra.name}: ${e instanceof Error ? e.message : "erro"}`);
+    }
+  }
+  resultado.audiencias_recalculadas = recalculadas;
+  if (falhas.length) resultado.audiencias_com_falha = falhas;
 
   return jsonResponse(resultado);
 }

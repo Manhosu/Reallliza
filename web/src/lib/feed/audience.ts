@@ -225,6 +225,21 @@ export async function resolverAudiencia(
   }
 
   const total = Number(data ?? 0);
+
+  /**
+   * O tamanho guardado passa a acompanhar a materialização.
+   *
+   * `estimated_size` era gravado uma vez, na criação do público, e nunca mais
+   * mexido — o seletor do editor mostrava esse retrato antigo. Na prática o
+   * administrador lia "alcança 15 pessoas" e a publicação chegava a 14,
+   * porque alguém tinha sido desativado no meio. Número que engana é pior do
+   * que número ausente: ninguém desconfia dele.
+   */
+  await supabase
+    .from("feed_audience_rules")
+    .update({ estimated_size: total, computed_at: new Date().toISOString() })
+    .eq("id", ruleId);
+
   return { total };
 }
 

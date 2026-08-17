@@ -5,6 +5,7 @@ import {
 } from "@/lib/api-helpers/api-key-auth";
 import { jsonResponse } from "@/lib/api-helpers/response";
 import { retryPendingWebhooks } from "@/lib/api-helpers/webhook-dispatcher";
+import { ehChamadaDeRotina } from "@/lib/api-helpers/cron-auth";
 
 export const maxDuration = 60;
 
@@ -14,14 +15,14 @@ export const maxDuration = 60;
  * Aceita 3 formas de autenticação:
  *  - X-API-Key header (compatibilidade com chamadas externas autenticadas)
  *  - Authorization: Bearer ${CRON_SECRET} (Vercel Cron — env var deve existir)
- *  - Header `x-vercel-cron` presente (cron jobs do Vercel sempre incluem)
+ *  - O cabeçalho `x-vercel-cron` NÃO basta: qualquer cliente pode enviá-lo
  */
 async function authorize(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization") || "";
   if (cronSecret && authHeader === `Bearer ${cronSecret}`) return;
 
-  if (request.headers.get("x-vercel-cron")) return;
+  if (ehChamadaDeRotina(request)) return;
 
   await authenticateApiKey(request);
 }

@@ -809,7 +809,7 @@ function FeedAdmin() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="flex flex-wrap gap-1.5">
-          {["todos", "draft", "scheduled", "published", "paused"].map((s) => (
+          {["todos", "draft", "scheduled", "published", "paused", "archived"].map((s) => (
             <button
               key={s}
               onClick={() => setFiltro(s)}

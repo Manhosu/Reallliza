@@ -125,16 +125,41 @@ export async function lerFeed(
   };
 
   const agora = Date.now();
-  const visiveis = ((data ?? []) as unknown as Linha[]).filter((p) => {
+  const brutas = (data ?? []) as unknown as Linha[];
+
+  const ehVisivel = (p: Linha) => {
     if (ehAdmin) return true;
     if (p.unpublish_at && new Date(String(p.unpublish_at)).getTime() <= agora) return false;
     const regra = p.audience_rule_id as string | null | undefined;
     if (!regra || regra === REGRA_TODOS) return true;
     return regrasDoUsuario.has(regra);
-  });
+  };
 
-  const temMais = visiveis.length > opts.limit;
-  const pagina = temMais ? visiveis.slice(0, opts.limit) : visiveis;
+  /**
+   * O "há mais páginas" sai das linhas BRUTAS, não das visíveis.
+   *
+   * Antes era `visiveis.length > limit`. Como o filtro de audiência roda aqui
+   * em JavaScript, bastava uma linha ser descartada para a contagem cair a
+   * `limit` e `has_more` virar falso — mesmo havendo publicação abaixo. O
+   * scroll infinito parava e não voltava mais, e quem mais depende de
+   * segmentação era exatamente quem menos via o feed.
+   *
+   * O cursor também passa a sair da última linha EXAMINADA, e não da última
+   * visível: senão as linhas descartadas entre uma e outra seriam relidas na
+   * página seguinte, ou puladas.
+   */
+  const pagina: Linha[] = [];
+  let consumidas = 0;
+  for (const p of brutas) {
+    consumidas += 1;
+    if (ehVisivel(p)) pagina.push(p);
+    if (pagina.length === opts.limit) break;
+  }
+
+  const ultimaExaminada = consumidas > 0 ? brutas[consumidas - 1] : null;
+  // Sobrou linha bruta sem examinar, ou o banco devolveu o +1 — nos dois
+  // casos pode haver mais coisa abaixo.
+  const temMais = brutas.length > consumidas || brutas.length === opts.limit + 1;
 
   // Estado do usuário nas publicações da página: três consultas fixas,
   // independentemente do tamanho da página.
@@ -174,11 +199,13 @@ export async function lerFeed(
     };
   });
 
-  const ultimo = pagina[pagina.length - 1];
   return {
     data: itens,
+    // Da última EXAMINADA, não da última visível — ver a explicação acima.
     next_cursor:
-      temMais && ultimo ? codificarCursor({ k: String(ultimo.sort_key), id: ultimo.id }) : null,
+      temMais && ultimaExaminada
+        ? codificarCursor({ k: String(ultimaExaminada.sort_key), id: ultimaExaminada.id })
+        : null,
     has_more: temMais,
   };
 }

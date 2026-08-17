@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { authenticateApiKey } from "@/lib/api-helpers/api-key-auth";
+import { ehChamadaDeRotina } from "@/lib/api-helpers/cron-auth";
 
 export const maxDuration = 60;
 
@@ -23,11 +24,7 @@ const EXPO = "https://exp.host/--/api/v2/push/send";
 
 export async function GET(request: NextRequest) {
   try {
-    const segredo = process.env.CRON_SECRET;
-    const autorizado =
-      (segredo && request.headers.get("authorization") === `Bearer ${segredo}`) ||
-      request.headers.get("x-vercel-cron") !== null;
-    if (!autorizado) {
+    if (!ehChamadaDeRotina(request)) {
       try {
         await authenticateApiKey(request);
       } catch {

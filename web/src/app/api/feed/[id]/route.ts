@@ -169,9 +169,17 @@ export async function DELETE(
     const jaFoiAoAr = !!post.published_at;
 
     if (jaFoiAoAr) {
+      // Arquivar marca `archived_at` e SÓ. Antes gravava `deleted_at` junto,
+      // e a leitura do feed filtra `deleted_at IS NULL` para todo mundo,
+      // administrador incluído — a peça sumia da Central de Conteúdo. Pior:
+      // a mensagem ao tentar republicar mandava duplicá-la, uma ação que a
+      // interface não tinha como oferecer, porque a peça não estava mais lá.
+      //
+      // O `status` já é o que tira do ar; `deleted_at` fica reservado para
+      // exclusão de verdade.
       await supabase
         .from("feed_posts")
-        .update({ status: "archived", archived_at: new Date().toISOString(), deleted_at: new Date().toISOString() })
+        .update({ status: "archived", archived_at: new Date().toISOString() })
         .eq("id", id);
     } else {
       await supabase.from("feed_posts").delete().eq("id", id);
