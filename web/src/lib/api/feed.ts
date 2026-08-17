@@ -73,6 +73,7 @@ export interface FeedPost {
   audience?: { id: string; name: string; estimated_size: number | null } | null;
   media?: FeedMedia[];
   ctas?: FeedCta[];
+  poll?: FeedEnquete | null;
   my_reaction?: string | null;
   saved_by_me?: boolean;
 }
@@ -98,6 +99,32 @@ export interface FeedInsights {
   recortes: Record<string, Array<{ valor: string; impressoes: number; cliques: number }>>;
 }
 
+/**
+ * O que o editor ENVIA — diferente do que a API devolve.
+ *
+ * Na leitura, botão e enquete vêm com id, posição e contadores; na escrita
+ * quem manda é o formulário, que não tem nada disso. Usar o mesmo tipo para
+ * os dois lados obrigaria o editor a inventar ids.
+ */
+export interface EntradaDePublicacao extends Partial<Omit<FeedPost, "ctas" | "poll">> {
+  ctas?: {
+    cta_type: string;
+    label: string;
+    target_url?: string | null;
+    target_route?: string | null;
+    coupon_code?: string | null;
+    style?: string;
+  }[];
+  poll?: {
+    question: string;
+    options: string[];
+    allow_multiple?: boolean;
+    is_anonymous?: boolean;
+    show_results?: string;
+    closes_at?: string | null;
+  } | null;
+}
+
 export const feedApi = {
   list: (params?: { cursor?: string; limit?: number; include_drafts?: boolean; category_id?: string }) =>
     apiClient.get<{ data: FeedPost[]; next_cursor: string | null; has_more: boolean }>(
@@ -109,9 +136,9 @@ export const feedApi = {
 
   meta: () => apiClient.get<FeedMeta>("/feed/meta"),
 
-  create: (payload: Partial<FeedPost>) => apiClient.post<FeedPost>("/feed", payload),
+  create: (payload: EntradaDePublicacao) => apiClient.post<FeedPost>("/feed", payload),
 
-  update: (id: string, payload: Partial<FeedPost>) =>
+  update: (id: string, payload: EntradaDePublicacao) =>
     apiClient.patch<FeedPost>(`/feed/${id}`, payload),
 
   remove: (id: string) => apiClient.delete<{ success: true; arquivado: boolean }>(`/feed/${id}`),
@@ -182,9 +209,12 @@ export const feedApi = {
 export interface FeedEnquete {
   id: string;
   question: string;
+  allow_multiple: boolean;
+  is_anonymous: boolean;
+  show_results: string;
+  closes_at: string | null;
   total_votes: number;
   unique_voters: number;
-  show_results: string;
   options: { id: string; position: number; label: string; vote_count: number }[];
 }
 

@@ -3,6 +3,7 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { sincronizarBotoes, sincronizarEnquete, validarAnexos } from "@/lib/feed/anexos";
 import { lerFeed, decodificarCursor } from "@/lib/feed/query";
 
 /**
@@ -94,6 +95,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Antes de inserir qualquer coisa: botão ou enquete inválidos derrubariam
+    // o pedido DEPOIS de a publicação já existir, deixando um rascunho órfão
+    // que ninguém pediu.
+    validarAnexos(body.ctas, body.poll);
+
+    // Confere botões e enquete ANTES de inserir a publicação. A gravação dos
+    // anexos acontece depois do insert, então validar só lá deixaria para trás
+    // uma publicação órfã — criada e recusada na mesma requisição.
+    validarAnexos(body.ctas, body.poll);
+
     const payload: Record<string, unknown> = {
       author_id: user.id,
       title: String(body.title).trim(),
@@ -132,12 +143,18 @@ export async function POST(request: NextRequest) {
       throw new Error("Falha ao criar a publicação");
     }
 
+    // Botões e enquete são gravados aqui, não em rota separada: publicação
+    // sem o botão que ela deveria ter é uma peça de campanha incompleta no
+    // ar, e ninguém percebe até a campanha render zero.
+    const botoes = await sincronizarBotoes(supabase, post.id, body.ctas);
+    const enquete = await sincronizarEnquete(supabase, post.id, body.poll);
+
     logAudit({
       userId: user.id,
       action: "feed_post.created",
       entityType: "feed_post",
       entityId: post.id,
-      newData: { title: post.title, status },
+      newData: { title: post.title, status, botoes, enquete: !!enquete },
     });
 
     return jsonResponse(post, 201);

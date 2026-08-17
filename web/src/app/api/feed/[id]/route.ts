@@ -3,6 +3,7 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { sincronizarBotoes, sincronizarEnquete } from "@/lib/feed/anexos";
 
 const SELECAO = `
   *,
@@ -100,8 +101,22 @@ export async function PATCH(
     if ("title" in payload && !String(payload.title).trim()) {
       throw new AuthError(400, "O título não pode ficar vazio");
     }
-    if (Object.keys(payload).length === 0) {
+    // Botões e enquete não entram no payload da tabela: moram em tabelas
+    // próprias. Por isso não contam para o "nada a alterar" abaixo — salvar
+    // só a enquete é uma edição legítima.
+    const mexeuNosAnexos = "ctas" in body || "poll" in body;
+
+    if (Object.keys(payload).length === 0 && !mexeuNosAnexos) {
       return jsonResponse({ id, inalterado: true });
+    }
+
+    const botoes = await sincronizarBotoes(supabase, id, body.ctas);
+    const enquete = await sincronizarEnquete(supabase, id, body.poll);
+
+    if (Object.keys(payload).length === 0) {
+      const { data: soAnexos } = await supabase
+        .from("feed_posts").select(SELECAO).eq("id", id).single();
+      return jsonResponse(soAnexos);
     }
 
     const { data: post, error } = await supabase
@@ -118,7 +133,7 @@ export async function PATCH(
       action: "feed_post.updated",
       entityType: "feed_post",
       entityId: id,
-      newData: { campos: Object.keys(payload) },
+      newData: { campos: Object.keys(payload), botoes, enquete: !!enquete },
     });
 
     return jsonResponse(post);

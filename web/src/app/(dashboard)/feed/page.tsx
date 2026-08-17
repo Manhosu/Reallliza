@@ -18,6 +18,10 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { SeletorDePublico } from "@/components/feed/seletor-de-publico";
+import {
+  EditorDeBotoes, EditorDeEnquete, ENQUETE_VAZIA,
+  type BotaoNoEditor, type EnqueteNoEditor,
+} from "@/components/feed/editor-de-anexos";
 import { feedApi } from "@/lib/api";
 import type { FeedPost, FeedMeta, FeedMedia, FeedInsights } from "@/lib/api/feed";
 import { useAuthStore } from "@/stores/auth-store";
@@ -76,6 +80,10 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
   const [notificar, setNotificar] = useState(false);
   const [comentarios, setComentarios] = useState(true);
   const [midias, setMidias] = useState<FeedMedia[]>([]);
+  const [campanha, setCampanha] = useState("");
+  const [botoes, setBotoes] = useState<BotaoNoEditor[]>([]);
+  const [enquete, setEnquete] = useState<EnqueteNoEditor | null>(null);
+  const [votosDaEnquete, setVotosDaEnquete] = useState(0);
   const [salvando, setSalvando] = useState(false);
   const [publicando, setPublicando] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -105,6 +113,29 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
     setNotificar(post?.notify_on_publish ?? false);
     setComentarios(post?.comments_enabled ?? true);
     setMidias(post?.media ?? []);
+    setCampanha(post?.campaign_id ?? "");
+    setBotoes(
+      (post?.ctas ?? []).map((c) => ({
+        cta_type: c.cta_type,
+        label: c.label,
+        target_url: c.target_url ?? "",
+        coupon_code: c.coupon_code ?? "",
+      }))
+    );
+    const p = post?.poll ?? null;
+    setEnquete(
+      p
+        ? {
+            question: p.question,
+            options: (p.options ?? []).map((o) => o.label),
+            allow_multiple: p.allow_multiple ?? false,
+            is_anonymous: p.is_anonymous ?? true,
+            show_results: (p.show_results ?? "after_vote") as EnqueteNoEditor["show_results"],
+            closes_at: paraInputDateTime(p.closes_at ?? null),
+          }
+        : null
+    );
+    setVotosDaEnquete(p?.total_votes ?? 0);
     setIdCriado(null);
     setErro(null);
   }, [aberto, post]);
@@ -124,6 +155,26 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
       pinned_until: fixarAte ? new Date(fixarAte).toISOString() : null,
       notify_on_publish: notificar,
       comments_enabled: comentarios,
+      campaign_id: campanha || null,
+      ctas: botoes
+        .filter((b) => b.label.trim())
+        .map((b) => ({
+          cta_type: b.cta_type,
+          label: b.label.trim(),
+          target_url: b.target_url.trim() || null,
+          coupon_code: b.coupon_code.trim() || null,
+        })),
+      poll:
+        enquete && enquete.question.trim()
+          ? {
+              question: enquete.question.trim(),
+              options: enquete.options.map((o) => o.trim()).filter(Boolean),
+              allow_multiple: enquete.allow_multiple,
+              is_anonymous: enquete.is_anonymous,
+              show_results: enquete.show_results,
+              closes_at: enquete.closes_at ? new Date(enquete.closes_at).toISOString() : null,
+            }
+          : null,
     };
   }
 
@@ -365,6 +416,29 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
               ))}
             </div>
           )}
+        </div>
+
+        {/* ---- Botões de ação ---- */}
+        <EditorDeBotoes botoes={botoes} aoMudar={setBotoes} />
+
+        {/* ---- Enquete ---- */}
+        <EditorDeEnquete enquete={enquete} aoMudar={setEnquete} temVotos={votosDaEnquete} />
+
+        {/* ---- Campanha ---- */}
+        {/* Sem este vínculo, o desempenho por campanha é estruturalmente zero:
+            o evento sai sem `campaign_id` e o painel não tem o que agrupar. */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground/80">Campanha</label>
+          <select
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            value={campanha}
+            onChange={(e) => setCampanha(e.target.value)}
+          >
+            <option value="">Nenhuma — publicação avulsa</option>
+            {meta?.campanhas?.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
         </div>
 
         {/* ---- Programação ---- */}
