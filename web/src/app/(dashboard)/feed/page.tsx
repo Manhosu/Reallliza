@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
+import { SeletorDePublico } from "@/components/feed/seletor-de-publico";
 import { feedApi } from "@/lib/api";
 import type { FeedPost, FeedMeta, FeedMedia, FeedInsights } from "@/lib/api/feed";
 import { useAuthStore } from "@/stores/auth-store";
@@ -282,21 +283,15 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
             </select>
           </div>
 
-          <div className="space-y-2">
+          {/* O seletor deixou de ser uma lista de três públicos prontos: agora
+              monta o recorte na hora, pelos dezesseis critérios, e mostra
+              quantas pessoas ele alcança ANTES de publicar. */}
+          <div className="space-y-2 sm:col-span-2">
             <label className="text-sm font-medium text-foreground/80">Quem vai ver</label>
-            <select
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-              value={audiencia}
-              onChange={(e) => setAudiencia(e.target.value)}
-            >
-              <option value="">Todos os usuários</option>
-              {meta?.audiencias.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                  {a.estimated_size != null ? ` (~${a.estimated_size})` : ""}
-                </option>
-              ))}
-            </select>
+            <SeletorDePublico
+              audienceRuleId={audiencia || null}
+              aoEscolher={(id) => setAudiencia(id ?? "")}
+            />
           </div>
         </div>
 
