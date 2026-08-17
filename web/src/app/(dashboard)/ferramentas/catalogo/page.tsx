@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Wrench, Plus, Pencil, Boxes, Hash } from "lucide-react";
+import { Wrench, Plus, Pencil, Boxes, Hash, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils";
 import { toolsApi } from "@/lib/api";
 import type { ToolInventory, PaginatedResponse } from "@/lib/types";
 import { ToolPhotosField, type PhotoRef } from "@/components/ferramentas/tool-photos-field";
+import { HardDeleteDialog, type Dependency } from "@/components/admin/hard-delete-dialog";
+import { apiClient } from "@/lib/api/client";
 
 /**
  * Catálogo — cadastro das FERRAMENTAS (spec seção 10).
@@ -42,6 +44,36 @@ export default function CatalogoPage() {
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ToolType | null>(null);
+  /**
+   * Exclusão de ferramenta.
+   *
+   * A rota `/tools/[id]/purge` e `toolsApi.purge` existiam desde julho e
+   * nenhuma tela chamava — foi o que a Jéssica relatou como "não aparece o
+   * botão de excluir". As dependências são buscadas antes de abrir, para o
+   * diálogo poder dizer o que segura a ferramenta em vez de deixar a pessoa
+   * tentar e receber erro.
+   */
+  const [excluindo, setExcluindo] = useState<ToolInventory | null>(null);
+  const [dependencias, setDependencias] = useState<Dependency[]>([]);
+  const [carregandoDeps, setCarregandoDeps] = useState(false);
+
+  const abrirExclusao = useCallback(async (t: ToolInventory) => {
+    setExcluindo(t);
+    setCarregandoDeps(true);
+    try {
+      const r = await apiClient.get<{ dependencies: Dependency[] }>(
+        `/admin/dependencias?tabela=tool_inventory&id=${t.id}`
+      );
+      setDependencias(r.dependencies);
+    } catch {
+      // Sem o diagnóstico o diálogo ainda funciona — só não antecipa o
+      // bloqueio; a recusa vem do servidor, explicada.
+      setDependencias([]);
+    } finally {
+      setCarregandoDeps(false);
+    }
+  }, []);
+
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -187,6 +219,14 @@ export default function CatalogoPage() {
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => void abrirExclusao(t)}
+                            title="Excluir permanentemente"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -212,6 +252,23 @@ export default function CatalogoPage() {
           }}
         />
       )}
+
+      <HardDeleteDialog
+        open={!!excluindo}
+        entityLabel="ferramenta"
+        entityName={excluindo?.name ?? ""}
+        dependencies={dependencias}
+        loadingDeps={carregandoDeps}
+        onClose={() => {
+          setExcluindo(null);
+          setDependencias([]);
+        }}
+        onConfirm={async () => {
+          if (!excluindo) return;
+          await toolsApi.purge(excluindo.id);
+          await load();
+        }}
+      />
     </div>
   );
 }

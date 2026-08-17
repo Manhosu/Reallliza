@@ -9,6 +9,7 @@ import { redactOsForRole } from "@/lib/api-helpers/redact";
 import { isUserHomologado } from "@/lib/api-helpers/user-context";
 import { resolvePayoutForOs } from "@/lib/api-helpers/payout";
 import { canTechnicianAccessOs } from "@/lib/api-helpers/team-scope";
+import { excluirComDiagnostico, diagnosticar } from "@/lib/api-helpers/exclusao";
 
 /**
  * GET /api/service-orders/[id]
@@ -355,8 +356,23 @@ export async function PUT(
 
 /**
  * DELETE /api/service-orders/[id]
- * Apaga uma OS e seus filhos (executions, history, messages, items, payments).
- * Admin/manager apaga qualquer OS; partner só apaga as próprias.
+ *
+ * Exclui a OS, ou explica por que não dá.
+ *
+ * A versão anterior apagava manualmente cinco tabelas — `os_step_executions`,
+ * `os_status_history`, `os_messages`, `service_order_items` e
+ * `service_order_payments` — que **já eram ON DELETE CASCADE**. Cinco
+ * consultas que não faziam nada. E não tocava nas quatro que de fato
+ * bloqueiam: orçamento de origem, fatura, garantia e OS de retrabalho filha.
+ *
+ * O resultado era o que a Jéssica relatou: violação de chave estrangeira
+ * virando `throw new Error("Falha ao excluir OS")`, um 500 sem diagnóstico.
+ * Em produção, 39 das 41 OS estão nessa situação — 38 porque vieram de um
+ * orçamento. O botão quase nunca funcionava, e quando não funcionava não
+ * dizia o motivo.
+ *
+ * Agora a checagem vem antes, do catálogo do banco, e o que bloqueia é
+ * devolvido em português com a sugestão de cancelar em vez de excluir.
  */
 export async function DELETE(
   _request: NextRequest,
@@ -394,36 +410,13 @@ export async function DELETE(
       }
     }
 
-    // Apaga filhos. Erros silenciosos em tabelas que possam não existir
-    // em todos os ambientes.
-    await supabase.from("os_step_executions").delete().eq("service_order_id", id);
-    await supabase.from("os_status_history").delete().eq("service_order_id", id);
-    await supabase.from("os_messages").delete().eq("service_order_id", id);
-    await supabase
-      .from("service_order_items")
-      .delete()
-      .eq("service_order_id", id)
-      .then(
-        () => {},
-        () => {}
-      );
-    await supabase
-      .from("service_order_payments")
-      .delete()
-      .eq("service_order_id", id)
-      .then(
-        () => {},
-        () => {}
-      );
-
-    const { error: delErr } = await supabase
-      .from("service_orders")
-      .delete()
-      .eq("id", id);
-    if (delErr) {
-      console.error(`Failed to delete service order ${id}: ${delErr.message}`);
-      throw new Error("Falha ao excluir OS");
-    }
+    // As tabelas filhas já são ON DELETE CASCADE — apagá-las à mão aqui era
+    // trabalho repetido. O que interessa é o que NÃO cascateia.
+    const { levouJunto } = await excluirComDiagnostico(supabase, {
+      tabela: "service_orders",
+      id,
+      oQue: `a OS ${order.title ?? id}`,
+    });
 
     logAudit({
       userId: user.id,
@@ -433,7 +426,7 @@ export async function DELETE(
       oldData: order as Record<string, unknown>,
     });
 
-    return jsonResponse({ ok: true });
+    return jsonResponse({ ok: true, levou_junto: levouJunto });
   } catch (error) {
     return errorResponse(error);
   }
