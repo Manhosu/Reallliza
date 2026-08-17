@@ -78,14 +78,22 @@ export async function POST(
         poll_id: id,
         option_id: opcao,
         user_id: user.id,
+        // Copiado da enquete porque o índice que garante um voto por pessoa
+        // é parcial, e predicado de índice não pode consultar outra tabela.
+        is_single_choice: !enquete.allow_multiple,
       }))
     );
     if (error) throw new Error(error.message);
 
-    await supabase.rpc("feed_registrar_eventos", {
+    // O voto também vira evento de métrica, para a enquete aparecer no painel
+    // junto do resto. `session_id` é obrigatório na tabela de eventos; sem
+    // ele o lote inteiro é recusado — e como a falha aqui não pode derrubar o
+    // voto já gravado, ela é registrada no log em vez de virar erro.
+    const { error: erroEvento } = await supabase.rpc("feed_registrar_eventos", {
       p_eventos: [
         {
           client_event_id: crypto.randomUUID(),
+          session_id: crypto.randomUUID(),
           post_id: enquete.post_id,
           user_id: user.id,
           event_type: "poll_vote",
@@ -94,6 +102,9 @@ export async function POST(
         },
       ],
     });
+    if (erroEvento) {
+      console.error(`Voto gravado, mas o evento de métrica falhou: ${erroEvento.message}`);
+    }
 
     const { data: resultado } = await supabase
       .from("feed_polls")

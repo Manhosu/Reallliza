@@ -7,6 +7,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { apiClient } from '../lib/api';
+import { useAuthStore } from '../stores/auth-store';
+import { FeedEnquete, type EnqueteFeed } from '../components/FeedEnquete';
+import { FeedPedido, type TipoPedido } from '../components/FeedPedido';
 import { feedTracker } from '../lib/feed-tracker';
 import { FeedCarousel, type MidiaFeed } from '../components/FeedCarousel';
 import { colors } from '../theme/colors';
@@ -45,6 +48,9 @@ interface PostFeed {
   content: string;
   media?: MidiaFeed[];
   ctas?: CtaFeed[];
+  poll?: EnqueteFeed | null;
+  /** Opcoes que ESTA pessoa marcou. Vem da consulta do feed. */
+  my_poll_votes?: string[];
   category?: { name: string; color: string | null } | null;
   sponsor?: { name: string; logo_url: string | null } | null;
   is_sponsored: boolean;
@@ -91,7 +97,13 @@ export function FeedScreen() {
   const [carregandoMais, setCarregandoMais] = useState(false);
   const [periciasPendentes, setPericiasPendentes] = useState(0);
   const [seletorReacao, setSeletorReacao] = useState<string | null>(null);
+  // O `user` do store e o usuario de autenticacao; nome e telefone vivem no
+  // perfil, que o store ja carrega.
+  const perfil = useAuthStore((e) => e.profile);
   const [cardAtivo, setCardAtivo] = useState<string | null>(null);
+  // Pedido aberto pelo botao de acao. Guarda a publicacao junto porque o
+  // patrocinador e o titulo vao no registro do lead.
+  const [pedido, setPedido] = useState<{ post: PostFeed; cta: CtaFeed; tipo: TipoPedido } | null>(null);
 
   const buscar = useCallback(async (proxCursor: string | null, substituir: boolean) => {
     try {
@@ -215,8 +227,28 @@ export function FeedScreen() {
     }
   }
 
+  /**
+   * Botoes que pedem alguma coisa do fabricante viram PEDIDO, com nome e
+   * telefone. Os outros seguem o caminho antigo — link, rota ou cupom.
+   *
+   * A diferenca importa: clique ninguem cobra, pedido rastreavel sim. E o
+   * unico caminho pelo qual "Conversoes" no painel deixa de ser zero.
+   */
+  const CTA_QUE_VIRA_PEDIDO: Record<string, TipoPedido> = {
+    solicitar_contato: 'contato',
+    solicitar_amostra: 'amostra',
+    encontrar_revendedor: 'revendedor',
+    participar_treinamento: 'treinamento',
+  };
+
   async function acionarCta(post: PostFeed, cta: CtaFeed) {
     feedTracker.registrar('click', post.id, { cta_id: cta.id });
+
+    const tipoPedido = CTA_QUE_VIRA_PEDIDO[cta.cta_type];
+    if (tipoPedido) {
+      setPedido({ post, cta, tipo: tipoPedido });
+      return;
+    }
 
     if (cta.coupon_code) {
       Alert.alert('Cupom', `Use o código: ${cta.coupon_code}`);
@@ -232,6 +264,24 @@ export function FeedScreen() {
         Alert.alert('Não foi possível abrir', 'O link parece inválido.')
       );
     }
+  }
+
+  async function votar(post: PostFeed, opcoes: string[]): Promise<EnqueteFeed | null> {
+    if (!post.poll) return null;
+    const r = await apiClient.post<{ votou: boolean; resultado: EnqueteFeed | null }>(
+      `/feed/polls/${post.poll.id}/vote`,
+      { option_ids: opcoes }
+    );
+    // A lista guarda a resposta para o card nao voltar ao estado "sem voto"
+    // quando o feed rerenderizar.
+    setPosts((atuais) =>
+      atuais.map((p) =>
+        p.id === post.id && p.poll
+          ? { ...p, poll: { ...p.poll, ...(r.resultado ?? {}) }, my_poll_votes: opcoes }
+          : p
+      )
+    );
+    return r.resultado;
   }
 
   const renderPost = ({ item }: { item: PostFeed }) => {
@@ -304,6 +354,15 @@ export function FeedScreen() {
           <Text style={estilos.titulo}>{item.title}</Text>
           <Text style={estilos.conteudo}>{item.content}</Text>
         </View>
+
+        {item.poll && (
+          <View style={{ paddingHorizontal: 12 }}>
+            <FeedEnquete
+              enquete={{ ...item.poll, minha_resposta: item.my_poll_votes ?? [] }}
+              aoVotar={(opcoes) => votar(item, opcoes)}
+            />
+          </View>
+        )}
 
         {(item.ctas ?? []).length > 0 && (
           <View style={estilos.ctas}>
@@ -458,6 +517,28 @@ export function FeedScreen() {
           ) : null
         }
       />
+
+      {pedido && (
+        <FeedPedido
+          visivel
+          tipo={pedido.tipo}
+          tituloDaPublicacao={pedido.post.title}
+          perfil={{
+            nome: perfil?.full_name ?? null,
+            email: perfil?.email ?? null,
+            telefone: perfil?.phone ?? null,
+          }}
+          aoFechar={() => setPedido(null)}
+          aoEnviar={async (dados) => {
+            await apiClient.post('/feed/leads', {
+              post_id: pedido.post.id,
+              cta_id: pedido.cta.id,
+              kind: pedido.tipo,
+              ...dados,
+            });
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
