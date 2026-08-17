@@ -64,4 +64,8 @@ export const specialtiesApi = {
       { items }
     );
   },
+  /** Apaga de verdade. A rota existe desde julho e nenhuma tela chamava. */
+  purge(id: string) {
+    return apiClient.delete<{ success: true }>(`/specialties/${id}/purge`);
+  },
 };

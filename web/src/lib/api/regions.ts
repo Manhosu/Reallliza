@@ -30,7 +30,12 @@ export const regionsApi = {
   update(id: string, payload: UpdateRegionPayload) {
     return apiClient.patch<Region>(`/regions/${id}`, payload);
   },
+  /** Desativa. O nome engana: a rota DELETE do recurso faz `is_active=false`. */
   remove(id: string) {
     return apiClient.delete<{ success: true }>(`/regions/${id}`);
+  },
+  /** Apaga de verdade. A rota existe desde julho e nenhuma tela chamava. */
+  purge(id: string) {
+    return apiClient.delete<{ success: true }>(`/regions/${id}/purge`);
   },
 };

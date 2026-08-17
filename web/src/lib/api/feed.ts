@@ -328,6 +328,10 @@ export const feedGestaoApi = {
     apiClient.post<Campanha>("/feed/campaigns", dados),
   atualizarCampanha: (id: string, dados: Record<string, unknown>) =>
     apiClient.patch<Campanha & { pecas_pausadas: number }>(`/feed/campaigns/${id}`, dados),
+  removerCampanha: (id: string) =>
+    apiClient.delete<{ arquivada?: boolean; excluida?: boolean; motivo?: string }>(
+      `/feed/campaigns/${id}`
+    ),
 
   leads: (filtros?: { status?: string; sponsor_id?: string; campaign_id?: string }) => {
     const p = new URLSearchParams();

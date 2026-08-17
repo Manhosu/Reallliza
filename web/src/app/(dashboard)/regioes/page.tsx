@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, MapPin, Trash2, Check, X } from "lucide-react";
+import { Plus, MapPin, Trash2, Check, X, Ban } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { regionsApi } from "@/lib/api";
 import type { Region } from "@/lib/api/regions";
+import { HardDeleteDialog, type Dependency } from "@/components/admin/hard-delete-dialog";
+import { apiClient } from "@/lib/api/client";
 
 const UFS = [
   "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS",
@@ -86,8 +88,33 @@ export default function RegioesPage() {
     }
   }
 
-  async function remover(region: Region) {
-    if (!confirm(`Desativar a região "${region.name}"?`)) return;
+  /**
+   * Desativar e excluir são coisas diferentes, e a tela precisa dizer qual é
+   * qual. Antes havia um único ícone de lixeira que apenas desativava: quem
+   * clicava via "sucesso", a região continuava no banco, e a conclusão óbvia
+   * era "não consigo apagar". É exatamente a reclamação que chegou.
+   */
+  const [excluindo, setExcluindo] = useState<Region | null>(null);
+  const [dependencias, setDependencias] = useState<Dependency[]>([]);
+  const [carregandoDeps, setCarregandoDeps] = useState(false);
+
+  const abrirExclusao = useCallback(async (r: Region) => {
+    setExcluindo(r);
+    setCarregandoDeps(true);
+    try {
+      const d = await apiClient.get<{ dependencies: Dependency[] }>(
+        `/admin/dependencias?tabela=regions&id=${r.id}`
+      );
+      setDependencias(d.dependencies);
+    } catch {
+      setDependencias([]);
+    } finally {
+      setCarregandoDeps(false);
+    }
+  }, []);
+
+  async function desativar(region: Region) {
+    if (!confirm(`Desativar a região "${region.name}"? Ela sai das listas e pode ser reativada.`)) return;
     try {
       await regionsApi.remove(region.id);
       toast.success("Região desativada");
@@ -229,10 +256,21 @@ export default function RegioesPage() {
                         >
                           {r.is_active ? "Ativa" : "Inativa"}
                         </button>
+                        {r.is_active && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => desativar(r)}
+                            title="Desativar"
+                          >
+                            <Ban className="h-4 w-4 text-amber-600" />
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => remover(r)}
+                          onClick={() => void abrirExclusao(r)}
+                          title="Excluir permanentemente"
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -245,6 +283,23 @@ export default function RegioesPage() {
           )}
         </CardContent>
       </Card>
+
+      <HardDeleteDialog
+        open={!!excluindo}
+        entityLabel="região"
+        entityName={excluindo?.name ?? ""}
+        dependencies={dependencias}
+        loadingDeps={carregandoDeps}
+        onClose={() => {
+          setExcluindo(null);
+          setDependencias([]);
+        }}
+        onConfirm={async () => {
+          if (!excluindo) return;
+          await regionsApi.purge(excluindo.id);
+          load();
+        }}
+      />
     </div>
   );
 }
