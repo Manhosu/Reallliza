@@ -3,6 +3,7 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { linhas as tipar } from "@/lib/api-helpers/rows";
 
 /**
  * Transições permitidas da campanha.
@@ -38,49 +39,118 @@ export async function GET(
 
     if (!campanha) throw new AuthError(404, "Campanha não encontrada");
 
-    const [publicacoes, diario, leads] = await Promise.all([
+    const [publicacoes, diario, leads, recortes] = await Promise.all([
       supabase
         .from("feed_posts")
-        .select("id, title, status, published_at, impression_count, unique_reach, click_count, lead_count, conversion_count")
+        .select(
+          "id, title, status, published_at, impression_count, unique_reach, click_count, " +
+            "lead_count, conversion_count, like_count, comment_count, share_count, " +
+            "save_count, download_count, video_view_count"
+        )
         .eq("campaign_id", id)
         .order("created_at", { ascending: false }),
       supabase
         .from("feed_post_daily_metrics")
-        .select("day, impressions, unique_reach, views, clicks, downloads, leads, conversions, video_starts, video_q100")
+        .select(
+          "day, impressions, unique_reach, views, clicks, downloads, leads, conversions, " +
+            "video_starts, video_q25, video_q50, video_q75, video_q100, video_watch_ms"
+        )
         .eq("campaign_id", id)
         .order("day"),
       supabase
         .from("feed_leads")
         .select("id, kind, status, created_at")
         .eq("campaign_id", id),
+      // Os sete recortes que o José pediu, agora também no nível da campanha
+      // — é o nível em que ele foi vendido.
+      supabase
+        .from("feed_post_daily_metrics_dim")
+        .select("dim_type, dim_value, impressions, views, clicks, post_id")
+        .in(
+          "post_id",
+          (
+            await supabase.from("feed_posts").select("id").eq("campaign_id", id)
+          ).data?.map((p) => p.id) ?? ["00000000-0000-0000-0000-000000000000"]
+        ),
     ]);
 
-    const dias = diario.data ?? [];
-    const soma = (campo: string) =>
-      dias.reduce((a, d) => a + Number((d as Record<string, unknown>)[campo] ?? 0), 0);
+    const dias = tipar<Record<string, number>>(diario.data);
+    const soma = (campo: string) => dias.reduce((a, d) => a + Number(d[campo] ?? 0), 0);
 
     const impressoes = soma("impressions");
     const cliques = soma("clicks");
     const totalLeads = (leads.data ?? []).length;
     const convertidos = (leads.data ?? []).filter((l) => l.status === "convertido").length;
 
+    // Interações vêm dos contadores da publicação, não da série diária: são
+    // estado atual (quantas curtidas a peça tem), não fluxo por dia.
+    const pecas = tipar<Record<string, number>>(publicacoes.data);
+    const somaPecas = (campo: string) =>
+      pecas.reduce((a, p) => a + Number(p[campo] ?? 0), 0);
+
+    const curtidas = somaPecas("like_count");
+    const comentarios = somaPecas("comment_count");
+    const compartilhamentos = somaPecas("share_count");
+    const salvamentos = somaPecas("save_count");
+    const alcanceUnico = somaPecas("unique_reach");
+    const engajamentos = curtidas + comentarios + compartilhamentos + salvamentos;
+    const inicios = soma("video_starts");
+
+    // Agrupa os recortes por dimensão, somando as peças da campanha.
+    const porDimensao: Record<string, Array<{ valor: string; impressoes: number; cliques: number }>> = {};
+    for (const r of tipar<{ dim_type: string; dim_value: string; impressions: number; clicks: number }>(recortes.data)) {
+      const lista = (porDimensao[r.dim_type] ??= []);
+      const existente = lista.find((x) => x.valor === r.dim_value);
+      if (existente) {
+        existente.impressoes += Number(r.impressions ?? 0);
+        existente.cliques += Number(r.clicks ?? 0);
+      } else {
+        lista.push({
+          valor: r.dim_value,
+          impressoes: Number(r.impressions ?? 0),
+          cliques: Number(r.clicks ?? 0),
+        });
+      }
+    }
+    for (const k of Object.keys(porDimensao)) {
+      porDimensao[k].sort((a, b) => b.impressoes - a.impressoes);
+    }
+
     return jsonResponse({
       ...campanha,
-      publicacoes: publicacoes.data ?? [],
+      publicacoes: pecas,
       totais: {
         impressoes,
+        alcance_unico: alcanceUnico,
         visualizacoes: soma("views"),
+        curtidas,
+        comentarios,
+        compartilhamentos,
+        salvamentos,
         cliques,
         downloads: soma("downloads"),
         leads: totalLeads,
         conversoes: convertidos,
         ctr: impressoes > 0 ? Number(((cliques / impressoes) * 100).toFixed(2)) : 0,
+        // Engajamento sobre alcance, não sobre impressões — a definição que o
+        // mercado usa e a que o cliente tem na cabeça.
+        taxa_engajamento:
+          alcanceUnico > 0 ? Number(((engajamentos / alcanceUnico) * 100).toFixed(2)) : 0,
         // Do clique ao pedido: é a taxa que separa campanha que gera atenção
         // de campanha que gera negócio.
         taxa_lead: cliques > 0 ? Number(((totalLeads / cliques) * 100).toFixed(2)) : 0,
         taxa_conversao: totalLeads > 0 ? Number(((convertidos / totalLeads) * 100).toFixed(2)) : 0,
+        video: {
+          inicios,
+          q25: soma("video_q25"),
+          q50: soma("video_q50"),
+          q75: soma("video_q75"),
+          completos: soma("video_q100"),
+          tempo_medio_ms: inicios > 0 ? Math.round(soma("video_watch_ms") / inicios) : 0,
+        },
       },
       evolucao_diaria: dias,
+      recortes: porDimensao,
       transicoes_possiveis: TRANSICOES[campanha.status] ?? [],
     });
   } catch (error) {

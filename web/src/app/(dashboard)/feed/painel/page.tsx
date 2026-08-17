@@ -42,6 +42,7 @@ const numero = (n: number) =>
 
 export default function PainelDoFeed() {
   const [dias, setDias] = useState(30);
+  const [passo, setPasso] = useState<"dia" | "semana" | "mes">("dia");
   const [painel, setPainel] = useState<PainelFeed | null>(null);
   const [mapa, setMapa] = useState<UfDoMapa[]>([]);
   const [catalogos, setCatalogos] = useState<Catalogos | null>(null);
@@ -74,16 +75,49 @@ export default function PainelDoFeed() {
 
   const serie = useMemo(() => {
     if (!painel) return [];
-    // Ordena pela data ISO e só depois formata. Ordenar pelo rótulo "dd/mm"
-    // põe 28/07 depois de 17/08, porque a comparação é de texto — o gráfico
-    // vira uma linha que volta no tempo na virada do mês.
-    return Object.entries(painel.evolucao_diaria)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([dia, v]) => ({
-        dia: new Date(`${dia}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-        ...v,
-      }));
-  }, [painel]);
+
+    /**
+     * Ordena pela data ISO e só depois formata. Ordenar pelo rótulo "dd/mm"
+     * põe 28/07 depois de 17/08, porque a comparação é de texto — o gráfico
+     * vira uma linha que volta no tempo na virada do mês.
+     *
+     * O agrupamento por semana e por mês é feito aqui, sobre a mesma série
+     * diária, e não numa consulta separada: o dado é o mesmo, e duas
+     * consultas dariam duas chances de os números divergirem.
+     */
+    const ordenada = Object.entries(painel.evolucao_diaria).sort(([a], [b]) => a.localeCompare(b));
+
+    const chaveDo = (iso: string) => {
+      const d = new Date(`${iso}T12:00:00`);
+      if (passo === "dia") {
+        return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+      }
+      if (passo === "mes") {
+        return d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+      }
+      // Semana começando na segunda, que é como a operação enxerga a semana.
+      const seg = new Date(d);
+      const diaDaSemana = (d.getDay() + 6) % 7;
+      seg.setDate(d.getDate() - diaDaSemana);
+      return `${seg.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
+    };
+
+    const acumulado = new Map<string, Record<string, number>>();
+    for (const [iso, valores] of ordenada) {
+      const chave = chaveDo(iso);
+      const atual = acumulado.get(chave) ?? {
+        impressoes: 0, visualizacoes: 0, cliques: 0, leads: 0, conversoes: 0, alcance: 0,
+      };
+      for (const [campo, valor] of Object.entries(valores)) {
+        atual[campo] = (atual[campo] ?? 0) + Number(valor ?? 0);
+      }
+      // Engajamento como série própria — o José pediu "crescimento do
+      // engajamento", e ele não é nenhuma das outras três.
+      acumulado.set(chave, atual);
+    }
+
+    return [...acumulado.entries()].map(([dia, v]) => ({ dia, ...v }));
+  }, [painel, passo]);
 
   const porHora = useMemo(() => {
     if (!painel) return [];
@@ -209,8 +243,22 @@ export default function PainelDoFeed() {
           </section>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base">Crescimento no período</CardTitle>
+              <div className="flex rounded-md border text-xs">
+                {(["dia", "semana", "mes"] as const).map((g) => (
+                  <button
+                    key={g}
+                    onClick={() => setPasso(g)}
+                    className={cn(
+                      "px-2.5 py-1 first:rounded-l-md last:rounded-r-md",
+                      passo === g ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                    )}
+                  >
+                    {g === "dia" ? "Diária" : g === "semana" ? "Semanal" : "Mensal"}
+                  </button>
+                ))}
+              </div>
             </CardHeader>
             <CardContent>
               {serie.length === 0 ? (
