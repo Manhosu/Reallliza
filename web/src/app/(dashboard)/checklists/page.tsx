@@ -29,10 +29,14 @@ import type {
   ChecklistTemplate,
   ChecklistTemplateItem,
 } from "@/lib/types";
+import { UserRole } from "@/lib/types";
 import { checklistTemplatesApi } from "@/lib/api";
-import { ApiError } from "@/lib/api/client";
+import { apiClient, ApiError } from "@/lib/api/client";
 import { assertFreshSession } from "@/lib/api/session-guard";
 import { usePaginatedApi } from "@/hooks/use-api";
+import { useExclusao } from "@/hooks/use-exclusao";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
+import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -480,6 +484,21 @@ export default function ChecklistsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState<string>("all");
 
+  const { user } = useAuthStore();
+  // A rota de purge só aceita admin. Mostrar o botão para os demais
+  // renderia um 403 na cara de quem não pode — o usuário conclui que o
+  // sistema quebrou em vez de entender que a ação não é dele.
+  const podeExcluir = user?.role === UserRole.ADMIN;
+
+  // O único Trash2 que esta tela tinha era o do formulário, que remove um
+  // item do rascunho — o template em si só dava para desativar (Ban), e
+  // desativado continua no banco. Quem cadastrou um modelo para testar não
+  // tinha como tirá-lo dali.
+  const excl = useExclusao<ChecklistTemplate>(
+    "checklist_templates",
+    (t) => t.name
+  );
+
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -527,6 +546,30 @@ export default function ChecklistsPage() {
   const totalItems = meta?.total ?? 0;
   const totalPages = meta?.total_pages ?? 1;
 
+  /**
+   * Recarrega a lista depois que um template deixou de aparecer nela.
+   *
+   * Com 9 por página, tirar o único item da última página fazia o refetch
+   * pedir a MESMA página — que já não existe — e a resposta vinha vazia. A
+   * tela então caía no estado vazio, "Nenhum template encontrado / Crie seu
+   * primeiro template", com a paginação logo abaixo apontando páginas cheias.
+   * Quem acabou de excluir um modelo lê que não tem modelo nenhum.
+   *
+   * `saiuDaLista` porque nem toda ação esvazia a página: desativar só remove o
+   * card quando o filtro é "Ativos"; em "Todos" o item continua ali.
+   *
+   * Só `setCurrentPage`, sem `mutate()`: a página é dependência da busca, então
+   * trocá-la já refaz a requisição — chamar os dois pediria duas vezes.
+   */
+  function recarregarSemOItem(saiuDaLista: boolean) {
+    const eraOUnicoDaPagina = saiuDaLista && (templates?.length ?? 0) <= 1;
+    if (eraOUnicoDaPagina && currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+      return;
+    }
+    mutate();
+  }
+
   function handleNewTemplate() {
     setEditingTemplate(null);
     setView("form");
@@ -540,7 +583,9 @@ export default function ChecklistsPage() {
   async function handleDeactivate(template: ChecklistTemplate) {
     try {
       await checklistTemplatesApi.deactivate(template.id);
-      mutate();
+      // Sob o filtro "Ativos" o card some da lista — mesma página órfã da
+      // exclusão.
+      recarregarSemOItem(activeFilter === "active");
       toast.success("Template desativado com sucesso");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro ao desativar template";
@@ -553,6 +598,12 @@ export default function ChecklistsPage() {
       await checklistTemplatesApi.update(template.id, {
         name: template.name,
       });
+      // Sem `recarregarSemOItem` aqui de propósito: hoje o card NÃO sai da
+      // lista sob o filtro "Inativos", porque este PUT não reativa nada — a
+      // rota só grava `is_active` quando o corpo traz o campo
+      // (api/checklists/templates/[id]/route.ts) e aqui só vai o nome. Quando
+      // o ativar de fato voltar a funcionar, trocar por
+      // `recarregarSemOItem(activeFilter === "inactive")`.
       mutate();
       toast.success("Template ativado com sucesso");
     } catch (err: unknown) {
@@ -877,6 +928,16 @@ export default function ChecklistsPage() {
                           Ativar
                         </Button>
                       )}
+                      {podeExcluir && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void excl.abrir(template)}
+                          title="Excluir permanentemente"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -950,6 +1011,28 @@ export default function ChecklistsPage() {
           )}
         </>
       )}
+
+      <HardDeleteDialog
+        {...excl.props("modelo de checklist")}
+        /*
+          Nada impede dois templates com o mesmo nome — o cadastro não tem
+          unicidade — e aí o nome digitado confirma o texto sem confirmar qual
+          dos dois sai. A contagem de itens e a data de criação desempatam.
+        */
+        entityHint={
+          excl.alvo
+            ? `${excl.alvo.items?.length ?? 0} ${
+                (excl.alvo.items?.length ?? 0) === 1 ? "item" : "itens"
+              } · criado em ${formatDate(excl.alvo.created_at)}`
+            : undefined
+        }
+        onConfirm={async () => {
+          if (!excl.alvo) return;
+          await apiClient.delete(`/checklists/templates/${excl.alvo.id}/purge`);
+          // Excluído some da lista em qualquer filtro.
+          recarregarSemOItem(true);
+        }}
+      />
     </div>
   );
 }

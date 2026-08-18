@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Package, Plus, History, Pencil, Wrench } from "lucide-react";
+import { Package, Plus, History, Pencil, Wrench, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,12 +13,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toolsApi } from "@/lib/api";
+import { apiClient } from "@/lib/api/client";
 import type { ToolInventory, PaginatedResponse } from "@/lib/types";
+import { UserRole } from "@/lib/types";
+import { useAuthStore } from "@/stores/auth-store";
 import type { ToolUnit } from "@/lib/tools/types";
 import { UNIT_STATUS_LABELS } from "@/lib/tools/types";
 import { UnitStatusBadge } from "@/components/ferramentas/almox-badges";
 import { KpiTile } from "@/components/ferramentas/kpi-tile";
 import { ToolPhotosField, type PhotoRef } from "@/components/ferramentas/tool-photos-field";
+import { useExclusao } from "@/hooks/use-exclusao";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 
 const PAGE_SIZE = 20;
 
@@ -42,6 +47,26 @@ function InventarioContent() {
 
   const [types, setTypes] = useState<ToolInventory[]>([]);
   const [showNewUnit, setShowNewUnit] = useState(false);
+
+  /**
+   * Exclusão da unidade física.
+   *
+   * `/tools/units/[id]/purge` só aceita administrador, então o botão fica
+   * escondido para os demais: botão visível que devolve 403 faz quem operou
+   * concluir que o sistema quebrou — foi o que a Jéssica relatou.
+   *
+   * O código da unidade (FUR-00123) é o que ela digita para confirmar; é o que
+   * está na linha, ao lado do botão.
+   *
+   * Só o papel esconde o botão — a situação da unidade, não. Unidade reservada
+   * é trava de estado e mora em `lib/api-helpers/travas.ts`, aplicada pela rota
+   * e pelo pré-check: o diálogo abre já bloqueado, dizendo que há um pedido
+   * contando com ela. Repetir a regra aqui só criaria uma segunda cópia para
+   * divergir — e sumir com o botão não explica nada a quem quer entender por
+   * que aquela unidade não sai.
+   */
+  const podeExcluir = useAuthStore((s) => s.user)?.role === UserRole.ADMIN;
+  const excl = useExclusao<ToolUnit>("tool_units", (u) => u.code);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -239,6 +264,16 @@ function InventarioContent() {
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                         </Link>
+                        {podeExcluir && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => void excl.abrir(u)}
+                            title="Excluir permanentemente"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -329,6 +364,47 @@ function InventarioContent() {
           }}
         />
       )}
+
+      <HardDeleteDialog
+        {...excl.props("unidade")}
+        /*
+         * O código já é único, mas sozinho não diz nada: "FUR-00123" não conta
+         * de qual ferramenta é nem onde ela está. Quem chega no diálogo vindo
+         * de uma lista de vinte linhas parecidas precisa reconhecer a linha em
+         * que clicou antes de digitar — é isso que a digitação deveria conferir.
+         */
+        entityHint={
+          excl.alvo
+            ? [
+                excl.alvo.tool?.name,
+                excl.alvo.patrimony_code && `Patrimônio ${excl.alvo.patrimony_code}`,
+                excl.alvo.serial_number && `Série ${excl.alvo.serial_number}`,
+                excl.alvo.location,
+              ]
+                .filter(Boolean)
+                .join(" · ") || undefined
+            : undefined
+        }
+        onConfirm={async () => {
+          if (!excl.alvo) return;
+          await apiClient.delete(`/tools/units/${excl.alvo.id}/purge`);
+          /*
+           * Página órfã: era o último item desta página, e há página anterior.
+           * Recarregar no mesmo número devolvia uma lista vazia com "Nenhuma
+           * unidade encontrada" — a mesma tela de "não há nada cadastrado" —
+           * enquanto dezenas de unidades continuavam nas páginas de trás.
+           *
+           * Só mudar `page` basta: `loadUnits` depende dela e o efeito
+           * recarrega sozinho. Chamar as duas coisas faria a mesma busca duas
+           * vezes, e a primeira ainda traria a página vazia.
+           */
+          if (units.length === 1 && page > 1) {
+            setPage((p) => p - 1);
+          } else {
+            await loadUnits();
+          }
+        }}
+      />
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { ClipboardList, AlertTriangle, Check } from "lucide-react";
+import { ClipboardList, AlertTriangle, Check, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,14 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { apiClient } from "@/lib/api/client";
 import { toolsApi } from "@/lib/api";
+import { UserRole } from "@/lib/types";
+import { useAuthStore } from "@/stores/auth-store";
 import type { ToolUnit } from "@/lib/tools/types";
 import { RequestStatusBadge, REQUEST_LABELS } from "@/components/ferramentas/almox-badges";
 import { KpiTile } from "@/components/ferramentas/kpi-tile";
 import { ToolPhotosField, type PhotoRef } from "@/components/ferramentas/tool-photos-field";
+import { useExclusao } from "@/hooks/use-exclusao";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 
 /**
  * Pedidos (spec seções 11-14).
@@ -81,6 +85,27 @@ function PedidosContent() {
   const [approving, setApproving] = useState<ToolRequest | null>(null);
   const [delivering, setDelivering] = useState<ToolRequest | null>(null);
   const [rejecting, setRejecting] = useState<ToolRequest | null>(null);
+
+  /**
+   * Exclusão do pedido.
+   *
+   * Recusar e cancelar mudam o status — o pedido continua na lista. Um pedido
+   * criado por engano ou em teste não tinha como sair de lá.
+   *
+   * `/tools/requests/[id]/purge` só aceita administrador; para os demais o
+   * botão nem aparece, senão a recusa 403 pareceria defeito do sistema.
+   *
+   * Pedido não tem nome: o que se confirma digitando é o nome da ferramenta,
+   * que é o título do cartão.
+   *
+   * O botão não olha o status. Pedido com unidade reservada é trava de estado
+   * e mora em `lib/api-helpers/travas.ts`, aplicada tanto pela rota quanto pelo
+   * pré-check: o diálogo abre bloqueado explicando que cancelar devolve as
+   * unidades. Uma condição de visibilidade aqui seria uma terceira cópia da
+   * mesma regra, e a primeira a envelhecer.
+   */
+  const podeExcluir = useAuthStore((s) => s.user)?.role === UserRole.ADMIN;
+  const excl = useExclusao<ToolRequest>("tool_requests", (r) => r.tool_name);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -250,6 +275,16 @@ function PedidosContent() {
                         {a.label}
                       </Button>
                     ))}
+                    {podeExcluir && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void excl.abrir(r)}
+                        title="Excluir permanentemente"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -291,6 +326,33 @@ function PedidosContent() {
           }}
         />
       )}
+
+      <HardDeleteDialog
+        {...excl.props("solicitação")}
+        /*
+         * O nome da ferramenta se repete à vontade: dez técnicos pedem a mesma
+         * furadeira na mesma semana. Digitar "Furadeira de impacto" confirmaria
+         * o texto sem confirmar qual dos dez pedidos está saindo. Quem desempata
+         * é solicitante, quantidade e data — os mesmos três dados que estão no
+         * cartão de onde a pessoa clicou.
+         */
+        entityHint={
+          excl.alvo
+            ? [
+                excl.alvo.requester?.full_name,
+                `${excl.alvo.quantity}×`,
+                new Date(excl.alvo.created_at).toLocaleString("pt-BR"),
+              ]
+                .filter(Boolean)
+                .join(" · ")
+            : undefined
+        }
+        onConfirm={async () => {
+          if (!excl.alvo) return;
+          await apiClient.delete(`/tools/requests/${excl.alvo.id}/purge`);
+          await load();
+        }}
+      />
     </div>
   );
 }

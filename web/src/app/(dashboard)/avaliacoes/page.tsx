@@ -11,6 +11,7 @@ import {
   MessageSquare,
   ChevronLeft,
   ChevronRight,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,8 +23,11 @@ import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ratingsApi } from "@/lib/api";
 import { usersApi } from "@/lib/api";
+import { apiClient } from "@/lib/api/client";
 import { type ProfessionalRating, type Profile, UserRole } from "@/lib/types";
 import { usePaginatedApi } from "@/hooks/use-api";
+import { useExclusao } from "@/hooks/use-exclusao";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 import { useAuthStore } from "@/stores/auth-store";
 
 // ============================================================
@@ -55,6 +59,39 @@ function averageScore(rating: ProfessionalRating): number {
     rating.organization_score +
     rating.communication_score;
   return Math.round((total / 4) * 10) / 10;
+}
+
+/**
+ * O texto que o admin digita para confirmar a exclusão.
+ *
+ * A avaliação não tem nome próprio, e o nome do profissional sozinho não
+ * identifica registro nenhum: o mesmo técnico costuma ter várias avaliações, e
+ * todas pediriam exatamente a mesma digitação — quem confirmasse a segunda
+ * estaria digitando o texto da primeira sem perceber a troca. Nome + data é o
+ * par que o card já mostra empilhado no topo, então a pessoa digita o que está
+ * lendo e o texto muda de uma avaliação para a outra.
+ */
+function nomeDaAvaliacao(rating: ProfessionalRating): string {
+  const nome = rating.professional?.full_name || "Profissional";
+  return `${nome} - ${formatDate(rating.created_at)}`;
+}
+
+/**
+ * A linha de contexto embaixo do nome no diálogo — não é o que se digita.
+ *
+ * Cobre o empate que a data não desfaz: duas avaliações do mesmo profissional
+ * no mesmo dia. Só entra aqui o que o card já mostra (média, OS, quem avaliou),
+ * para a conferência não depender de abrir outra tela.
+ */
+function dicaDaAvaliacao(rating: ProfessionalRating): string {
+  const partes = [`Média ${averageScore(rating).toFixed(1)}`];
+  if (rating.service_order?.title) {
+    partes.push(`OS: ${rating.service_order.title}`);
+  }
+  if (rating.rated_by_user?.full_name) {
+    partes.push(`Avaliado por ${rating.rated_by_user.full_name}`);
+  }
+  return partes.join(" · ");
 }
 
 // ============================================================
@@ -208,6 +245,22 @@ export default function AvaliacoesPage() {
     setPage,
     mutate,
   } = usePaginatedApi<ProfessionalRating>(fetcher, 1, 12, []);
+
+  const excl = useExclusao<ProfessionalRating>(
+    "professional_ratings",
+    nomeDaAvaliacao
+  );
+
+  /**
+   * O botão espelha o que a rota aceita: `/ratings/{id}/purge` é montada por
+   * `criarRotaDeExclusao` sem `papeis`, e o padrão de lá é só `admin`.
+   *
+   * A página já barra quem não é administrador, mas só depois que `user`
+   * chega — até lá ela renderiza. Como a checagem aqui é por igualdade, nesse
+   * intervalo `user?.role` é `undefined` e o botão fica fora da tela, em vez de
+   * oferecer uma ação que voltaria 403.
+   */
+  const podeExcluir = user?.role === UserRole.ADMIN;
 
   const totalPages = meta?.total_pages ?? 1;
   const totalRatings = meta?.total ?? 0;
@@ -416,6 +469,16 @@ export default function AvaliacoesPage() {
                         >
                           {avg.toFixed(1)}
                         </Badge>
+                        {podeExcluir && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => void excl.abrir(rating)}
+                            title="Excluir permanentemente"
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
                       </div>
 
                       {/* Scores */}
@@ -662,6 +725,16 @@ export default function AvaliacoesPage() {
           </motion.div>
         </div>
       )}
+
+      <HardDeleteDialog
+        {...excl.props("avaliação")}
+        entityHint={excl.alvo ? dicaDaAvaliacao(excl.alvo) : undefined}
+        onConfirm={async () => {
+          if (!excl.alvo) return;
+          await apiClient.delete(`/ratings/${excl.alvo.id}/purge`);
+          mutate();
+        }}
+      />
     </div>
   );
 }

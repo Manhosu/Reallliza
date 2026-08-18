@@ -3,6 +3,7 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { diagnosticar } from "@/lib/api-helpers/exclusao";
+import { TRAVAS } from "@/lib/api-helpers/travas";
 
 /**
  * GET /api/admin/dependencias?tabela=X&id=Y
@@ -61,10 +62,32 @@ export async function GET(request: NextRequest) {
     const supabase = getAdminClient();
     const diagnostico = await diagnosticar(supabase, tabela, id);
 
+    /**
+     * A trava de estado entra como bloqueio, ao lado dos de chave estrangeira.
+     *
+     * Sem isto, o diálogo abriria limpo para uma manutenção em andamento: a
+     * pessoa digitaria o nome, clicaria em excluir e só então receberia a
+     * recusa. O ponto de existir um pré-check é justamente não deixar chegar
+     * até ali.
+     */
+    const trava = TRAVAS[tabela];
+    let impedimento: string | null = null;
+    if (trava) {
+      const { data } = await supabase
+        .from(tabela)
+        .select(trava.select)
+        .eq("id", id)
+        .maybeSingle();
+      if (data) impedimento = trava.avaliar(data as unknown as Record<string, unknown>);
+    }
+
     return jsonResponse({
-      pode_excluir: diagnostico.podeExcluir,
+      pode_excluir: diagnostico.podeExcluir && !impedimento,
       // O formato é o que `HardDeleteDialog` já espera: label, count, action.
       dependencies: [
+        ...(impedimento
+          ? [{ label: impedimento, count: 1, action: "block" as const }]
+          : []),
         ...diagnostico.bloqueios.map((b) => ({
           label: `${b.rotulo} — ${b.motivo}`,
           count: b.quantidade,
@@ -74,6 +97,11 @@ export async function GET(request: NextRequest) {
           label: b.rotulo,
           count: b.quantidade,
           action: "cascade" as const,
+        })),
+        ...diagnostico.desvincula.map((b) => ({
+          label: b.rotulo,
+          count: b.quantidade,
+          action: "set_null" as const,
         })),
       ],
     });

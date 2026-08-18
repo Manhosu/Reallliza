@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   XCircle,
   MessageSquare,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,6 +34,9 @@ import {
   UserRole,
 } from "@/lib/types";
 import { usePaginatedApi } from "@/hooks/use-api";
+import { useExclusao } from "@/hooks/use-exclusao";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
+import { apiClient } from "@/lib/api/client";
 
 // ============================================================
 // Helpers
@@ -66,6 +70,60 @@ function formatCurrency(value: number | null): string {
     style: "currency",
     currency: "BRL",
   }).format(value);
+}
+
+/**
+ * Como a proposta se identifica no diálogo de exclusão — é este texto que a
+ * pessoa precisa digitar.
+ *
+ * Era só o título da OS, e o título da OS não identifica proposta nenhuma: o
+ * POST de /proposals não checa duplicidade, então a mesma OS costuma ter uma
+ * proposta direta para cada parceiro mais um broadcast, todas convivendo na
+ * lista com o mesmo título. Digitar esse texto confirmava a OS, não o registro
+ * que ia sair — justamente o que a digitação existe para conferir.
+ *
+ * Por isso o destinatário entra no nome: é o que separa uma linha da outra no
+ * card. Separador com hífen simples porque isto é para DIGITAR — travessão não
+ * está no teclado.
+ *
+ * Sem o join da OS sobra o id curto. Feio, mas identifica, e o fallback antigo
+ * ("Ordem de Servico") era pior de um jeito silencioso: escrito sem cedilha,
+ * virava o texto a digitar, e a comparação é sensível a acento — quem
+ * escrevesse "Serviço" como se escreve nunca habilitava o botão.
+ */
+function nomeDaProposta(p: ServiceProposal): string {
+  const titulo =
+    p.service_order?.title?.trim() || `Proposta ${p.id.slice(0, 8)}`;
+  const destino = p.partner?.company_name?.trim() || "Broadcast";
+  return `${titulo} - ${destino}`;
+}
+
+/**
+ * Linha de contexto do diálogo — não é o que se digita.
+ *
+ * Desempata o que o nome ainda não desempata: duas propostas da mesma OS para
+ * o mesmo destinatário (dois broadcasts, por exemplo) só se distinguem por
+ * valor e data.
+ *
+ * Na aceita vai junto o aviso do que se perde. Aviso, e não proibição: a rota
+ * /proposals/[id]/purge não passa `travaPropria`, `service_proposals` não está
+ * em TRAVAS e nenhuma tabela tem chave estrangeira apontando para ela — o
+ * servidor apaga proposta aceita sem reclamar. O que some é o registro da
+ * negociação (valor, mensagem, quem aceitou). A atribuição da OS não vai
+ * junto: aceitar grava technician_id e status na própria service_orders e
+ * deixa uma linha em os_status_history, e nada disso depende da proposta.
+ */
+function dicaDaProposta(p: ServiceProposal): string {
+  const partes: string[] = [];
+  if (p.proposed_value) partes.push(formatCurrency(p.proposed_value));
+  partes.push(`criada em ${formatDate(p.created_at)}`);
+  if (p.status === ProposalStatus.ACCEPTED) {
+    const quem = p.accepted_by_user?.full_name;
+    partes.push(
+      `ACEITA${quem ? ` por ${quem}` : ""} — apagar remove o registro da negociação; a OS continua atribuída`
+    );
+  }
+  return partes.join(" · ");
 }
 
 function getStatusBadgeVariant(
@@ -202,6 +260,12 @@ function PropostasPage() {
   }, [statusFilter, setPage]);
 
   const totalProposals = meta?.total ?? 0;
+
+  /** Exclusão permanente da proposta — nome e contexto acima. */
+  const excl = useExclusao<ServiceProposal>(
+    "service_proposals",
+    nomeDaProposta
+  );
 
   // Load service orders and partners for create modal
   useEffect(() => {
@@ -570,6 +634,36 @@ function PropostasPage() {
                           </Button>
                         </div>
                       )}
+
+                    {/* Excluir é só do admin: `criarRotaDeExclusao` em
+                        /proposals/[id]/purge não passa `papeis`, e o padrão do
+                        construtor é ["admin"]. Botão que aparece e devolve 403
+                        faz a pessoa concluir que o sistema quebrou.
+
+                        Status não entra nesta condição. A trava
+                        `status !== ACCEPTED` que ficava aqui era invenção do
+                        cliente: a rota não passa `travaPropria`,
+                        `service_proposals` não está em TRAVAS e nada no banco
+                        referencia a tabela — o DELETE numa proposta aceita
+                        funciona. A tela proibia o que o servidor autoriza, e
+                        fazia isso sumindo com a lixeira do card, sem uma linha
+                        explicando; para o admin isso lê como defeito. Pior:
+                        deixava sem saída exatamente o caso que motivou a rota,
+                        a proposta de teste que foi aceita no aplicativo.
+                        O que a proposta aceita ganha é aviso, no `entityHint`
+                        do diálogo — não impedimento. */}
+                    {isAdmin && (
+                      <div className="flex justify-end border-t pt-4">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => void excl.abrir(proposal)}
+                          title="Excluir permanentemente"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </motion.div>
@@ -842,6 +936,19 @@ function PropostasPage() {
           </div>
         </div>
       )}
+
+      {/* Nada aqui promete bloqueio por status: a lista de dependências vem do
+          diagnóstico genérico, que só conhece chave estrangeira. O que o
+          diálogo mostra é o que a rota de fato vai barrar. */}
+      <HardDeleteDialog
+        {...excl.props("proposta")}
+        entityHint={excl.alvo ? dicaDaProposta(excl.alvo) : undefined}
+        onConfirm={async () => {
+          if (!excl.alvo) return;
+          await apiClient.delete(`/proposals/${excl.alvo.id}/purge`);
+          mutate();
+        }}
+      />
     </div>
   );
 }

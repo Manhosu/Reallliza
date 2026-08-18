@@ -8,6 +8,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,6 +23,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
+import { useExclusao } from "@/hooks/use-exclusao";
 import { cn } from "@/lib/utils";
 import {
   qualityEvaluationsApi,
@@ -29,7 +32,9 @@ import {
   serviceOrdersApi,
   usersApi,
 } from "@/lib/api";
-import { OsStatus } from "@/lib/types";
+import { apiClient } from "@/lib/api/client";
+import { useAuthStore } from "@/stores/auth-store";
+import { OsStatus, UserRole } from "@/lib/types";
 import type { QualityEvaluation } from "@/lib/api/quality-evaluations";
 import type { Specialty } from "@/lib/api/specialties";
 import type { ServiceOrder, Profile } from "@/lib/types";
@@ -42,6 +47,46 @@ function scoreColor(score: number): string {
   if (score >= 80) return "text-green-600";
   if (score >= 50) return "text-amber-600";
   return "text-red-600";
+}
+
+/**
+ * A avaliação não tem nome próprio para o admin digitar na confirmação.
+ * Usamos o número da OS, que é o que o cartão exibe — e cai para o nome do
+ * profissional (e daí para a data) porque a OS vem de um join que pode
+ * voltar nulo se ela tiver sido apagada antes.
+ */
+function nomeDaAvaliacao(ev: QualityEvaluation): string {
+  if (ev.service_order) return `OS #${ev.service_order.order_number}`;
+  return (
+    ev.technician?.full_name ??
+    new Date(ev.created_at).toLocaleDateString("pt-BR")
+  );
+}
+
+/**
+ * O contexto que aparece embaixo do nome no diálogo de exclusão.
+ *
+ * Aqui o nome repete com facilidade: a mesma OS avaliada em duas
+ * especialidades gera duas linhas com o mesmo "OS #123", e um profissional
+ * avaliado duas vezes gera duas linhas com o mesmo nome. Digitar o nome, nesses
+ * casos, confirma o texto sem confirmar qual das duas linhas está saindo — por
+ * isso mostramos o resto do que a linha exibe (profissional, especialidade,
+ * nota e data).
+ *
+ * Cada pedaço só entra se não for justamente o que virou o nome, senão a dica
+ * repetiria a linha de cima em vez de acrescentar informação.
+ */
+function dicaDaAvaliacao(ev: QualityEvaluation): string {
+  const partes: string[] = [];
+  if (ev.service_order && ev.technician?.full_name) {
+    partes.push(ev.technician.full_name);
+  }
+  if (ev.specialty?.name) partes.push(ev.specialty.name);
+  partes.push(`${Math.round(ev.score)} pts`);
+  if (ev.service_order || ev.technician?.full_name) {
+    partes.push(new Date(ev.created_at).toLocaleDateString("pt-BR"));
+  }
+  return partes.join(" · ");
 }
 
 // ============================================================
@@ -291,6 +336,18 @@ export default function QualidadePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
 
+  // A rota `/quality-evaluations/[id]/purge` não passa `papeis`, então vale o
+  // padrão do construtor: só administrador. Mostrar o botão para os outros
+  // renderia um 403 depois do clique — e quem leva 403 conclui que o sistema
+  // quebrou, não que não podia.
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === UserRole.ADMIN;
+
+  const excl = useExclusao<QualityEvaluation>(
+    "quality_evaluations",
+    nomeDaAvaliacao
+  );
+
   const usersById = useMemo(() => {
     const m = new Map<string, string>();
     users.forEach((u) => m.set(u.id, u.full_name));
@@ -426,6 +483,16 @@ export default function QualidadePage() {
                         </p>
                       )}
                     </div>
+                    {isAdmin && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void excl.abrir(ev)}
+                        title="Excluir permanentemente"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
               </motion.div>
@@ -441,6 +508,25 @@ export default function QualidadePage() {
         usersById={usersById}
         onClose={() => setShowForm(false)}
         onSaved={loadEvaluations}
+      />
+
+      <HardDeleteDialog
+        {...excl.props("avaliação de qualidade")}
+        entityHint={excl.alvo ? dicaDaAvaliacao(excl.alvo) : undefined}
+        onConfirm={async () => {
+          if (!excl.alvo) return;
+          await apiClient.delete(`/quality-evaluations/${excl.alvo.id}/purge`);
+          // A rota recalcula a nota do profissional depois de apagar. O único
+          // número desta tela é o `score` de cada avaliação, que sai junto com
+          // a linha — a nota consolidada (overall/quality score do perfil) não
+          // é renderizada aqui, então recarregar a lista alcança tudo o que a
+          // exclusão mudou no que está visível.
+          //
+          // Com `await`, a lista já chega atualizada antes de o diálogo fechar:
+          // sem ele, o toast de sucesso aparecia sobre a linha recém-excluída
+          // ainda visível.
+          await loadEvaluations();
+        }}
       />
     </div>
   );

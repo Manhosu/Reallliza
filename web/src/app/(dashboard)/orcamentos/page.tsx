@@ -3,14 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, FileText, Clock, Pencil } from "lucide-react";
+import { Plus, FileText, Clock, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { quotesApi } from "@/lib/api";
+import { apiClient } from "@/lib/api/client";
 import type { Quote, QuoteStatus } from "@/lib/api/quotes";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
+import { useExclusao } from "@/hooks/use-exclusao";
+import { useAuthStore } from "@/stores/auth-store";
+import { UserRole } from "@/lib/types";
 
 function formatBRL(value: number): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -39,6 +44,31 @@ const STATUS_INFO: Record<QuoteStatus, { label: string; cls: string }> = {
 export default function OrcamentosPage() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const user = useAuthStore((s) => s.user);
+  // `/quotes/{id}/purge` só aceita admin. Parceiro vendo a lixeira clicaria e
+  // levaria 403 — a pessoa conclui que o sistema quebrou, não que não pode.
+  const isAdmin = user?.role === UserRole.ADMIN;
+
+  // O número é o que a pessoa lê no card ("Orçamento #42"); pedir o UUID para
+  // confirmar seria pedir para ela abrir o console.
+  const excl = useExclusao<Quote>("quotes", (q) => `#${q.quote_number}`);
+  const propsExclusao = excl.props("orçamento");
+
+  /**
+   * A OS que este orçamento gerou não aparece no diagnóstico.
+   *
+   * `quotes.service_order_id` é chave de SAÍDA (orçamento → OS), e o
+   * diagnóstico genérico só lê o que aponta PARA o registro. Resultado: a OS
+   * gerada é invisível ali. Na prática quase sempre há um pagamento segurando
+   * o orçamento, mas quando não há, ele sai em silêncio e a OS viva fica sem o
+   * registro comercial de origem.
+   *
+   * É aviso, não bloqueio: a OS continua existindo e funcionando, só perde a
+   * referência de onde veio. Quem exclui precisa saber disso antes de digitar
+   * o número.
+   */
+  const gerouOs = !!excl.alvo?.service_order_id;
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -166,6 +196,19 @@ export default function OrcamentosPage() {
                           </Button>
                         </Link>
                       )}
+                      {/* `relative z-10` pelo mesmo motivo do Editar: sem isso
+                          o overlay do link engole o clique e abre o orçamento. */}
+                      {isAdmin && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="relative z-10"
+                          onClick={() => void excl.abrir(q)}
+                          title="Excluir permanentemente"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
                 </motion.div>
@@ -174,6 +217,38 @@ export default function OrcamentosPage() {
           </AnimatePresence>
         </div>
       )}
+
+      <HardDeleteDialog
+        {...propsExclusao}
+        // "#42" não diz de quem é nem de quanto é. Cliente e valor são o que
+        // a pessoa usa para reconhecer o orçamento — e são o que ela acabou
+        // de ler no card antes de clicar na lixeira.
+        entityHint={
+          excl.alvo
+            ? `${excl.alvo.client_name} · ${formatBRL(excl.alvo.total_amount)}`
+            : undefined
+        }
+        // O aviso da OS gerada vai depois do que veio do servidor: bloqueio de
+        // pagamento é o que decide se dá para excluir, então lê primeiro.
+        dependencies={[
+          ...propsExclusao.dependencies,
+          ...(gerouOs
+            ? [
+                {
+                  label:
+                    "OS gerada por este orçamento — fica sem o registro de origem",
+                  count: 1,
+                  action: "set_null" as const,
+                },
+              ]
+            : []),
+        ]}
+        onConfirm={async () => {
+          if (!excl.alvo) return;
+          await apiClient.delete(`/quotes/${excl.alvo.id}/purge`);
+          load();
+        }}
+      />
     </div>
   );
 }

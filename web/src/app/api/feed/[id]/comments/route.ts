@@ -7,6 +7,12 @@ import { createNotification } from "@/lib/api-helpers/notifications";
 /**
  * GET /api/feed/:id/comments
  * Lista comentários de um post (ordem cronológica).
+ *
+ * Só os visíveis. A rota listava tudo, inclusive o que a moderação já tinha
+ * escondido ou removido e o que o próprio autor apagou — o comentário
+ * reaparecia na lista enquanto o contador, que o gatilho `feed_contar`
+ * mantém, já o tinha descontado. Quem moderasse via a ação não surtir efeito;
+ * quem lesse via um número que não batia com a lista.
  */
 export async function GET(
   request: NextRequest,
@@ -24,6 +30,7 @@ export async function GET(
         id,
         post_id,
         user_id,
+        parent_comment_id,
         content,
         created_at,
         updated_at,
@@ -31,6 +38,8 @@ export async function GET(
       `
       )
       .eq("post_id", postId)
+      .eq("status", "visible")
+      .is("deleted_at", null)
       .order("created_at", { ascending: true });
 
     if (error) {
@@ -106,6 +115,7 @@ export async function POST(
         id,
         post_id,
         user_id,
+        parent_comment_id,
         content,
         created_at,
         updated_at,

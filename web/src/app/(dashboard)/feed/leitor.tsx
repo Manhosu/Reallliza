@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { feedApi } from "@/lib/api";
 import type { FeedPost, FeedCta } from "@/lib/api/feed";
 import { EnqueteDoFeed, PedidoDoFeed } from "@/components/feed/enquete-e-pedido";
+import { ComentariosDoPost } from "@/components/feed/comentarios";
 import { rastreador } from "@/lib/feed/rastreador";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -56,6 +57,7 @@ export function FeedLeitor() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [abertoEm, setAbertoEm] = useState<string | null>(null);
+  const [comentandoEm, setComentandoEm] = useState<string | null>(null);
   const [pedido, setPedido] = useState<{ post: FeedPost; cta: FeedCta; tipo: string } | null>(null);
   const perfil = useAuthStore((e) => e.user);
 
@@ -328,10 +330,16 @@ export function FeedLeitor() {
                       </button>
                     )}
                     {p.comments_enabled && (
-                      <span className="flex items-center gap-1.5 text-muted-foreground">
+                      <button
+                        onClick={() => setComentandoEm(comentandoEm === p.id ? null : p.id)}
+                        className={cn(
+                          "flex items-center gap-1.5 text-muted-foreground transition hover:text-foreground",
+                          comentandoEm === p.id && "text-primary"
+                        )}
+                      >
                         <MessageCircle className="h-4 w-4" />
-                        {p.comment_count > 0 ? p.comment_count : "Comentar no app"}
-                      </span>
+                        {p.comment_count > 0 ? p.comment_count : "Comentar"}
+                      </button>
                     )}
                     <span className="flex items-center gap-1.5 text-muted-foreground">
                       <Share2 className="h-4 w-4" />
@@ -348,6 +356,19 @@ export function FeedLeitor() {
                       <Bookmark className={cn("h-4 w-4", p.saved_by_me && "fill-current")} />
                     </button>
                   </div>
+
+                  {comentandoEm === p.id && (
+                    <ComentariosDoPost
+                      postId={p.id}
+                      aoComentar={() =>
+                        setPosts((atuais) =>
+                          atuais.map((x) =>
+                            x.id === p.id ? { ...x, comment_count: x.comment_count + 1 } : x
+                          )
+                        )
+                      }
+                    />
+                  )}
                 </Card>
               </motion.div>
             );

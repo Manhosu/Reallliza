@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, X, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -19,6 +19,17 @@ interface Props {
   open: boolean;
   entityLabel: string; // "parceiro", "técnico", ...
   entityName: string; // que o admin digita pra confirmar
+  /**
+   * Contexto extra para diferenciar registros de nome igual — o parceiro de
+   * uma proposta, o horário de um agendamento, a data de uma avaliação.
+   *
+   * Existe porque nem toda entidade tem nome próprio: duas propostas da mesma
+   * OS, duas garantias da mesma OS e dois agendamentos do mesmo dia produzem
+   * `entityName` idêntico, e aí a digitação confirma o texto sem confirmar o
+   * registro. O que se digita continua sendo o `entityName`; isto só aparece
+   * ao lado, para a pessoa saber em qual dos dois está.
+   */
+  entityHint?: string;
   dependencies?: Dependency[];
   loadingDeps?: boolean;
   onClose: () => void;
@@ -34,6 +45,7 @@ export function HardDeleteDialog({
   open,
   entityLabel,
   entityName,
+  entityHint,
   dependencies,
   loadingDeps,
   onClose,
@@ -42,13 +54,41 @@ export function HardDeleteDialog({
   const [typed, setTyped] = useState("");
   const [deleting, setDeleting] = useState(false);
   const blocking = (dependencies ?? []).find((d) => d.action === "block");
-  const matches = typed.trim().toLowerCase() === entityName.trim().toLowerCase();
+  const matches =
+    typed.trim().toLowerCase() === entityName.trim().toLowerCase() &&
+    entityName.trim().length > 0;
+
+  /**
+   * O texto digitado morre junto com o diálogo.
+   *
+   * O componente fica montado o tempo todo — o `AnimatePresence` está aqui
+   * dentro, então fechar desmonta só o conteúdo. `typed` sobrevivia, e só o
+   * caminho de sucesso o limpava. Efeito: quem abria, digitava o nome e
+   * cancelava, ao reabrir encontrava o campo preenchido e o botão vermelho já
+   * habilitado. Em telas onde o nome se repete entre registros — duas
+   * propostas da mesma OS, duas avaliações do mesmo profissional — a segunda
+   * abertura era de OUTRO registro com a confirmação do primeiro já satisfeita.
+   *
+   * A digitação existe para forçar a pessoa a conferir qual registro está
+   * saindo. Guardada entre aberturas, ela deixava de conferir qualquer coisa.
+   */
+  useEffect(() => {
+    if (!open) setTyped("");
+  }, [open]);
+
+  // E também quando o diálogo troca de alvo sem fechar no meio.
+  useEffect(() => {
+    setTyped("");
+  }, [entityName]);
 
   const handleConfirm = async () => {
     setDeleting(true);
     try {
       await onConfirm();
-      toast.success(`${entityLabel} excluído`);
+      // Sem particípio: "proposta excluído" e "unidade excluído" saíam com o
+      // gênero errado, e acertar exigiria marcar gênero em cada rótulo passado
+      // por vinte telas. A frase funciona igual sem ele.
+      toast.success(`Exclusão concluída: ${entityLabel}`);
       setTyped("");
       onClose();
     } catch (err) {
@@ -100,6 +140,9 @@ export function HardDeleteDialog({
                     Nome do registro:{" "}
                     <strong className="text-foreground">{entityName}</strong>
                   </p>
+                  {entityHint && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">{entityHint}</p>
+                  )}
                 </div>
 
                 {loadingDeps ? (
@@ -109,9 +152,16 @@ export function HardDeleteDialog({
                 ) : dependencies && dependencies.length > 0 ? (
                   <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
                     <p className="text-xs font-semibold text-destructive mb-2 uppercase tracking-wide">
+                      {/*
+                        O título vinha fixo em "apagadas em cascata", que ficava
+                        errado quando a lista só tinha desvínculos — o diálogo
+                        anunciava perda de dado onde não havia nenhuma.
+                      */}
                       {blocking
                         ? "Bloqueio"
-                        : "Dependências que serão apagadas em cascata"}
+                        : dependencies.some((d) => d.action === "cascade")
+                          ? "O que será apagado junto"
+                          : "O que será desvinculado"}
                     </p>
                     <ul className="space-y-1 text-sm">
                       {dependencies.map((d, i) => (

@@ -14,6 +14,7 @@ import {
   Plus,
   X,
   ClipboardList,
+  Trash2,
 } from "lucide-react";
 import {
   format,
@@ -42,7 +43,11 @@ import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScheduleStatus, OsStatus, UserRole, type Schedule, type ServiceOrder, type Profile } from "@/lib/types";
 import { schedulesApi, serviceOrdersApi, usersApi } from "@/lib/api";
+import { apiClient } from "@/lib/api/client";
 import { useApi } from "@/hooks/use-api";
+import { useExclusao } from "@/hooks/use-exclusao";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
+import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "sonner";
 
 // ============================================================
@@ -124,6 +129,47 @@ function scheduleLabel(s: {
   if (s.service_order?.order_number) return `OS #${s.service_order.order_number}`;
   if (s.service_order?.title) return s.service_order.title;
   return s.service_order_id?.slice(0, 8) ?? "Agendamento";
+}
+
+/**
+ * Como o agendamento se identifica no dialogo de exclusao.
+ *
+ * Agendamento nao tem nome proprio, e o dialogo exige que a pessoa digite o
+ * identificador para confirmar. Um UUID ninguem digita; a data sozinha se
+ * repete entre varios do mesmo dia. Titulo + data e o par que aparece no card
+ * da lista, entao a pessoa confere o que esta apagando sem sair da tela.
+ *
+ * O horario entrou no rotulo porque titulo + data ainda empatavam: a mesma OS
+ * pode ter mais de um agendamento no mesmo dia (turnos ou tecnicos
+ * diferentes), e os dois registros geravam exatamente o mesmo texto para
+ * digitar. Nesse empate a confirmacao deixa de confirmar o registro e passa a
+ * confirmar so a frase — a pessoa digita certo tendo aberto o errado. Quando
+ * nem o horario desempata, o tecnico aparece no `entityHint` ao lado.
+ */
+function nomeDoAgendamento(s: Schedule): string {
+  const d = parseLocalDateString(s.date);
+  const dia = d ? format(d, "dd/MM/yyyy") : s.date;
+  // Postgres devolve TIME como "08:00:00"; quem digita nao deve ter de
+  // reproduzir os segundos, entao o rotulo fica em HH:MM.
+  const hora = s.start_time?.slice(0, 5);
+  return hora
+    ? `${scheduleLabel(s)} - ${dia} ${hora}`
+    : `${scheduleLabel(s)} - ${dia}`;
+}
+
+/**
+ * Quem atende o agendamento.
+ *
+ * Vira `entityHint` no dialogo de exclusao: e o unico dado que separa dois
+ * agendamentos da mesma OS no mesmo dia e horario, caso em que nem o rotulo
+ * com hora desempata. Nao entra no que se digita — e contexto visivel.
+ *
+ * Esta como funcao para o hint dizer exatamente o mesmo que o card diz; se as
+ * duas expressoes divergirem, a pessoa confere o dialogo contra um nome que
+ * nao e o que ela viu na lista.
+ */
+function tecnicoDoAgendamento(s: Schedule): string {
+  return s.technician?.full_name || s.technician_id.slice(0, 8);
 }
 
 function getScheduleTopAndHeight(
@@ -231,7 +277,7 @@ function ScheduleBlock({
       </div>
       {height > 48 && (
         <p className="truncate text-[10px] text-muted-foreground">
-          {schedule.technician?.full_name || schedule.technician_id.slice(0, 8)}
+          {tecnicoDoAgendamento(schedule)}
         </p>
       )}
       {height > 64 && (
@@ -251,6 +297,14 @@ export default function AgendaPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  // /schedules/{id}/purge nao passa `papeis`, entao a rota cai no padrao do
+  // criarRotaDeExclusao: so admin. Tecnico que visse o botao levaria 403 e
+  // concluiria que a agenda quebrou — foi essa a queixa da Jessica na OS.
+  const user = useAuthStore((s) => s.user);
+  const podeExcluir = user?.role === UserRole.ADMIN;
+
+  const excl = useExclusao<Schedule>("schedules", nomeDoAgendamento);
 
   // Create schedule modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -922,7 +976,7 @@ export default function AgendaPage() {
                             <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <User className="h-3 w-3" />
-                                {schedule.technician?.full_name || schedule.technician_id.slice(0, 8)}
+                                {tecnicoDoAgendamento(schedule)}
                               </span>
                               <span className="flex items-center gap-1">
                                 <Clock className="h-3 w-3" />
@@ -942,6 +996,18 @@ export default function AgendaPage() {
                           >
                             {SCHEDULE_STATUS_LABELS[schedule.status]}
                           </span>
+
+                          {podeExcluir && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="shrink-0"
+                              onClick={() => void excl.abrir(schedule)}
+                              title="Excluir permanentemente"
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
@@ -1039,6 +1105,25 @@ export default function AgendaPage() {
           </div>
         </div>
       )}
+
+      <HardDeleteDialog
+        {...excl.props("agendamento")}
+        entityHint={
+          excl.alvo ? `Técnico: ${tecnicoDoAgendamento(excl.alvo)}` : undefined
+        }
+        onConfirm={async () => {
+          // Sem alvo nao ha o que apagar — mas sair com `return` daqui era pior
+          // do que nao fazer nada: o dialogo le "terminou sem excecao" como
+          // exclusao bem-sucedida, mostra "Exclusao concluida" e fecha. A tela
+          // afirmaria ter apagado um registro que continua no banco. Estourando,
+          // a mensagem vira erro e o dialogo permanece aberto.
+          if (!excl.alvo) {
+            throw new Error("Nenhum agendamento selecionado para exclusão.");
+          }
+          await apiClient.delete(`/schedules/${excl.alvo.id}/purge`);
+          mutate();
+        }}
+      />
     </div>
   );
 }

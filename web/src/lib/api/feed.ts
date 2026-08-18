@@ -39,6 +39,18 @@ export interface FeedCategoria {
   default_notify?: boolean;
 }
 
+export interface FeedComentario {
+  id: string;
+  post_id: string;
+  user_id: string;
+  /** Resposta a outro comentário. O banco limita a profundidade a um nível. */
+  parent_comment_id: string | null;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  user?: { id: string; full_name: string; avatar_url: string | null; role: string } | null;
+}
+
 export interface FeedPost {
   id: string;
   title: string;
@@ -206,6 +218,22 @@ export const feedApi = {
       `/feed/polls/${pollId}/vote`,
       { option_ids: opcoes }
     ),
+
+  /**
+   * Comentários de um post.
+   *
+   * A rota existe desde que o Feed foi escrito e só o aplicativo chamava — o
+   * site mostrava "Comentar no app", que é uma porta fechada para quem passa o
+   * dia no computador. O José listou comentar entre o que o usuário comum faz
+   * no Feed, sem separar por dispositivo.
+   *
+   * Fica aqui e não no `feedGestaoApi` porque comentar é ação de quem lê, não
+   * de quem administra.
+   */
+  comentarios: (postId: string) =>
+    apiClient.get<{ data: FeedComentario[] }>(`/feed/${postId}/comments`),
+  comentar: (postId: string, content: string) =>
+    apiClient.post<FeedComentario>(`/feed/${postId}/comments`, { content }),
 };
 
 export interface FeedEnquete {

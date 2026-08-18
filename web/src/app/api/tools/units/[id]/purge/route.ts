@@ -5,10 +5,13 @@ import { criarRotaDeExclusao } from "@/lib/api-helpers/rota-de-exclusao";
  *
  * Este cadastro não tinha exclusão nenhuma — nem física nem lógica. Quem
  * cadastrava para testar não tinha como remover.
+ *
+ * A regra de "unidade reservada não sai" mora em `lib/api-helpers/travas.ts`,
+ * compartilhada com o pré-check.
  */
-export const DELETE = criarRotaDeExclusao<{ code?: string; serial_number?: string; status?: string }>({
+export const DELETE = criarRotaDeExclusao<{ code?: string; serial_number?: string }>({
   tabela: "tool_units",
-  select: "id, code, serial_number, status",
+  select: "id, code, serial_number",
   oQue: (r) => `a unidade ${r.code ?? r.serial_number ?? ""}`,
   acao: "tool_unit.deleted",
 });

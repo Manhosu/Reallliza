@@ -13,6 +13,7 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,6 +24,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { SelectNative } from "@/components/ui/select-native";
 import { apiClient } from "@/lib/api/client";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
+import { useExclusao } from "@/hooks/use-exclusao";
 import { quotesApi } from "@/lib/api";
 import type { Quote } from "@/lib/api/quotes";
 import { useAuthStore } from "@/stores/auth-store";
@@ -48,6 +51,9 @@ interface Warranty {
   resolution_notes: string | null;
   opened_at: string;
   resolved_at: string | null;
+  // Preenchido quando o admin converte a garantia em OS de assistência. O GET
+  // faz `select("*")`, então já vinha no payload — só não estava declarado.
+  assistance_service_order_id: string | null;
   service_order?: {
     id: string;
     order_number: number | null;
@@ -93,6 +99,43 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleDateString("pt-BR");
 }
 
+/**
+ * O texto que o admin digita para confirmar a exclusão.
+ *
+ * Garantia não tem nome próprio e o id é UUID — ninguém copia isso da tela.
+ * Usamos o mesmo "OS #123" que o card já mostra, com o "#" incluído: a pessoa
+ * digita o que está lendo, e sem o "#" a confirmação recusaria sem explicar.
+ * Os fallbacks seguem a mesma regra — só coisa que está visível no card.
+ */
+function nomeDaGarantia(w: Warranty) {
+  const numero = w.service_order?.order_number;
+  if (numero) return `OS #${numero}`;
+  const cliente = w.service_order?.client_name?.trim();
+  if (cliente) return cliente;
+  return formatDate(w.opened_at);
+}
+
+/**
+ * A linha de contexto embaixo do nome, no diálogo de exclusão.
+ *
+ * "OS #123" identifica a OS, não a garantia — e nada impede duas garantias da
+ * mesma OS. Quando isso acontece, digitar o nome confirma o texto sem
+ * confirmar QUAL registro está saindo, que é justamente o que a digitação
+ * deveria garantir. Aqui vai o que desempata: data de abertura, situação e o
+ * começo da descrição, todos já visíveis no card.
+ */
+function contextoDaGarantia(w: Warranty) {
+  const descricao = w.description?.trim();
+  return [
+    `Aberta em ${formatDate(w.opened_at)}`,
+    STATUS_CONFIG[w.status]?.label,
+    descricao &&
+      (descricao.length > 60 ? `${descricao.slice(0, 60)}…` : descricao),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 // useSearchParams exige Suspense boundary no prerender do Next 16
 export default function GarantiasPageWrapper() {
   return (
@@ -105,6 +148,28 @@ export default function GarantiasPageWrapper() {
 function GarantiasPageInner() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === UserRole.ADMIN;
+
+  const excl = useExclusao<Warranty>("warranties", nomeDaGarantia);
+  /**
+   * Garantia acionada perde um vínculo ao sair — não fica presa por causa dele.
+   *
+   * `assistance_service_order_id` é chave de SAÍDA (garantia → OS): o
+   * diagnóstico genérico só lê o que aponta PARA o registro, então este vínculo
+   * nunca aparece por lá e é acrescentado à mão logo abaixo.
+   *
+   * O que ele não faz é impedir. Nada no banco segura a garantia — nenhuma
+   * tabela aponta para `warranties`, e não há trava de estado em `travas.ts`
+   * para esta tabela, então a API aceita o purge. Declarar "impede exclusão"
+   * só aqui na tela inventava uma proibição que não existe em lugar nenhum, e
+   * o preço era alto: toda garantia convertida em OS de assistência, inclusive
+   * as de teste, ficava sem NENHUM caminho de exclusão pela interface.
+   *
+   * Apagar a garantia não mexe na OS de assistência: ela continua lá, só sem o
+   * registro de que nasceu de uma garantia. Isso é aviso, não bloqueio — e é
+   * exatamente o que a categoria `set_null` mostra.
+   */
+  const alvoAcionado = !!excl.alvo?.assistance_service_order_id;
+  const propsExclusao = excl.props("garantia");
 
   const searchParams = useSearchParams();
   // Deep-link do dashboard: /garantias?status=open|resolved
@@ -357,6 +422,22 @@ function GarantiasPageInner() {
                     <span className="ml-auto text-xs text-muted-foreground">
                       Aberta em {formatDate(w.opened_at)}
                     </span>
+                    {/*
+                      Só admin: a rota de purge não passa `papeis`, então vale o
+                      padrão do criarRotaDeExclusao — ["admin"]. Loja e
+                      homologado também abrem esta tela, e para eles o botão só
+                      renderia um 403.
+                    */}
+                    {isAdmin && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void excl.abrir(w)}
+                        title="Excluir permanentemente"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
                   </div>
                   <p className="text-sm">{w.description}</p>
                   {w.notes && (
@@ -567,6 +648,29 @@ function GarantiasPageInner() {
           </Button>
         </DialogFooter>
       </Dialog>
+
+      <HardDeleteDialog
+        {...propsExclusao}
+        entityHint={excl.alvo ? contextoDaGarantia(excl.alvo) : undefined}
+        dependencies={[
+          ...(alvoAcionado
+            ? [
+                {
+                  label:
+                    "OS de assistência gerada — fica sem o vínculo com a garantia",
+                  count: 1,
+                  action: "set_null" as const,
+                },
+              ]
+            : []),
+          ...propsExclusao.dependencies,
+        ]}
+        onConfirm={async () => {
+          if (!excl.alvo) return;
+          await apiClient.delete(`/warranties/${excl.alvo.id}/purge`);
+          load();
+        }}
+      />
     </div>
   );
 }

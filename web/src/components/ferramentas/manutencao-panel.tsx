@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Settings, Plus, Check } from "lucide-react";
+import { Settings, Plus, Check, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,8 +11,13 @@ import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toolsApi, usersApi } from "@/lib/api";
+import { apiClient } from "@/lib/api/client";
 import { ToolPhotosField, type PhotoRef } from "@/components/ferramentas/tool-photos-field";
 import type { ToolInventory } from "@/lib/types";
+import { UserRole } from "@/lib/types";
+import { useAuthStore } from "@/stores/auth-store";
+import { useExclusao } from "@/hooks/use-exclusao";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 
 interface Maintenance {
   id: string;
@@ -51,6 +56,24 @@ export function ManutencaoPanel({
   // colunas existem desde a 053 e a rota já aceita, faltava a UI.
   const [photos, setPhotos] = useState<PhotoRef[]>([]);
   const [staff, setStaff] = useState<Array<{ id: string; full_name: string }>>([]);
+
+  /**
+   * Exclusão da manutenção.
+   *
+   * Finalizar encerra o registro, mas ele fica na lista para sempre — quem
+   * lançou a manutenção na ferramenta errada não tinha saída.
+   *
+   * `/tools/maintenance/[id]/purge` só aceita administrador; esconder o botão
+   * dos demais evita o 403 que parece defeito.
+   *
+   * A manutenção não tem nome próprio: confirma-se digitando o nome da
+   * ferramenta, que é o título do cartão.
+   */
+  const podeExcluir = useAuthStore((s) => s.user)?.role === UserRole.ADMIN;
+  const excl = useExclusao<Maintenance>(
+    "tool_maintenance",
+    (m) => m.tool?.name ?? "manutenção"
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -186,16 +209,35 @@ export function ManutencaoPanel({
                       </Badge>
                     )}
                   </div>
-                  {!done && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setFinishing(m)}
-                    >
-                      <Check className="h-3 w-3 mr-1" />
-                      Finalizar manutenção
-                    </Button>
-                  )}
+                  {/* Finalizada ou não, a manutenção lançada errado precisa
+                      poder sair — por isso o excluir fica fora do `!done`.
+                      Em andamento ela não sai mesmo (a trava de estado em
+                      `lib/api-helpers/travas.ts` recusa, porque é o
+                      encerramento que devolve a ferramenta ao estoque), mas
+                      quem clica recebe essa frase no diálogo em vez de não
+                      achar o botão. */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!done && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setFinishing(m)}
+                      >
+                        <Check className="h-3 w-3 mr-1" />
+                        Finalizar manutenção
+                      </Button>
+                    )}
+                    {podeExcluir && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void excl.abrir(m)}
+                        title="Excluir permanentemente"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -313,6 +355,35 @@ export function ManutencaoPanel({
           }}
         />
       )}
+
+      <HardDeleteDialog
+        {...excl.props("manutenção")}
+        /*
+         * A mesma ferramenta vai pra manutenção várias vezes ao longo da vida,
+         * e a lista mostra todas juntas. Digitar o nome dela confirmaria o
+         * texto sem confirmar qual das idas está sendo apagada — a data de
+         * abertura e o motivo são o que distingue uma linha da outra, e são o
+         * que o cartão exibe.
+         */
+        entityHint={
+          excl.alvo
+            ? [
+                `Aberta em ${new Date(excl.alvo.sent_at).toLocaleDateString("pt-BR")}`,
+                excl.alvo.reason,
+              ]
+                .filter(Boolean)
+                .join(" · ")
+            : undefined
+        }
+        onConfirm={async () => {
+          if (!excl.alvo) return;
+          await apiClient.delete(`/tools/maintenance/${excl.alvo.id}/purge`);
+          await load();
+          // A ferramenta pode voltar a ficar disponível, então a lista de cima
+          // também precisa ser relida.
+          onChanged();
+        }}
+      />
     </Card>
   );
 }

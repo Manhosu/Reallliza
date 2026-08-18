@@ -127,7 +127,15 @@ const ROTULOS: Record<string, { singular: string; plural: string; motivo: string
     motivo: "some junto",
   },
   photos: { singular: "foto", plural: "fotos", motivo: "some junto" },
-  checklists: { singular: "checklist", plural: "checklists", motivo: "some junto" },
+  checklists: {
+    singular: "checklist preenchido",
+    plural: "checklists preenchidos",
+    // Estava como "some junto", escrito supondo cascata. A chave
+    // `checklists.template_id` não tem cláusula ON DELETE, então é NO ACTION —
+    // bloqueia. O diálogo imprimia "3 checklists — some junto — impede
+    // exclusão", que se contradiz na mesma linha.
+    motivo: "o modelo precisa continuar existindo para o checklist já respondido fazer sentido",
+  },
   os_messages: { singular: "mensagem", plural: "mensagens", motivo: "some junto" },
   team_members: { singular: "integrante", plural: "integrantes", motivo: "some junto" },
   feed_post_media: { singular: "mídia", plural: "mídias", motivo: "some junto" },
@@ -138,7 +146,26 @@ const ROTULOS: Record<string, { singular: string; plural: string; motivo: string
     motivo: "some junto",
   },
   quote_items: { singular: "item do orçamento", plural: "itens do orçamento", motivo: "some junto" },
-  service_order_payments: { singular: "pagamento da OS", plural: "pagamentos da OS", motivo: "some junto" },
+  service_order_payments: {
+    singular: "pagamento da OS",
+    plural: "pagamentos da OS",
+    motivo: "movimentação financeira não pode ser apagada",
+  },
+  accounts_payable: {
+    singular: "conta a pagar",
+    plural: "contas a pagar",
+    motivo: "movimentação financeira não pode ser apagada",
+  },
+  accounts_receivable: {
+    singular: "conta a receber",
+    plural: "contas a receber",
+    motivo: "movimentação financeira não pode ser apagada",
+  },
+  certifications: {
+    singular: "certificado emitido",
+    plural: "certificados emitidos",
+    motivo: "certificado é conquista de quem o recebeu, não pode sumir junto",
+  },
   os_projects: { singular: "projeto anexado", plural: "projetos anexados", motivo: "some junto" },
   checklist_items: { singular: "item do checklist", plural: "itens do checklist", motivo: "some junto" },
   course_modules: { singular: "módulo", plural: "módulos", motivo: "há módulos neste curso" },
@@ -150,7 +177,66 @@ const ROTULOS: Record<string, { singular: string; plural: string; motivo: string
   step_template_items: { singular: "etapa", plural: "etapas", motivo: "some junto" },
   feed_poll_votes: { singular: "voto", plural: "votos", motivo: "some junto" },
   feed_leads: { singular: "pedido recebido", plural: "pedidos recebidos", motivo: "há pedidos de contato vinculados" },
+  quality_evaluation_scores: {
+    singular: "nota da avaliação",
+    plural: "notas da avaliação",
+    motivo: "some junto",
+  },
+
+  // As de baixo aparecem por causa da categoria "desvincula": não somem, mas
+  // perdem a referência. Sem rótulo, a tela mostrava o nome da tabela em
+  // inglês no meio de uma frase em português.
+  service_categories: {
+    singular: "categoria de serviço",
+    plural: "categorias de serviço",
+    motivo: "ficam sem modelo de checklist padrão",
+  },
+  tool_requests: {
+    singular: "pedido de ferramenta",
+    plural: "pedidos de ferramenta",
+    motivo: "ficam sem a unidade que estava reservada",
+  },
+  technician_locations: {
+    singular: "registro de localização",
+    plural: "registros de localização",
+    motivo: "perdem o vínculo com o atendimento",
+  },
+  customer_ratings: {
+    singular: "avaliação do cliente",
+    plural: "avaliações do cliente",
+    motivo: "perdem o vínculo com o atendimento",
+  },
+  professional_ratings: {
+    singular: "avaliação do profissional",
+    plural: "avaliações do profissional",
+    motivo: "perdem o vínculo com o atendimento",
+  },
 };
+
+/**
+ * O que nunca some junto, mesmo quando a chave estrangeira manda cascatear.
+ *
+ * Descobri isto conferindo o catálogo antes de publicar: `payments.quote_id` é
+ * CASCADE. Sem esta lista, excluir um orçamento apagaria os pagamentos dele em
+ * silêncio — e o diagnóstico ainda diria "pode excluir", porque cascata é
+ * exatamente o que ele classifica como inofensivo.
+ *
+ * A regra do sistema é que dinheiro e certificado não somem por efeito
+ * colateral de outra exclusão. Onde a chave estrangeira discorda, quem manda é
+ * esta lista: o dependente vira bloqueio e a pessoa recebe a explicação.
+ *
+ * Corrigir as chaves no banco seria o conserto de fundo, mas mexer em
+ * `payments` em produção é risco maior do que o problema. A trava aqui vale
+ * para todas as rotas de exclusão, que é por onde tudo passa.
+ */
+const NUNCA_SOME_JUNTO = new Set([
+  "payments",
+  "service_order_payments",
+  "invoices",
+  "accounts_payable",
+  "accounts_receivable",
+  "certifications",
+]);
 
 function descrever(d: Dependente): Bloqueio {
   const r = ROTULOS[d.tabela];
@@ -188,6 +274,19 @@ export interface Diagnostico {
   bloqueios: Bloqueio[];
   /** O que some junto, para o diálogo avisar antes. */
   levaJunto: Bloqueio[];
+  /**
+   * O que não some, mas perde o vínculo.
+   *
+   * Esta categoria faltava, e o buraco era silencioso: `set_null` não caía nem
+   * em bloqueio nem em cascata, então simplesmente não chegava à tela. Excluir
+   * um modelo de checklist deixava as categorias de serviço que o usavam com
+   * `checklist_template_id` nulo sem nenhum aviso; excluir uma unidade de
+   * ferramenta deixava o pedido que a reservava apontando para o vazio.
+   *
+   * Não impede a exclusão — desvincular costuma ser aceitável — mas quem
+   * decide precisa saber.
+   */
+  desvincula: Bloqueio[];
 }
 
 export async function diagnosticar(
@@ -196,9 +295,19 @@ export async function diagnosticar(
   id: string
 ): Promise<Diagnostico> {
   const dependentes = await lerDependentes(supabase, tabela, id);
-  const bloqueios = dependentes.filter((d) => d.acao === "block").map(descrever);
-  const levaJunto = dependentes.filter((d) => d.acao === "cascade").map(descrever);
-  return { podeExcluir: bloqueios.length === 0, bloqueios, levaJunto };
+  const protegido = (d: Dependente) => NUNCA_SOME_JUNTO.has(d.tabela);
+
+  const bloqueios = dependentes
+    .filter((d) => d.acao === "block" || protegido(d))
+    .map(descrever);
+  const levaJunto = dependentes
+    .filter((d) => d.acao === "cascade" && !protegido(d))
+    .map(descrever);
+  const desvincula = dependentes
+    .filter((d) => (d.acao === "set_null" || d.acao === "set_default") && !protegido(d))
+    .map(descrever);
+
+  return { podeExcluir: bloqueios.length === 0, bloqueios, levaJunto, desvincula };
 }
 
 /**

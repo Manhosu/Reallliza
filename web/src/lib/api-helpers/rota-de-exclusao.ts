@@ -1,9 +1,11 @@
 import type { NextRequest } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { excluirComDiagnostico } from "@/lib/api-helpers/exclusao";
+import { TRAVAS } from "@/lib/api-helpers/travas";
 
 /**
  * Construtor de rota de exclusão.
@@ -39,6 +41,24 @@ interface Opcoes<T> {
    * genérico já cobre.
    */
   travaPropria?: (registro: T) => string | null;
+  /**
+   * O que precisa acontecer DEPOIS que o registro saiu.
+   *
+   * Existe por um caso concreto: a avaliação de qualidade é uma das fontes da
+   * nota do profissional, e criar uma chama `recalculateTechnicianScore`.
+   * Apagar não chamava nada — a nota continuava calculada em cima de uma
+   * avaliação que não existe mais, e nada na tela indicava isso. Número errado
+   * que ninguém consegue explicar é pior do que número ausente.
+   *
+   * Falha aqui não desfaz a exclusão (o registro já saiu) — é registrada e a
+   * resposta segue. Um recálculo que falhou se corrige na próxima avaliação;
+   * um 500 depois do DELETE faria a tela dizer que não excluiu algo que
+   * excluiu.
+   */
+  aposExcluir?: (
+    supabase: SupabaseClient,
+    registro: T
+  ) => Promise<void>;
 }
 
 export function criarRotaDeExclusao<T extends Record<string, unknown>>(
@@ -55,15 +75,29 @@ export function criarRotaDeExclusao<T extends Record<string, unknown>>(
       const { id } = await params;
       const supabase = getAdminClient();
 
+      // Os campos da trava compartilhada entram no select sozinhos: exigir que
+      // cada rota se lembre de pedi-los seria uma falha silenciosa — a trava
+      // avaliaria `undefined` e deixaria passar.
+      const campos = [opcoes.select, TRAVAS[opcoes.tabela]?.select]
+        .filter(Boolean)
+        .join(", ");
+
       const { data: registro } = await supabase
         .from(opcoes.tabela)
-        .select(opcoes.select)
+        .select(campos)
         .eq("id", id)
         .maybeSingle();
 
       if (!registro) throw new AuthError(404, "Registro não encontrado");
 
       const linha = registro as unknown as T;
+
+      // A trava compartilhada primeiro: é a mesma que o pré-check consultou
+      // para avisar antes de a pessoa digitar o nome.
+      const compartilhada = TRAVAS[opcoes.tabela]?.avaliar(
+        linha as Record<string, unknown>
+      );
+      if (compartilhada) throw new AuthError(409, compartilhada);
 
       const trava = opcoes.travaPropria?.(linha);
       if (trava) throw new AuthError(409, trava);
@@ -73,6 +107,17 @@ export function criarRotaDeExclusao<T extends Record<string, unknown>>(
         id,
         oQue: opcoes.oQue(linha),
       });
+
+      if (opcoes.aposExcluir) {
+        try {
+          await opcoes.aposExcluir(supabase, linha);
+        } catch (e) {
+          console.error(
+            `[${opcoes.acao}] o registro ${id} saiu, mas o pós-exclusão falhou:`,
+            e
+          );
+        }
+      }
 
       logAudit({
         userId: user.id,
