@@ -137,6 +137,19 @@ const ROTULOS: Record<string, { singular: string; plural: string; motivo: string
     plural: "notas de especialidade",
     motivo: "some junto",
   },
+  quote_items: { singular: "item do orçamento", plural: "itens do orçamento", motivo: "some junto" },
+  service_order_payments: { singular: "pagamento da OS", plural: "pagamentos da OS", motivo: "some junto" },
+  os_projects: { singular: "projeto anexado", plural: "projetos anexados", motivo: "some junto" },
+  checklist_items: { singular: "item do checklist", plural: "itens do checklist", motivo: "some junto" },
+  course_modules: { singular: "módulo", plural: "módulos", motivo: "há módulos neste curso" },
+  course_enrollments: {
+    singular: "matrícula",
+    plural: "matrículas",
+    motivo: "há profissionais matriculados",
+  },
+  step_template_items: { singular: "etapa", plural: "etapas", motivo: "some junto" },
+  feed_poll_votes: { singular: "voto", plural: "votos", motivo: "some junto" },
+  feed_leads: { singular: "pedido recebido", plural: "pedidos recebidos", motivo: "há pedidos de contato vinculados" },
 };
 
 function descrever(d: Dependente): Bloqueio {
@@ -203,14 +216,13 @@ export function recusarExclusao(bloqueios: Bloqueio[], oQue: string): never {
 
   const porques = [...new Set(bloqueios.map((b) => b.motivo))].join("; ");
 
-  // Concordância importa: a mensagem é lida por quem está no meio de um teste
-  // e já está irritado por não conseguir apagar.
-  const total = bloqueios.reduce((a, b) => a + b.quantidade, 0);
-  const vinculo = total === 1 ? "vinculado" : "vinculados";
-
+  // Sem particípio no fim: "1 custódia registrada vinculado" tem o gênero
+  // errado, e acertar exigiria marcar gênero em cada rótulo. A frase funciona
+  // igual sem ele — e a mensagem é lida por quem está no meio de um teste,
+  // já irritado por não conseguir apagar.
   throw new AuthError(
     409,
-    `Não dá para excluir ${oQue}: há ${lista} ${vinculo}. ${
+    `Não dá para excluir ${oQue}: há ${lista}. ${
       porques.charAt(0).toUpperCase() + porques.slice(1)
     }. Você pode desativar em vez de excluir — o registro sai das listas e o histórico continua.`
   );

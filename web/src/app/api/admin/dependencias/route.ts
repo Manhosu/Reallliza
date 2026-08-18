@@ -35,6 +35,8 @@ const CADASTROS_CONSULTAVEIS = new Set([
   "courses", "course_modules", "course_lessons",
   "feed_posts", "feed_campaigns", "feed_sponsors", "feed_audience_rules",
   "schedules", "warranties", "quality_evaluations",
+  "service_proposals", "professional_ratings", "checklist_templates",
+  "tool_requests", "tool_maintenance",
 ]);
 
 export async function GET(request: NextRequest) {
