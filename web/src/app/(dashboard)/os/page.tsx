@@ -36,9 +36,10 @@ import {
   type ServiceOrder,
 } from "@/lib/types";
 import { serviceOrdersApi } from "@/lib/api";
-import { ApiError } from "@/lib/api/client";
 import { usePaginatedApi } from "@/hooks/use-api";
 import { useAuthStore } from "@/stores/auth-store";
+import { useExclusao } from "@/hooks/use-exclusao";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 import { toast } from "sonner";
 
 // ============================================================
@@ -175,6 +176,16 @@ function OsListingPageInner() {
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
 
+  /**
+   * Substitui o `window.confirm` — era o alvo literal da queixa da Jéssica:
+   * "a OS já tem botão de excluir, porém está apresentando erro". O erro era
+   * um 500 sem explicação; a rota já devolve o diagnóstico em português desde
+   * a correção anterior. O que faltava era a tela pedir esse diagnóstico
+   * ANTES de a pessoa confirmar, em vez de deixar o `confirm()` nativo
+   * mostrar um texto genérico e só descobrir o bloqueio depois do clique.
+   */
+  const excl = useExclusao<ServiceOrder>("service_orders", (o) => o.title);
+
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -215,29 +226,9 @@ function OsListingPageInner() {
     setCurrentPage(1);
   }, [debouncedSearch, statusFilter, priorityFilter, setCurrentPage]);
 
-  async function handleDelete(orderId: string, orderTitle: string) {
-    if (
-      !confirm(
-        `Apagar a OS "${orderTitle}"? Esta ação não pode ser desfeita.`
-      )
-    ) {
-      return;
-    }
-    try {
-      await serviceOrdersApi.delete(orderId);
-      toast.success("OS excluída");
-      mutate();
-      setActionMenuId(null);
-    } catch (err: unknown) {
-      if (err instanceof ApiError && err.status === 403) {
-        toast.error("Sem permissão pra apagar essa OS.");
-      } else if (err instanceof ApiError && err.status === 404) {
-        toast.error("OS não encontrada (já foi excluída?).");
-        mutate();
-      } else {
-        toast.error(err instanceof Error ? err.message : "Falha ao excluir OS");
-      }
-    }
+  async function handleDelete(order: ServiceOrder) {
+    setActionMenuId(null);
+    await excl.abrir(order);
   }
 
   const totalItems = meta?.total ?? 0;
@@ -580,7 +571,7 @@ function OsListingPageInner() {
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          handleDelete(order.id, order.title);
+                                          handleDelete(order);
                                         }}
                                         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
                                       >
@@ -785,6 +776,20 @@ function OsListingPageInner() {
           ))}
         </div>
       )}
+
+      <HardDeleteDialog
+        {...excl.props("ordem de serviço")}
+        entityHint={
+          excl.alvo
+            ? `${excl.alvo.order_number} · ${excl.alvo.client_name}`
+            : undefined
+        }
+        onConfirm={async () => {
+          if (!excl.alvo) return;
+          await serviceOrdersApi.delete(excl.alvo.id);
+          mutate();
+        }}
+      />
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
   X,
   ClipboardList,
   Trash2,
+  Archive,
 } from "lucide-react";
 import {
   format,
@@ -306,6 +307,16 @@ export default function AgendaPage() {
 
   const excl = useExclusao<Schedule>("schedules", nomeDoAgendamento);
 
+  /**
+   * A visão em lista sempre escondeu cancelado e concluído, para a agenda do
+   * dia a dia não competir por atenção com o que já foi resolvido. Bom para
+   * ver o que falta fazer — ruim para achar o agendamento de teste que
+   * alguém cancelou, que é exatamente o que a Jéssica pediu para conseguir
+   * apagar. Sem este toggle não existia NENHUM caminho na tela até um
+   * agendamento cancelado: nem semana, nem mês, nem lista o mostravam.
+   */
+  const [mostrarEncerrados, setMostrarEncerrados] = useState(false);
+
   // Create schedule modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
@@ -436,8 +447,9 @@ export default function AgendaPage() {
   const listSchedules = [...schedules]
     .filter(
       (s) =>
-        s.status !== ScheduleStatus.CANCELLED &&
-        s.status !== ScheduleStatus.COMPLETED
+        mostrarEncerrados ||
+        (s.status !== ScheduleStatus.CANCELLED &&
+          s.status !== ScheduleStatus.COMPLETED)
     )
     .sort((a, b) => {
       if (a.date !== b.date) return a.date.localeCompare(b.date);
@@ -875,6 +887,24 @@ export default function AgendaPage() {
             transition={{ duration: 0.3 }}
             className="space-y-3"
           >
+            {podeExcluir && (
+              <button
+                type="button"
+                onClick={() => setMostrarEncerrados((v) => !v)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                  mostrarEncerrados
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:bg-accent"
+                )}
+                title="Cancelados e concluídos ficam fora da agenda do dia a dia. Ligue para achar um agendamento de teste e excluí-lo."
+              >
+                <Archive className="h-3.5 w-3.5" />
+                {mostrarEncerrados
+                  ? "Ocultar cancelados e concluídos"
+                  : "Mostrar cancelados e concluídos"}
+              </button>
+            )}
             {isLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3, 4, 5].map((i) => (
