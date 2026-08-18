@@ -151,6 +151,17 @@ function OsListingPageInner() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const isPartner = user?.role === UserRole.PARTNER;
+  /**
+   * Só estes papéis conseguem excluir OS — é a mesma lista que a rota exige.
+   *
+   * O botão aparecia para todo mundo que não fosse loja, então `supervisor`,
+   * `operador` e `technician` viam a opção e levavam 403. Botão que existe e
+   * recusa é pior do que botão que não existe: a pessoa acha que o sistema
+   * está com defeito.
+   */
+  const podeExcluirOs = ["admin", "manager", "gestor", "diretor"].includes(
+    String(user?.role ?? "")
+  );
   const canDragDrop = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
   const [isDragging, setIsDragging] = useState(false);
   const [view, setView] = useState<"table" | "kanban">("table");
@@ -565,16 +576,18 @@ function OsListingPageInner() {
                                       <Edit className="h-4 w-4" />
                                       Editar
                                     </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDelete(order.id, order.title);
-                                      }}
-                                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                      Excluir
-                                    </button>
+                                    {podeExcluirOs && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDelete(order.id, order.title);
+                                        }}
+                                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                        Excluir
+                                      </button>
+                                    )}
                                   </>
                                 )}
                               </div>

@@ -14,6 +14,7 @@ import {
   Globe,
   Trash2,
   AlertCircle,
+  Ban,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,6 +25,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { SelectNative } from "@/components/ui/select-native";
 import { EmptyState } from "@/components/ui/empty-state";
 import { apiClient } from "@/lib/api/client";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
+import { useExclusao } from "@/hooks/use-exclusao";
 import { cn } from "@/lib/utils";
 
 interface Course {
@@ -123,8 +126,17 @@ export default function CursosAdminPage() {
     }
   }
 
-  async function handleDelete(c: Course) {
-    if (!confirm(`Despublicar curso "${c.title}"?`)) return;
+  /**
+   * Despublicar e excluir são coisas diferentes.
+   *
+   * Havia um único ícone de lixeira, com o título "Remover", que apenas
+   * despublicava: quem clicava via "sucesso" e o curso continuava no banco.
+   * Era a última tela do sistema com esse engano.
+   */
+  const exclusao = useExclusao<Course>("courses", (c) => c.title);
+
+  async function despublicar(c: Course) {
+    if (!confirm(`Despublicar o curso "${c.title}"? Ele sai do catálogo e pode voltar.`)) return;
     try {
       await apiClient.delete(`/courses/${c.id}`);
       toast.success("Curso despublicado");
@@ -204,9 +216,17 @@ export default function CursosAdminPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDelete(c)}
+                          onClick={() => despublicar(c)}
+                          className="rounded-lg p-1.5 text-muted-foreground hover:bg-amber-500/10 hover:text-amber-600"
+                          title="Despublicar"
+                        >
+                          <Ban className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void exclusao.abrir(c)}
                           className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                          title="Remover"
+                          title="Excluir permanentemente"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -334,6 +354,15 @@ export default function CursosAdminPage() {
           </Button>
         </DialogFooter>
       </Dialog>
+
+      <HardDeleteDialog
+        {...exclusao.props("curso")}
+        onConfirm={async () => {
+          if (!exclusao.alvo) return;
+          await apiClient.delete(`/courses/${exclusao.alvo.id}/purge`);
+          load();
+        }}
+      />
     </div>
   );
 }
