@@ -32,6 +32,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { specialtiesApi } from "@/lib/api";
 import type { Specialty, ChecklistItemPayload } from "@/lib/api/specialties";
+import { HardDeleteDialog, type Dependency } from "@/components/admin/hard-delete-dialog";
+import { apiClient } from "@/lib/api/client";
 
 function errMsg(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
@@ -404,6 +406,30 @@ export default function EspecialidadesPage() {
     load();
   }, [load]);
 
+  /**
+   * Desativar tira das listas; excluir apaga. A rota `/specialties/[id]/purge`
+   * existe desde julho e nenhuma tela chamava — o `Ban` sozinho deixava quem
+   * cadastrou uma especialidade para teste sem saída.
+   */
+  const [excluindo, setExcluindo] = useState<Specialty | null>(null);
+  const [dependencias, setDependencias] = useState<Dependency[]>([]);
+  const [carregandoDeps, setCarregandoDeps] = useState(false);
+
+  const abrirExclusao = useCallback(async (s: Specialty) => {
+    setExcluindo(s);
+    setCarregandoDeps(true);
+    try {
+      const d = await apiClient.get<{ dependencies: Dependency[] }>(
+        `/admin/dependencias?tabela=specialties&id=${s.id}`
+      );
+      setDependencias(d.dependencies);
+    } catch {
+      setDependencias([]);
+    } finally {
+      setCarregandoDeps(false);
+    }
+  }, []);
+
   async function handleDeactivate(s: Specialty) {
     if (!confirm(`Desativar a especialidade "${s.name}"?`)) return;
     try {
@@ -560,13 +586,22 @@ export default function EspecialidadesPage() {
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void abrirExclusao(s)}
+                        title="Excluir permanentemente"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                       {s.is_active ? (
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={() => handleDeactivate(s)}
+                          title="Desativar"
                         >
-                          <Ban className="h-4 w-4 text-destructive" />
+                          <Ban className="h-4 w-4 text-amber-600" />
                         </Button>
                       ) : (
                         <Button
@@ -597,6 +632,23 @@ export default function EspecialidadesPage() {
         specialty={checklistOf}
         onClose={() => setChecklistOf(null)}
         onSaved={load}
+      />
+
+      <HardDeleteDialog
+        open={!!excluindo}
+        entityLabel="especialidade"
+        entityName={excluindo?.name ?? ""}
+        dependencies={dependencias}
+        loadingDeps={carregandoDeps}
+        onClose={() => {
+          setExcluindo(null);
+          setDependencias([]);
+        }}
+        onConfirm={async () => {
+          if (!excluindo) return;
+          await specialtiesApi.purge(excluindo.id);
+          load();
+        }}
       />
     </div>
   );

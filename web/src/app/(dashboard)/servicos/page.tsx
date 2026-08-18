@@ -32,6 +32,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { serviceCategoriesApi, servicesApi } from "@/lib/api";
 import type { Service, ServiceCategory } from "@/lib/api/services";
+import { HardDeleteDialog, type Dependency } from "@/components/admin/hard-delete-dialog";
+import { apiClient } from "@/lib/api/client";
 
 function formatBRL(value: number): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -431,6 +433,35 @@ function CategoriesPanel({ categories, onChanged }: CategoriesPanelProps) {
     }
   }
 
+  /**
+   * Excluir de verdade, separado de desativar.
+   *
+   * A categoria tinha uma lixeira que apenas desativava: quem clicava via
+   * "sucesso" e o registro continuava no banco. As rotas `/purge` das duas
+   * entidades existem desde julho e nenhuma tela chamava.
+   *
+   * Um estado só para os dois cadastros porque nunca há dois diálogos
+   * abertos ao mesmo tempo; o `tabela` diz de qual se trata.
+   */
+  const [excluindo, setExcluindo] = useState<{ id: string; nome: string } | null>(null);
+  const [dependencias, setDependencias] = useState<Dependency[]>([]);
+  const [carregandoDeps, setCarregandoDeps] = useState(false);
+
+  const abrirExclusao = useCallback(async (id: string, nome: string) => {
+    setExcluindo({ id, nome });
+    setCarregandoDeps(true);
+    try {
+      const d = await apiClient.get<{ dependencies: Dependency[] }>(
+        `/admin/dependencias?tabela=service_categories&id=${id}`
+      );
+      setDependencias(d.dependencies);
+    } catch {
+      setDependencias([]);
+    } finally {
+      setCarregandoDeps(false);
+    }
+  }, []);
+
   async function remover(cat: ServiceCategory) {
     if (!confirm(`Desativar a categoria "${cat.name}"?`)) return;
     try {
@@ -523,6 +554,15 @@ function CategoriesPanel({ categories, onChanged }: CategoriesPanelProps) {
                     size="sm"
                     variant="ghost"
                     onClick={() => remover(c)}
+                    title="Desativar"
+                  >
+                    <Ban className="h-4 w-4 text-amber-600" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void abrirExclusao(c.id, c.name)}
+                    title="Excluir permanentemente"
                   >
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
@@ -537,6 +577,23 @@ function CategoriesPanel({ categories, onChanged }: CategoriesPanelProps) {
           )}
         </div>
       </CardContent>
+
+      <HardDeleteDialog
+        open={!!excluindo}
+        entityLabel="categoria"
+        entityName={excluindo?.nome ?? ""}
+        dependencies={dependencias}
+        loadingDeps={carregandoDeps}
+        onClose={() => {
+          setExcluindo(null);
+          setDependencias([]);
+        }}
+        onConfirm={async () => {
+          if (!excluindo) return;
+          await serviceCategoriesApi.purge(excluindo.id);
+          onChanged();
+        }}
+      />
     </Card>
   );
 }
@@ -546,6 +603,26 @@ function CategoriesPanel({ categories, onChanged }: CategoriesPanelProps) {
 // ============================================================
 
 export default function ServicosPage() {
+  /** Exclusão de serviço — a rota `/services/[id]/purge` existia sem botão. */
+  const [excluindoServico, setExcluindoServico] = useState<{ id: string; nome: string } | null>(null);
+  const [depsServico, setDepsServico] = useState<Dependency[]>([]);
+  const [carregandoDepsServico, setCarregandoDepsServico] = useState(false);
+
+  const abrirExclusaoServico = useCallback(async (id: string, nome: string) => {
+    setExcluindoServico({ id, nome });
+    setCarregandoDepsServico(true);
+    try {
+      const d = await apiClient.get<{ dependencies: Dependency[] }>(
+        `/admin/dependencias?tabela=services&id=${id}`
+      );
+      setDepsServico(d.dependencies);
+    } catch {
+      setDepsServico([]);
+    } finally {
+      setCarregandoDepsServico(false);
+    }
+  }, []);
+
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -785,13 +862,22 @@ export default function ServicosPage() {
                       >
                         <Edit className="h-4 w-4" /> Editar
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void abrirExclusaoServico(s.id, s.name)}
+                        title="Excluir permanentemente"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                       {s.is_active ? (
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={() => handleDeactivate(s)}
+                          title="Desativar"
                         >
-                          <Ban className="h-4 w-4 text-destructive" />
+                          <Ban className="h-4 w-4 text-amber-600" />
                         </Button>
                       ) : (
                         <Button
@@ -817,6 +903,23 @@ export default function ServicosPage() {
         categories={activeCategories}
         onClose={() => setShowForm(false)}
         onSaved={loadServices}
+      />
+
+      <HardDeleteDialog
+        open={!!excluindoServico}
+        entityLabel="serviço"
+        entityName={excluindoServico?.nome ?? ""}
+        dependencies={depsServico}
+        loadingDeps={carregandoDepsServico}
+        onClose={() => {
+          setExcluindoServico(null);
+          setDepsServico([]);
+        }}
+        onConfirm={async () => {
+          if (!excluindoServico) return;
+          await servicesApi.purge(excluindoServico.id);
+          await loadServices();
+        }}
       />
     </div>
   );
