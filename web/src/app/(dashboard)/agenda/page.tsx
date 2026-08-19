@@ -170,7 +170,11 @@ function nomeDoAgendamento(s: Schedule): string {
  * nao e o que ela viu na lista.
  */
 function tecnicoDoAgendamento(s: Schedule): string {
-  return s.technician?.full_name || s.technician_id.slice(0, 8);
+  // `technician_id` pode ser nulo — agendamento sem técnico definido ainda,
+  // ou um cancelado antes de chegar a essa etapa. `.slice` num nulo derrubava
+  // a página inteira: um agendamento assim na semana visível branqueava a
+  // tela inteira, e não só o card dele.
+  return s.technician?.full_name || s.technician_id?.slice(0, 8) || "Sem técnico";
 }
 
 function getScheduleTopAndHeight(
