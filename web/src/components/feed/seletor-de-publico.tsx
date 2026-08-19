@@ -43,6 +43,17 @@ export function SeletorDePublico({ audienceRuleId, aoEscolher }: Props) {
   const [salvos, setSalvos] = useState<{ id: string; name: string; estimated_size: number | null }[]>([]);
   const [modo, setModo] = useState<"salvo" | "novo">("salvo");
   const [criterios, setCriterios] = useState<Record<string, string[]>>({});
+  /**
+   * `overall_score` e `days_since_signup` são numéricos — não cabem no molde
+   * de pastilha dos outros catorze, que é "marcar um valor de uma lista
+   * fechada". Aqui o valor é um limiar: "nota geral pelo menos X", "cadastrado
+   * há pelo menos X dias". Por isso vivem num estado à parte, e não em
+   * `criterios`.
+   */
+  const [numericos, setNumericos] = useState<{ overall_score: string; days_since_signup: string }>({
+    overall_score: "",
+    days_since_signup: "",
+  });
   const [nome, setNome] = useState("");
   const [estimativa, setEstimativa] = useState<number | null>(null);
   const [estimando, setEstimando] = useState(false);
@@ -77,17 +88,29 @@ export function SeletorDePublico({ audienceRuleId, aoEscolher }: Props) {
       certification_id: "contains_any", completed_course_id: "contains_any",
       manufacturer_id: "contains_any", partner_id: "contains_any", team_id: "contains_any",
     };
-    const regras = Object.entries(criterios)
+    const regras: Array<
+      | { field: string; op: Criterio["op"]; values: string[] }
+      | { field: string; op: "eq"; value: boolean }
+      | { field: string; op: "gte"; value: number }
+    > = Object.entries(criterios)
       .filter(([, v]) => v.length > 0)
       .map(([campo, valores]) =>
         campo === "is_homologated"
           ? { field: campo, op: "eq" as const, value: valores[0] === "sim" }
           : { field: campo, op: LISTA[campo] ?? "in", values: valores }
       );
+    for (const [campo, texto] of Object.entries(numericos)) {
+      const n = Number(texto);
+      if (texto.trim() !== "" && Number.isFinite(n)) {
+        regras.push({ field: campo, op: "gte", value: n });
+      }
+    }
     return { op: "and" as const, rules: regras };
-  }, [criterios]);
+  }, [criterios, numericos]);
 
-  const quantidadeDeCriterios = Object.values(criterios).filter((v) => v.length > 0).length;
+  const quantidadeDeCriterios =
+    Object.values(criterios).filter((v) => v.length > 0).length +
+    Object.values(numericos).filter((v) => v.trim() !== "").length;
 
   // Estima a cada mudança, com folga para não disparar a cada clique numa
   // sequência rápida de marcações.
@@ -158,6 +181,7 @@ export function SeletorDePublico({ audienceRuleId, aoEscolher }: Props) {
       aoEscolher(r.id);
       setModo("salvo");
       setCriterios({});
+      setNumericos({ overall_score: "", days_since_signup: "" });
       setNome("");
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao salvar o público");
@@ -254,7 +278,10 @@ export function SeletorDePublico({ audienceRuleId, aoEscolher }: Props) {
             {quantidadeDeCriterios > 0 && (
               <button
                 type="button"
-                onClick={() => setCriterios({})}
+                onClick={() => {
+                  setCriterios({});
+                  setNumericos({ overall_score: "", days_since_signup: "" });
+                }}
                 className="text-xs text-muted-foreground hover:underline"
               >
                 Limpar critérios
@@ -324,6 +351,46 @@ export function SeletorDePublico({ audienceRuleId, aoEscolher }: Props) {
               )}
             </div>
           ))}
+
+          {/*
+            Os dois numéricos: limiar, não lista. "Nota geral pelo menos X" e
+            "cadastrado há pelo menos X dias" — sempre calculáveis (nota tem
+            piso zero, dias de cadastro vem de `created_at`), então não levam
+            o aviso de dado ausente que os outros catorze levam.
+          */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium">
+                {catalogos.rotulos.overall_score ?? "Nota geral"} — mínimo
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={numericos.overall_score}
+                onChange={(e) =>
+                  setNumericos((s) => ({ ...s, overall_score: e.target.value }))
+                }
+                placeholder="Ex.: 80"
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium">
+                {catalogos.rotulos.days_since_signup ?? "Dias de cadastro"} — mínimo
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={numericos.days_since_signup}
+                onChange={(e) =>
+                  setNumericos((s) => ({ ...s, days_since_signup: e.target.value }))
+                }
+                placeholder="Ex.: 30"
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
 
           {erro && <p className="text-sm text-destructive">{erro}</p>}
 
