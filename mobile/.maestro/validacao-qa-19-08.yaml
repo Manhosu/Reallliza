@@ -1,0 +1,80 @@
+# Validação do APK recém-buildado (commit 124debb) — cobre exatamente o que
+# não estava no APK anterior: enquete e pedido de amostra no aplicativo.
+#
+# Roda contra a publicação "Validacao QA 19/08 - flujo completo", pública
+# (audiência Todos), criada na Central de Conteúdo antes deste teste.
+#
+# Rodar com o emulador de pé e o APK instalado:
+#   maestro test .maestro/validacao-qa-19-08.yaml
+appId: com.reallliza.app
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: allow
+
+- extendedWaitUntil:
+    visible: "seu@email.com"
+    timeout: 480000
+- takeScreenshot: qa-01-login
+
+- tapOn: "seu@email.com"
+- inputText: "tecnico.teste@reallliza.com.br"
+- hideKeyboard
+
+- tapOn: "Sua senha"
+- inputText: "ValidacaoQA-18ago!"
+- hideKeyboard
+
+- tapOn: "Entrar"
+
+# Termos: só no primeiro acesso desta conta neste servidor.
+- extendedWaitUntil:
+    visible: "Termos de Uso"
+    timeout: 60000
+    optional: true
+- runFlow:
+    when:
+      visible: "Termos de Uso"
+    commands:
+      - takeScreenshot: qa-02-termos
+      - tapOn: "Li e aceito os Termos de Uso e Politica de Privacidade"
+      - tapOn: "Autorizo a coleta de dados de localizacao durante o uso do app"
+      - tapOn: "Autorizo o uso das imagens capturadas durante os servicos"
+      - tapOn: "Aceitar e Continuar"
+
+- extendedWaitUntil:
+    visible: "Qual cola voce mais usa"
+    timeout: 480000
+- takeScreenshot: qa-03-feed
+
+# ---- Enquete: o que o APK anterior não tinha ----
+- tapOn: "Cola A"
+- tapOn: "Votar"
+- extendedWaitUntil:
+    visible: "100%"
+    timeout: 30000
+- takeScreenshot: qa-04-votou
+
+# ---- Pedido de amostra: idem ----
+# Nome e e-mail vêm preenchidos do perfil; telefone é opcional quando há
+# e-mail, e o campo não tem placeholder para mirar (só rótulo, que React
+# Native não repassa foco ao tocar) — por isso não mexe nele aqui.
+- tapOn: "Quero uma amostra"
+- extendedWaitUntil:
+    visible: "Solicitar amostra"
+    timeout: 30000
+- takeScreenshot: qa-05-form-amostra
+- tapOn: "Pedir amostra"
+- extendedWaitUntil:
+    visible: "Pedido enviado"
+    timeout: 30000
+- takeScreenshot: qa-06-pedido-enviado
+- tapOn: "Fechar"
+
+# ---- Reagir e comentar ----
+- tapOn: "Reagir"
+- extendedWaitUntil:
+    visible: "1"
+    timeout: 30000
+- takeScreenshot: qa-07-reagiu

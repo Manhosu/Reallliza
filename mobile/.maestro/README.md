@@ -58,3 +58,19 @@ ffmpeg -f lavfi -i "testsrc=size=720x720:rate=15:duration=8" \
 
 O `testsrc` traz um cronômetro embutido, o que ajuda a conferir nas capturas
 se a reprodução realmente andou.
+
+**`visible` com `|` (OR) precisa bater com o texto INTEIRO do nó, não um
+trecho dele.** `visible: "Termos de Uso|Validacao QA 19/08"` falhou contra uma
+tela que mostrava exatamente "Validacao QA 19/08 - flujo completo" — a regex
+bate contra o conteúdo completo do nó de acessibilidade, não faz busca de
+substring solta. Prefira um trecho curto e exclusivo daquele texto (uma
+pergunta de enquete, por exemplo) a copiar o texto inteiro do título.
+
+**GPU por software pode disparar "System UI isn't responding" no meio do
+fluxo**, cobrindo a tela com um diálogo do próprio Android (Close app / Wait).
+O aplicativo está bem — é o compositor do emulador que atrasa. Isso derruba
+qualquer `assertVisible`/`extendedWaitUntil` que dependa do que está atrás do
+diálogo. Não há correção no roteiro; se acontecer, tocar em "Wait" (ou
+`adb shell input keyevent 4` não resolve, precisa tocar no botão mesmo) e
+rodar de novo. Symptom-first debug: antes de suspeitar do app, puxe um
+screenshot (`adb exec-out screencap -p`) do estado exato da falha.
