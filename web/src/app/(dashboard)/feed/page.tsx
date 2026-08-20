@@ -22,8 +22,10 @@ import {
   EditorDeBotoes, EditorDeEnquete, ENQUETE_VAZIA,
   type BotaoNoEditor, type EnqueteNoEditor,
 } from "@/components/feed/editor-de-anexos";
+import { EditorDePatrocinio, type CoberturaEditada } from "@/components/feed/editor-de-patrocinio";
 import { feedApi } from "@/lib/api";
-import type { FeedPost, FeedMeta, FeedMedia, FeedInsights } from "@/lib/api/feed";
+import { feedGestaoApi } from "@/lib/api/feed";
+import type { FeedPost, FeedMeta, FeedMedia, FeedInsights, Campanha } from "@/lib/api/feed";
 import { useAuthStore } from "@/stores/auth-store";
 import { UserRole } from "@/lib/types";
 import { FeedLeitor } from "./leitor";
@@ -81,6 +83,10 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
   const [comentarios, setComentarios] = useState(true);
   const [midias, setMidias] = useState<FeedMedia[]>([]);
   const [campanha, setCampanha] = useState("");
+  const [campanhaVinculada, setCampanhaVinculada] = useState<Campanha | null>(null);
+  const [cobertura, setCobertura] = useState<CoberturaEditada>({
+    coverage_type: "nacional", coverage_scope: null, coverage_value: null, duration_days: 7,
+  });
   const [botoes, setBotoes] = useState<BotaoNoEditor[]>([]);
   const [enquete, setEnquete] = useState<EnqueteNoEditor | null>(null);
   const [votosDaEnquete, setVotosDaEnquete] = useState(0);
@@ -168,8 +174,43 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
     setErro(null);
   }, [aberto, post]);
 
+  /**
+   * Carrega a campanha vinculada (se `campanha` apontar pra uma que já
+   * existe) e sincroniza a cobertura mostrada com o que está gravado nela.
+   * Dispara tanto ao editar um post que já nasceu com campanha quanto ao
+   * escolher uma campanha existente no dropdown abaixo.
+   */
+  useEffect(() => {
+    if (!campanha) {
+      setCampanhaVinculada(null);
+      setCobertura({ coverage_type: "nacional", coverage_scope: null, coverage_value: null, duration_days: 7 });
+      return;
+    }
+    let cancelado = false;
+    feedGestaoApi
+      .buscarCampanha(campanha)
+      .then((c) => {
+        if (cancelado) return;
+        setCampanhaVinculada(c);
+        setCobertura({
+          coverage_type: c.coverage_type,
+          coverage_scope: c.coverage_scope,
+          coverage_value: c.coverage_value,
+          duration_days: c.duration_days ?? 7,
+        });
+      })
+      .catch(() => {
+        if (!cancelado) setCampanhaVinculada(null);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [campanha]);
+
   const catSelecionada = meta?.categorias.find((c) => c.id === categoria);
   const exigePatrocinador = !!catSelecionada?.requires_sponsor;
+  const portaoLiberado =
+    !campanhaVinculada || (campanhaVinculada.payment_status !== "pending" && campanhaVinculada.approval_status === "approved");
 
   function montarPayload() {
     return {
@@ -212,6 +253,17 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
     if (exigePatrocinador && !patrocinador) {
       return `A categoria "${catSelecionada?.name}" exige escolher um patrocinador.`;
     }
+    // Nova campanha nascendo com o post: a cobertura precisa estar completa
+    // antes de mandar pro servidor, senão o erro só apareceria depois de já
+    // ter tentado calcular o preço.
+    if (exigePatrocinador && !campanha) {
+      if (cobertura.coverage_type === "regional" && !cobertura.coverage_value) {
+        return "Escolha a UF ou a região da divulgação regional.";
+      }
+      if (!cobertura.duration_days || cobertura.duration_days <= 0) {
+        return "Informe por quantos dias a publicação vai ficar no ar.";
+      }
+    }
     return null;
   }
 
@@ -232,6 +284,50 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
     setErro(null);
     try {
       const payload = montarPayload();
+
+      // Publicação patrocinada nascendo agora: campanha e peça são criadas
+      // juntas, no mesmo pedido — é o fluxo único que a Karol pediu, sem
+      // passar por "Campanhas" antes de voltar pro Feed.
+      if (exigePatrocinador && !idAtual && !campanha) {
+        const criada = await feedGestaoApi.criarCampanhaComPost({
+          sponsor_id: patrocinador,
+          name: titulo.trim(),
+          coverage_type: cobertura.coverage_type,
+          coverage_scope: cobertura.coverage_scope,
+          coverage_value: cobertura.coverage_value,
+          duration_days: cobertura.duration_days,
+          post: payload,
+        });
+        if (!criada.post) throw new Error("A campanha foi criada, mas a publicação não.");
+        setIdCriado(criada.post.id);
+        setCampanha(criada.id);
+        setCampanhaVinculada(criada);
+        if (avisar) {
+          toast.success("Rascunho criado");
+          onSalvo();
+        }
+        return criada.post.id;
+      }
+
+      // Campanha já existe (peça nova sob uma campanha em curso, ou edição):
+      // sincroniza a cobertura antes de salvar a peça, enquanto o preço
+      // ainda não foi travado por um pagamento. `name` vai sempre — é o que
+      // faz o PATCH da campanha reconhecer que algo mudou e, se ela estava
+      // reprovada, tirar da fila de reprovada e devolver pra "aguardando
+      // aprovação" (sem isto, corrigir só o texto do post nunca reenviava a
+      // campanha, porque o conteúdo mora no post, não nela).
+      if (campanhaVinculada) {
+        const camposCampanha: Record<string, unknown> = { name: titulo.trim() };
+        if (campanhaVinculada.payment_status === "pending") {
+          camposCampanha.coverage_type = cobertura.coverage_type;
+          camposCampanha.coverage_scope = cobertura.coverage_scope;
+          camposCampanha.coverage_value = cobertura.coverage_value;
+          camposCampanha.duration_days = cobertura.duration_days;
+        }
+        const atualizada = await feedGestaoApi.atualizarCampanha(campanhaVinculada.id, camposCampanha);
+        setCampanhaVinculada(atualizada);
+      }
+
       // `idAtual` cobre o caso de a publicação ter nascido nesta mesma sessão
       // do editor (ao anexar mídia, por exemplo).
       const salvo = idAtual
@@ -479,14 +575,31 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
           <select
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             value={campanha}
+            disabled={!!idAtual && exigePatrocinador}
             onChange={(e) => setCampanha(e.target.value)}
           >
-            <option value="">Nenhuma — publicação avulsa</option>
+            <option value="">
+              {exigePatrocinador ? "Nova campanha (configure abaixo)" : "Nenhuma — publicação avulsa"}
+            </option>
             {meta?.campanhas?.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
+          {exigePatrocinador && !!idAtual && (
+            <p className="text-xs text-muted-foreground">
+              A campanha não muda depois que a publicação já existe. Duplique para começar outra.
+            </p>
+          )}
         </div>
+
+        {exigePatrocinador && (
+          <EditorDePatrocinio
+            campanha={campanhaVinculada}
+            cobertura={cobertura}
+            aoMudarCobertura={setCobertura}
+            aoAtualizarCampanha={setCampanhaVinculada}
+          />
+        )}
 
         {/* ---- Programação ---- */}
         <div className="grid gap-4 sm:grid-cols-3">
@@ -554,7 +667,19 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
         <Button type="button" variant="outline" isLoading={salvando} onClick={() => salvar()}>
           Salvar rascunho
         </Button>
-        <Button type="button" isLoading={publicando} onClick={publicar}>
+        <Button
+          type="button"
+          isLoading={publicando}
+          onClick={publicar}
+          disabled={!portaoLiberado}
+          title={
+            portaoLiberado
+              ? undefined
+              : campanhaVinculada?.payment_status === "pending"
+                ? "Aguardando confirmação de pagamento"
+                : "Aguardando aprovação da campanha"
+          }
+        >
           <Send className="h-4 w-4" />
           {agendarPara ? "Agendar" : "Publicar agora"}
         </Button>

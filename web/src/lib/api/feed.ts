@@ -272,9 +272,14 @@ export interface Patrocinador {
   sponsor_type: string; logo_url: string | null; website_url: string | null;
   primary_color: string | null; contact_name: string | null;
   contact_email: string | null; is_active: boolean;
+  /** A própria loja Reallliza: publica sem cobrança. No máximo uma. */
+  is_house_account: boolean;
   desempenho?: { impressoes: number; cliques: number };
   campanhas?: { total: number; ativas: number };
 }
+
+export type TipoDeAbrangencia = "nacional" | "regional";
+export type EscopoRegional = "uf" | "regiao";
 
 export interface Campanha {
   id: string; sponsor_id: string; name: string; objective: string | null;
@@ -284,6 +289,34 @@ export interface Campanha {
   sponsor?: { id: string; name: string; logo_url: string | null; primary_color: string | null };
   entregue?: { impressoes: number; cliques: number; leads: number; conversoes: number };
   progresso?: { impressoes: number | null; cliques: number | null; leads: number | null };
+
+  coverage_type: TipoDeAbrangencia;
+  coverage_scope: EscopoRegional | null;
+  coverage_value: string | null;
+  duration_days: number | null;
+  price_per_day_cents: number | null;
+  total_price_cents: number | null;
+  payment_status: "pending" | "paid" | "waived";
+  paid_at: string | null;
+  approval_status: "pending" | "approved" | "rejected";
+  approved_at: string | null;
+  rejection_reason: string | null;
+}
+
+export interface PrecoDeCampanha {
+  pricing_rule_id: string;
+  price_per_day_cents: number;
+  total_cents: number;
+  days: number;
+}
+
+export interface RegraDePrecoDoFeed {
+  scope_type: TipoDeAbrangencia;
+  scope_kind: EscopoRegional | null;
+  scope_value: string | null;
+  price_per_day_cents: number;
+  min_days: number;
+  is_active: boolean;
 }
 
 export interface Lead {
@@ -352,14 +385,32 @@ export const feedGestaoApi = {
     const q = p.toString();
     return apiClient.get<{ campanhas: Campanha[] }>(`/feed/campaigns${q ? `?${q}` : ""}`);
   },
+  buscarCampanha: (id: string) => apiClient.get<Campanha>(`/feed/campaigns/${id}`),
   criarCampanha: (dados: Record<string, unknown>) =>
     apiClient.post<Campanha>("/feed/campaigns", dados),
+  /** Cria a campanha e, no mesmo pedido, a primeira peça — o fluxo único do editor. */
+  criarCampanhaComPost: (dados: Record<string, unknown> & { post: EntradaDePublicacao }) =>
+    apiClient.post<Campanha & { post: FeedPost | null }>("/feed/campaigns", dados),
   atualizarCampanha: (id: string, dados: Record<string, unknown>) =>
     apiClient.patch<Campanha & { pecas_pausadas: number }>(`/feed/campaigns/${id}`, dados),
   removerCampanha: (id: string) =>
     apiClient.delete<{ arquivada?: boolean; excluida?: boolean; motivo?: string }>(
       `/feed/campaigns/${id}`
     ),
+  previewPrecoCampanha: (dados: {
+    coverage_type: TipoDeAbrangencia;
+    coverage_scope?: EscopoRegional | null;
+    coverage_value?: string | null;
+    duration_days: number;
+  }) => apiClient.post<PrecoDeCampanha>("/feed/campaigns/price-preview", dados),
+  pagarCampanha: (id: string) => apiClient.post<Campanha>(`/feed/campaigns/${id}/pay`, {}),
+  aprovarCampanha: (id: string) => apiClient.post<Campanha>(`/feed/campaigns/${id}/approve`, {}),
+  reprovarCampanha: (id: string, motivo: string) =>
+    apiClient.post<Campanha>(`/feed/campaigns/${id}/reject`, { reason: motivo }),
+
+  precosDoFeed: () => apiClient.get<RegraDePrecoDoFeed[]>("/feed/pricing-rules"),
+  salvarPrecosDoFeed: (regras: RegraDePrecoDoFeed[]) =>
+    apiClient.patch<{ success: true; updated: number }>("/feed/pricing-rules", { rules: regras }),
 
   leads: (filtros?: { status?: string; sponsor_id?: string; campaign_id?: string }) => {
     const p = new URLSearchParams();

@@ -13,6 +13,7 @@ import {
   Trash2,
   Globe,
   Wrench,
+  DollarSign,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -54,7 +55,22 @@ interface Holiday {
   source: string;
 }
 
-type Tab = "company" | "states" | "holidays" | "platform_coverage" | "reallliza_coverage";
+interface PrecoFeed {
+  scope_type: "nacional" | "regional";
+  scope_kind: "uf" | "regiao" | null;
+  scope_value: string | null;
+  price_per_day_cents: number;
+  min_days: number;
+  is_active: boolean;
+}
+
+type Tab =
+  | "company"
+  | "states"
+  | "holidays"
+  | "platform_coverage"
+  | "reallliza_coverage"
+  | "feed_pricing";
 
 export default function ConfiguracoesGlobaisPage() {
   const [tab, setTab] = useState<Tab>("company");
@@ -81,6 +97,7 @@ export default function ConfiguracoesGlobaisPage() {
           { key: "holidays" as Tab, label: "Feriados", icon: Calendar },
           { key: "platform_coverage" as Tab, label: "Cobertura Plataforma", icon: Globe },
           { key: "reallliza_coverage" as Tab, label: "Cobertura Reallliza", icon: Wrench },
+          { key: "feed_pricing" as Tab, label: "Preços do Feed", icon: DollarSign },
         ].map((t) => {
           const Icon = t.icon;
           const active = tab === t.key;
@@ -121,6 +138,7 @@ export default function ConfiguracoesGlobaisPage() {
           showPlatformFlag
         />
       )}
+      {tab === "feed_pricing" && <FeedPricingTab />}
     </div>
   );
 }
@@ -671,6 +689,128 @@ function HolidaysTab() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ============================================================
+// Tab 6: Preços do Feed
+// ============================================================
+
+const PRECO_VAZIO = (scope_type: "nacional" | "regional"): PrecoFeed => ({
+  scope_type,
+  scope_kind: null,
+  scope_value: null,
+  price_per_day_cents: 0,
+  min_days: scope_type === "nacional" ? 1 : 3,
+  is_active: true,
+});
+
+function FeedPricingTab() {
+  const [nacional, setNacional] = useState<PrecoFeed>(PRECO_VAZIO("nacional"));
+  const [regional, setRegional] = useState<PrecoFeed>(PRECO_VAZIO("regional"));
+  const [isLoading, setIsLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await apiClient.get<PrecoFeed[]>("/feed/pricing-rules");
+      const n = data.find((r) => r.scope_type === "nacional");
+      const r = data.find((r) => r.scope_type === "regional" && r.scope_kind === null);
+      if (n) setNacional(n);
+      if (r) setRegional(r);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await apiClient.patch("/feed/pricing-rules", {
+        rules: [
+          { ...nacional, scope_kind: null, scope_value: null },
+          { ...regional, scope_kind: null, scope_value: null },
+        ],
+      });
+      toast.success("Preços do Feed salvos");
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (isLoading) return <Skeleton className="h-64 w-full rounded-xl" />;
+
+  return (
+    <Card>
+      <CardContent className="space-y-5 p-6">
+        <p className="text-sm text-muted-foreground">
+          Preço por dia de campanha paga no Feed (lojas/fabricantes ainda não
+          logam sozinhos nesta fase — quem cria a campanha é o admin, mas o
+          valor já é calculado por aqui). Uma UF ou região específica pode
+          ganhar preço próprio depois, sem migração — hoje só nacional e
+          regional (padrão) valem.
+        </p>
+        <PrecoRow titulo="Nacional" valor={nacional} aoMudar={setNacional} />
+        <PrecoRow titulo="Regional (padrão)" valor={regional} aoMudar={setRegional} />
+        <Button onClick={handleSave} isLoading={saving}>
+          <Save className="h-4 w-4" />
+          Salvar preços
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PrecoRow({
+  titulo,
+  valor,
+  aoMudar,
+}: {
+  titulo: string;
+  valor: PrecoFeed;
+  aoMudar: (v: PrecoFeed) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-3 rounded-xl border p-4 md:grid-cols-3 md:items-end">
+      <p className="text-sm font-semibold">{titulo}</p>
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground">Preço por dia (R$)</label>
+        <Input
+          type="number"
+          step="0.01"
+          min="0"
+          value={valor.price_per_day_cents / 100}
+          onChange={(e) =>
+            aoMudar({
+              ...valor,
+              price_per_day_cents: Math.round((Number(e.target.value) || 0) * 100),
+            })
+          }
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground">Mínimo de dias</label>
+        <Input
+          type="number"
+          step="1"
+          min="1"
+          value={valor.min_days}
+          onChange={(e) =>
+            aoMudar({ ...valor, min_days: Math.max(1, Number(e.target.value) || 1) })
+          }
+        />
+      </div>
     </div>
   );
 }

@@ -3,6 +3,8 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { resolverPrecoCampanha, validarValorDeCobertura, type EscopoRegional } from "@/lib/feed/pricing";
+import { criarPost } from "@/lib/feed/posts";
 
 /**
  * Campanhas — o guarda-chuva comercial das publicações patrocinadas.
@@ -76,42 +78,81 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * POST cria a campanha e, opcionalmente, a primeira peça (`body.post`) no
+ * mesmo pedido — é assim que o editor unificado do Feed evita a pessoa
+ * alternar entre "Feed" e "Campanhas" para publicar algo patrocinado.
+ *
+ * O preço nunca vem do cliente: é sempre recalculado aqui a partir de
+ * `coverage_type/scope/value` + `duration_days`, contra as regras que o
+ * admin configurou em Configurações Globais → Preços do Feed.
+ */
 export async function POST(request: NextRequest) {
+  const supabase = getAdminClient();
+  let campanhaId: string | null = null;
+
   try {
     const user = await authenticateRequest(request);
     checkRole(user, ["admin"]);
-    const supabase = getAdminClient();
     const body = await request.json();
 
     const nome = String(body.name ?? "").trim();
     if (!nome) throw new AuthError(400, "Informe o nome da campanha");
     if (!body.sponsor_id) throw new AuthError(400, "Toda campanha precisa de um patrocinador");
 
-    const inicio = body.starts_at ? new Date(body.starts_at) : null;
-    const fim = body.ends_at ? new Date(body.ends_at) : null;
-    if (inicio && fim && fim <= inicio) {
-      throw new AuthError(400, "O fim da campanha precisa ser depois do início");
+    const { data: patrocinador } = await supabase
+      .from("feed_sponsors")
+      .select("id, is_house_account")
+      .eq("id", body.sponsor_id)
+      .maybeSingle();
+    if (!patrocinador) throw new AuthError(400, "Patrocinador não encontrado");
+
+    const coverageType = body.coverage_type === "regional" ? "regional" : "nacional";
+    const coverageScope: EscopoRegional | null =
+      coverageType === "regional" && (body.coverage_scope === "uf" || body.coverage_scope === "regiao")
+        ? body.coverage_scope
+        : null;
+    const coverageValue: string | null =
+      coverageType === "regional" && typeof body.coverage_value === "string" && body.coverage_value.trim()
+        ? body.coverage_value.trim()
+        : null;
+    if (coverageType === "regional" && coverageScope && coverageValue) {
+      await validarValorDeCobertura(supabase, coverageScope, coverageValue);
     }
+
+    const duracao = Number(body.duration_days);
+    const preco = await resolverPrecoCampanha(supabase, {
+      coverage_type: coverageType,
+      coverage_scope: coverageScope,
+      coverage_value: coverageValue,
+      duration_days: duracao,
+    });
 
     const inteiro = (v: unknown) => {
       const n = Number(v);
       return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
     };
 
-    const { data, error } = await supabase
+    const { data: campanha, error } = await supabase
       .from("feed_campaigns")
       .insert({
         sponsor_id: body.sponsor_id,
         name: nome,
         objective: body.objective?.trim() || null,
         status: "draft",
-        starts_at: inicio?.toISOString() ?? null,
-        ends_at: fim?.toISOString() ?? null,
-        // Valor em centavos: guardar dinheiro em número fracionário é como se
-        // perde centavo em relatório.
-        budget_cents: body.budget_reais
-          ? Math.round(Number(body.budget_reais) * 100)
-          : (inteiro(body.budget_cents) ?? null),
+        // Datas só entram quando a campanha é de fato publicada (ver
+        // POST /feed/[id]/publish) — pedir início antes de paga/aprovada
+        // não faz sentido.
+        coverage_type: coverageType,
+        coverage_scope: coverageScope,
+        coverage_value: coverageValue,
+        duration_days: duracao,
+        price_per_day_cents: preco.price_per_day_cents,
+        total_price_cents: preco.total_cents,
+        pricing_rule_id: preco.pricing_rule_id,
+        payment_status: patrocinador.is_house_account ? "waived" : "pending",
+        approval_status: "pending",
+        budget_cents: preco.total_cents,
         contract_ref: body.contract_ref?.trim() || null,
         goal_impressions: inteiro(body.goal_impressions),
         goal_clicks: inteiro(body.goal_clicks),
@@ -124,17 +165,35 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) throw new Error(error.message);
+    campanhaId = campanha.id;
 
     logAudit({
       userId: user.id,
       action: "feed_campaign.created",
       entityType: "feed_campaign",
-      entityId: data.id,
-      newData: { nome, patrocinador: body.sponsor_id },
+      entityId: campanha.id,
+      newData: { nome, patrocinador: body.sponsor_id, total_cents: preco.total_cents },
     });
 
-    return jsonResponse(data, 201);
+    let post = null;
+    if (body.post && typeof body.post === "object") {
+      const resultado = await criarPost(supabase, user.id, {
+        ...body.post,
+        campaign_id: campanha.id,
+        sponsor_id: body.sponsor_id,
+        status: "draft", // publicar é sempre ato separado, mesmo aqui
+      });
+      post = resultado.post;
+    }
+
+    return jsonResponse({ ...campanha, post }, 201);
   } catch (error) {
+    // A peça falhou depois de a campanha já existir: apagar em vez de
+    // deixar um rascunho de campanha órfão, sem peça, travado em
+    // "aguardando pagamento" para sempre.
+    if (campanhaId) {
+      await supabase.from("feed_campaigns").delete().eq("id", campanhaId);
+    }
     return errorResponse(error);
   }
 }

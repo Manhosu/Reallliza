@@ -101,6 +101,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Conta-casa: no máximo uma. Checagem proativa (mesmo padrão do CNPJ
+    // acima) em vez de deixar o índice único parcial estourar um erro cru.
+    const isHouseAccount = body.is_house_account === true;
+    if (isHouseAccount) {
+      const { data: existente } = await supabase
+        .from("feed_sponsors")
+        .select("id, name")
+        .eq("is_house_account", true)
+        .maybeSingle();
+      if (existente) {
+        throw new AuthError(
+          409,
+          `Já existe uma conta configurada como loja Reallliza (sem cobrança): "${existente.name}"`
+        );
+      }
+    }
+
     const { data, error } = await supabase
       .from("feed_sponsors")
       .insert({
@@ -114,6 +131,7 @@ export async function POST(request: NextRequest) {
         primary_color: body.primary_color || null,
         contact_name: body.contact_name?.trim() || null,
         contact_email: body.contact_email?.trim() || null,
+        is_house_account: isHouseAccount,
       })
       .select("*")
       .single();

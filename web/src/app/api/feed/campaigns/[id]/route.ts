@@ -4,6 +4,12 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { linhas as tipar } from "@/lib/api-helpers/rows";
+import {
+  resolverPrecoCampanha,
+  validarValorDeCobertura,
+  garantirCampanhaLiberada,
+  type EscopoRegional,
+} from "@/lib/feed/pricing";
 
 /**
  * Transições permitidas da campanha.
@@ -171,7 +177,9 @@ export async function PATCH(
 
     const { data: atual } = await supabase
       .from("feed_campaigns")
-      .select("id, status, name")
+      .select(
+        "id, status, name, payment_status, approval_status, coverage_type, coverage_scope, coverage_value, duration_days"
+      )
       .eq("id", id)
       .maybeSingle();
     if (!atual) throw new AuthError(404, "Campanha não encontrada");
@@ -187,6 +195,11 @@ export async function PATCH(
             (permitidas.length ? ` Possíveis: ${permitidas.join(", ")}.` : " Ela está encerrada.")
         );
       }
+      // Ativar/agendar sem pagamento confirmado ou aprovação seria a peça
+      // paga indo ao ar sem ter passado pelo controle pedido.
+      if (body.status === "scheduled" || body.status === "active") {
+        garantirCampanhaLiberada(atual);
+      }
       mudancas.status = body.status;
     }
 
@@ -199,8 +212,47 @@ export async function PATCH(
         mudancas[campo] = Number.isFinite(n) && n > 0 ? Math.round(n) : null;
       }
     }
-    if ("budget_reais" in body) {
-      mudancas.budget_cents = body.budget_reais ? Math.round(Number(body.budget_reais) * 100) : null;
+
+    // Abrangência e duração só são editáveis enquanto o preço ainda não foi
+    // travado por um pagamento — depois de pago, mudar cobertura reabriria
+    // a pergunta de quanto foi cobrado por quê.
+    const pedeMudarCobertura = ["coverage_type", "coverage_scope", "coverage_value", "duration_days"].some(
+      (c) => c in body
+    );
+    if (pedeMudarCobertura) {
+      if (atual.payment_status !== "pending") {
+        throw new AuthError(409, "Esta campanha já foi paga — não é possível mudar abrangência ou duração.");
+      }
+      const coverageType: "nacional" | "regional" =
+        body.coverage_type === "regional" || body.coverage_type === "nacional"
+          ? body.coverage_type
+          : (atual.coverage_type as "nacional" | "regional");
+      const coverageScope: EscopoRegional | null =
+        coverageType === "regional"
+          ? ("coverage_scope" in body ? body.coverage_scope : atual.coverage_scope) ?? null
+          : null;
+      const coverageValue: string | null =
+        coverageType === "regional"
+          ? ("coverage_value" in body ? body.coverage_value : atual.coverage_value) ?? null
+          : null;
+      if (coverageType === "regional" && coverageScope && coverageValue) {
+        await validarValorDeCobertura(supabase, coverageScope, coverageValue);
+      }
+      const duracao = "duration_days" in body ? Number(body.duration_days) : Number(atual.duration_days);
+      const preco = await resolverPrecoCampanha(supabase, {
+        coverage_type: coverageType,
+        coverage_scope: coverageScope,
+        coverage_value: coverageValue,
+        duration_days: duracao,
+      });
+      mudancas.coverage_type = coverageType;
+      mudancas.coverage_scope = coverageScope;
+      mudancas.coverage_value = coverageValue;
+      mudancas.duration_days = duracao;
+      mudancas.price_per_day_cents = preco.price_per_day_cents;
+      mudancas.total_price_cents = preco.total_cents;
+      mudancas.pricing_rule_id = preco.pricing_rule_id;
+      mudancas.budget_cents = preco.total_cents;
     }
 
     if (Object.keys(mudancas).length === 0) throw new AuthError(400, "Nada para alterar");
@@ -209,6 +261,15 @@ export async function PATCH(
     const fim = mudancas.ends_at ?? null;
     if (inicio && fim && new Date(String(fim)) <= new Date(String(inicio))) {
       throw new AuthError(400, "O fim da campanha precisa ser depois do início");
+    }
+
+    // Editar o conteúdo depois de reprovada reabre a fila de aprovação —
+    // sem isto, a campanha corrigida ficaria travada em "rejected" para
+    // sempre, sem nenhum caminho de volta.
+    const mudaAlgoAlemDoStatus = Object.keys(mudancas).some((k) => k !== "status");
+    if (atual.approval_status === "rejected" && mudaAlgoAlemDoStatus) {
+      mudancas.approval_status = "pending";
+      mudancas.rejection_reason = null;
     }
 
     const { data, error } = await supabase

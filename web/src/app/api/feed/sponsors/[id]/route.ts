@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/api-helpers/audit";
 const CAMPOS_EDITAVEIS = [
   "name", "legal_name", "sponsor_type", "partner_id", "logo_url",
   "website_url", "primary_color", "contact_name", "contact_email", "is_active",
+  "is_house_account",
 ] as const;
 
 export async function GET(
@@ -80,6 +81,21 @@ export async function PATCH(
     }
     if ("name" in mudancas && !String(mudancas.name ?? "").trim()) {
       throw new AuthError(400, "O nome não pode ficar vazio");
+    }
+    // Mesma checagem proativa do POST: no máximo uma conta-casa.
+    if (mudancas.is_house_account === true) {
+      const { data: existente } = await supabase
+        .from("feed_sponsors")
+        .select("id, name")
+        .eq("is_house_account", true)
+        .neq("id", id)
+        .maybeSingle();
+      if (existente) {
+        throw new AuthError(
+          409,
+          `Já existe uma conta configurada como loja Reallliza (sem cobrança): "${existente.name}"`
+        );
+      }
     }
 
     const { data, error } = await supabase

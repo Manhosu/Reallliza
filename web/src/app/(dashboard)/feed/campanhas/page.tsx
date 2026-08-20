@@ -51,7 +51,7 @@ export default function CampanhasEPatrocinadores() {
   const [carregando, setCarregando] = useState(true);
   const [aviso, setAviso] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [formulario, setFormulario] = useState<"patrocinador" | "campanha" | null>(null);
+  const [formulario, setFormulario] = useState<"patrocinador" | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -97,6 +97,34 @@ export default function CampanhasEPatrocinadores() {
     }
   };
 
+  const pagar = async (campanha: Campanha) => {
+    try {
+      await feedGestaoApi.pagarCampanha(campanha.id);
+      setAviso("Pagamento confirmado.");
+      await carregar();
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : "Não foi possível confirmar o pagamento");
+    }
+  };
+  const aprovar = async (campanha: Campanha) => {
+    try {
+      await feedGestaoApi.aprovarCampanha(campanha.id);
+      setAviso("Campanha aprovada.");
+      await carregar();
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : "Não foi possível aprovar");
+    }
+  };
+  const reprovar = async (campanha: Campanha, motivo: string) => {
+    try {
+      await feedGestaoApi.reprovarCampanha(campanha.id, motivo);
+      setAviso("Campanha reprovada.");
+      await carregar();
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : "Não foi possível reprovar");
+    }
+  };
+
   return (
     <div className="space-y-6 p-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -113,13 +141,15 @@ export default function CampanhasEPatrocinadores() {
           >
             <FileDown className="h-4 w-4" /> Relatório
           </a>
-          <button
-            onClick={() => setFormulario(aba === "campanhas" ? "campanha" : "patrocinador")}
-            className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:opacity-90"
-          >
-            <Plus className="h-4 w-4" />
-            {aba === "campanhas" ? "Nova campanha" : "Novo patrocinador"}
-          </button>
+          {aba === "patrocinadores" && (
+            <button
+              onClick={() => setFormulario("patrocinador")}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+              Novo patrocinador
+            </button>
+          )}
         </div>
       </header>
 
@@ -165,18 +195,6 @@ export default function CampanhasEPatrocinadores() {
           }}
         />
       )}
-      {formulario === "campanha" && (
-        <FormularioCampanha
-          patrocinadores={patrocinadores.filter((p) => p.is_active)}
-          aoFechar={() => setFormulario(null)}
-          aoSalvar={async () => {
-            setFormulario(null);
-            setAviso("Campanha criada como rascunho. Publique as peças para ela ir ao ar.");
-            await carregar();
-          }}
-        />
-      )}
-
       {carregando ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
@@ -185,12 +203,19 @@ export default function CampanhasEPatrocinadores() {
         campanhas.length === 0 ? (
           <VazioGrande
             titulo="Nenhuma campanha ainda"
-            texto="Cadastre um patrocinador e crie a primeira campanha para começar a medir entrega contra o contratado."
+            texto="Campanhas nascem no Feed: clique em Nova publicação, escolha a categoria Campanhas Patrocinadas e configure abrangência, período e patrocinador por lá."
           />
         ) : (
           <div className="space-y-3">
             {campanhas.map((c) => (
-              <CartaoCampanha key={c.id} campanha={c} aoMudar={mudarSituacao} />
+              <CartaoCampanha
+                key={c.id}
+                campanha={c}
+                aoMudar={mudarSituacao}
+                aoPagar={pagar}
+                aoAprovar={aprovar}
+                aoReprovar={reprovar}
+              />
             ))}
           </div>
         )
@@ -221,6 +246,11 @@ export default function CampanhasEPatrocinadores() {
                     {!p.is_active && (
                       <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">Inativo</span>
                     )}
+                    {p.is_house_account && (
+                      <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] uppercase text-primary">
+                        Loja Reallliza · grátis
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs capitalize text-muted-foreground">{p.sponsor_type}</p>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -245,12 +275,28 @@ export default function CampanhasEPatrocinadores() {
   );
 }
 
+const SITUACAO_PAGAMENTO: Record<string, { rotulo: string; cor: string }> = {
+  pending: { rotulo: "Aguardando pagamento", cor: "bg-amber-500/15 text-amber-600" },
+  paid:    { rotulo: "Pago",                 cor: "bg-emerald-500/15 text-emerald-600" },
+  waived:  { rotulo: "Isento — loja Reallliza", cor: "bg-blue-500/15 text-blue-600" },
+};
+const SITUACAO_APROVACAO: Record<string, { rotulo: string; cor: string }> = {
+  pending:  { rotulo: "Aguardando aprovação", cor: "bg-amber-500/15 text-amber-600" },
+  approved: { rotulo: "Aprovada",             cor: "bg-emerald-500/15 text-emerald-600" },
+  rejected: { rotulo: "Reprovada",            cor: "bg-red-500/15 text-red-600" },
+};
+
 function CartaoCampanha({
-  campanha, aoMudar,
+  campanha, aoMudar, aoPagar, aoAprovar, aoReprovar,
 }: {
   campanha: Campanha;
   aoMudar: (c: Campanha, novo: string) => void | Promise<void>;
+  aoPagar: (c: Campanha) => void | Promise<void>;
+  aoAprovar: (c: Campanha) => void | Promise<void>;
+  aoReprovar: (c: Campanha, motivo: string) => void | Promise<void>;
 }) {
+  const [mostrarReprovar, setMostrarReprovar] = useState(false);
+  const [motivo, setMotivo] = useState("");
   const s = SITUACOES[campanha.status] ?? SITUACOES.draft;
   const proximas: Record<string, string[]> = {
     draft: ["active"], scheduled: ["active", "paused"], active: ["paused", "ended"],
@@ -265,14 +311,50 @@ function CartaoCampanha({
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-medium">{campanha.name}</h3>
               <span className={cn("rounded px-2 py-0.5 text-[11px] font-medium", s.cor)}>{s.rotulo}</span>
+              <span className={cn("rounded px-2 py-0.5 text-[11px] font-medium", SITUACAO_PAGAMENTO[campanha.payment_status]?.cor)}>
+                {SITUACAO_PAGAMENTO[campanha.payment_status]?.rotulo}
+              </span>
+              <span className={cn("rounded px-2 py-0.5 text-[11px] font-medium", SITUACAO_APROVACAO[campanha.approval_status]?.cor)}>
+                {SITUACAO_APROVACAO[campanha.approval_status]?.rotulo}
+              </span>
             </div>
             <p className="text-sm text-muted-foreground">
               {campanha.sponsor?.name}
               {campanha.contract_ref && ` · contrato ${campanha.contract_ref}`}
               {campanha.budget_cents !== null && ` · ${reais(campanha.budget_cents)}`}
+              {campanha.coverage_type === "regional" && campanha.coverage_value && ` · ${campanha.coverage_value}`}
+              {campanha.coverage_type === "nacional" && " · nacional"}
+              {campanha.duration_days && ` · ${campanha.duration_days} dia(s)`}
             </p>
+            {campanha.approval_status === "rejected" && campanha.rejection_reason && (
+              <p className="mt-1 text-xs text-destructive">Motivo da reprovação: {campanha.rejection_reason}</p>
+            )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {campanha.payment_status === "pending" && (
+              <button
+                onClick={() => void aoPagar(campanha)}
+                className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+              >
+                Confirmar pagamento
+              </button>
+            )}
+            {campanha.payment_status !== "pending" && campanha.approval_status === "pending" && !mostrarReprovar && (
+              <>
+                <button
+                  onClick={() => void aoAprovar(campanha)}
+                  className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:opacity-90"
+                >
+                  Aprovar
+                </button>
+                <button
+                  onClick={() => setMostrarReprovar(true)}
+                  className="rounded-md border border-destructive/40 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10"
+                >
+                  Reprovar
+                </button>
+              </>
+            )}
             {(proximas[campanha.status] ?? []).map((novo) => (
               <button
                 key={novo}
@@ -290,6 +372,37 @@ function CartaoCampanha({
             </a>
           </div>
         </div>
+
+        {mostrarReprovar && (
+          <div className="mt-3 space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+            <textarea
+              className="w-full rounded-md border border-input bg-background p-2 text-xs"
+              rows={2}
+              placeholder="Motivo da reprovação"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button
+                disabled={!motivo.trim()}
+                onClick={() => {
+                  void aoReprovar(campanha, motivo.trim());
+                  setMostrarReprovar(false);
+                  setMotivo("");
+                }}
+                className="rounded-md bg-destructive px-3 py-1.5 text-xs text-destructive-foreground disabled:opacity-50"
+              >
+                Confirmar reprovação
+              </button>
+              <button
+                onClick={() => { setMostrarReprovar(false); setMotivo(""); }}
+                className="rounded-md border px-3 py-1.5 text-xs"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Entregue contra contratado. Sem meta, mostra só o entregue —
             barra de progresso sem denominador é decoração. */}
@@ -345,6 +458,7 @@ function FormularioPatrocinador({
   const [dados, setDados] = useState({
     name: "", sponsor_type: "fabricante", cnpj: "", contact_name: "",
     contact_email: "", website_url: "", logo_url: "", primary_color: "",
+    is_house_account: false,
   });
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -389,6 +503,21 @@ function FormularioPatrocinador({
           <Campo rotulo="URL do logotipo" valor={dados.logo_url} aoMudar={(v) => setDados({ ...dados, logo_url: v })} />
           <Campo rotulo="Cor da marca" valor={dados.primary_color} aoMudar={(v) => setDados({ ...dados, primary_color: v })} />
         </div>
+        <label className="flex items-start gap-2 rounded-md border border-dashed p-3 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={dados.is_house_account}
+            onChange={(e) => setDados({ ...dados, is_house_account: e.target.checked })}
+          />
+          <span>
+            <span className="font-medium">Esta é a loja da própria Reallliza (sem cobrança)</span>
+            <br />
+            <span className="text-xs text-muted-foreground">
+              Campanhas deste patrocinador não pedem pagamento — só aprovação. Só pode haver um.
+            </span>
+          </span>
+        </label>
         {erro && <p className="text-sm text-destructive">{erro}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={aoFechar} className="rounded-md border px-4 py-2 text-sm hover:bg-muted">Cancelar</button>
@@ -398,105 +527,6 @@ function FormularioPatrocinador({
             className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
           >
             {salvando ? "Salvando..." : "Cadastrar"}
-          </button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function FormularioCampanha({
-  patrocinadores, aoFechar, aoSalvar,
-}: {
-  patrocinadores: Patrocinador[]; aoFechar: () => void; aoSalvar: () => void | Promise<void>;
-}) {
-  const [dados, setDados] = useState({
-    sponsor_id: "", name: "", objective: "", contract_ref: "",
-    budget_reais: "", goal_impressions: "", goal_clicks: "", goal_leads: "",
-    starts_at: "", ends_at: "",
-  });
-  const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
-  const enviar = async () => {
-    setSalvando(true);
-    setErro(null);
-    try {
-      await feedGestaoApi.criarCampanha({
-        ...dados,
-        budget_reais: dados.budget_reais ? Number(dados.budget_reais) : null,
-        starts_at: dados.starts_at || null,
-        ends_at: dados.ends_at || null,
-      });
-      await aoSalvar();
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao criar");
-    } finally {
-      setSalvando(false);
-    }
-  };
-
-  if (patrocinadores.length === 0) {
-    return (
-      <Card className="border-amber-500/40 bg-amber-500/5">
-        <CardContent className="flex items-start gap-3 p-4 text-sm">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-          <div className="flex-1">
-            <p className="font-medium">Cadastre um patrocinador primeiro.</p>
-            <p className="text-muted-foreground">Toda campanha pertence a uma empresa que a paga.</p>
-          </div>
-          <button onClick={aoFechar} aria-label="Fechar"><X className="h-4 w-4" /></button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-base">Nova campanha</CardTitle>
-        <button onClick={aoFechar} aria-label="Fechar"><X className="h-4 w-4" /></button>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-xs font-medium">Patrocinador *</label>
-            <select
-              value={dados.sponsor_id}
-              onChange={(e) => setDados({ ...dados, sponsor_id: e.target.value })}
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-            >
-              <option value="">Escolha</option>
-              {patrocinadores.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-          <Campo rotulo="Nome da campanha" obrigatorio valor={dados.name}
-            aoMudar={(v) => setDados({ ...dados, name: v })} />
-          <Campo rotulo="Objetivo" valor={dados.objective} aoMudar={(v) => setDados({ ...dados, objective: v })} />
-          <Campo rotulo="Referência do contrato" valor={dados.contract_ref}
-            aoMudar={(v) => setDados({ ...dados, contract_ref: v })} />
-          <Campo rotulo="Investimento (R$)" tipo="number" valor={dados.budget_reais}
-            aoMudar={(v) => setDados({ ...dados, budget_reais: v })} />
-          <Campo rotulo="Meta de impressões" tipo="number" valor={dados.goal_impressions}
-            aoMudar={(v) => setDados({ ...dados, goal_impressions: v })} />
-          <Campo rotulo="Meta de cliques" tipo="number" valor={dados.goal_clicks}
-            aoMudar={(v) => setDados({ ...dados, goal_clicks: v })} />
-          <Campo rotulo="Meta de pedidos" tipo="number" valor={dados.goal_leads}
-            aoMudar={(v) => setDados({ ...dados, goal_leads: v })} />
-          <Campo rotulo="Início" tipo="datetime-local" valor={dados.starts_at}
-            aoMudar={(v) => setDados({ ...dados, starts_at: v })} />
-          <Campo rotulo="Fim" tipo="datetime-local" valor={dados.ends_at}
-            aoMudar={(v) => setDados({ ...dados, ends_at: v })} />
-        </div>
-        {erro && <p className="text-sm text-destructive">{erro}</p>}
-        <div className="flex justify-end gap-2">
-          <button onClick={aoFechar} className="rounded-md border px-4 py-2 text-sm hover:bg-muted">Cancelar</button>
-          <button
-            onClick={() => void enviar()}
-            disabled={salvando || !dados.name.trim() || !dados.sponsor_id}
-            className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
-          >
-            {salvando ? "Criando..." : "Criar campanha"}
           </button>
         </div>
       </CardContent>

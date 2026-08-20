@@ -4,6 +4,7 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { resolverAudiencia } from "@/lib/feed/audience";
+import { garantirCampanhaLiberada } from "@/lib/feed/pricing";
 
 /**
  * POST /api/feed/[id]/publish
@@ -31,13 +32,33 @@ export async function POST(
 
     const { data: post, error } = await supabase
       .from("feed_posts")
-      .select("id, title, status, audience_rule_id, notify_on_publish, notification_title, notification_body, publish_at")
+      .select("id, title, status, audience_rule_id, notify_on_publish, notification_title, notification_body, publish_at, campaign_id")
       .eq("id", id)
       .maybeSingle();
 
     if (error || !post) throw new AuthError(404, "Publicação não encontrada");
     if (post.status === "archived") {
       throw new AuthError(400, "Publicação arquivada. Duplique para publicar de novo.");
+    }
+
+    // O portão de verdade: nenhuma peça de campanha vai ao ar sem pagamento
+    // confirmado (ou isenção de conta-casa) e aprovação editorial. O PATCH
+    // de status da campanha já checa isso, mas é aqui, no publish, que o
+    // conteúdo de fato aparece pra alguém — a garantia tem que estar aqui
+    // também, senão a UI errar significaria peça paga indo ao ar sem passar
+    // pelo controle pedido.
+    let campanha: {
+      id: string; status: string; payment_status: string; approval_status: string; duration_days: number | null;
+    } | null = null;
+    if (post.campaign_id) {
+      const { data: c } = await supabase
+        .from("feed_campaigns")
+        .select("id, status, payment_status, approval_status, duration_days")
+        .eq("id", post.campaign_id)
+        .maybeSingle();
+      if (!c) throw new AuthError(404, "Campanha da publicação não encontrada");
+      garantirCampanhaLiberada(c);
+      campanha = c;
     }
 
     // Publicação sem conteúdo visível seria uma linha em branco no feed.
@@ -76,6 +97,26 @@ export async function POST(
       .eq("id", id);
 
     if (errUp) throw new Error(`Falha ao publicar: ${errUp.message}`);
+
+    // Primeira publicação da campanha: é aqui que ela sai de "draft" e ganha
+    // janela de veiculação. Publicações seguintes da mesma campanha não
+    // reescrevem a janela já ativa.
+    if (campanha && campanha.status === "draft") {
+      const inicioDaJanela = agendado ? agendarPara! : agora;
+      const fimDaJanela = campanha.duration_days
+        ? new Date(
+            new Date(inicioDaJanela).getTime() + campanha.duration_days * 24 * 60 * 60 * 1000
+          ).toISOString()
+        : null;
+      await supabase
+        .from("feed_campaigns")
+        .update({
+          status: agendado ? "scheduled" : "active",
+          starts_at: inicioDaJanela,
+          ends_at: fimDaJanela,
+        })
+        .eq("id", campanha.id);
+    }
 
     // Notificação só quando publica de fato. Agendado enfileira na hora certa,
     // pelo cron.
