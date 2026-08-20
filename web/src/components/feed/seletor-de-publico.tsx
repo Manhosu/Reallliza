@@ -62,22 +62,41 @@ export function SeletorDePublico({ audienceRuleId, aoEscolher }: Props) {
   const [buscaCidade, setBuscaCidade] = useState("");
   const [cidades, setCidades] = useState<{ ibge_code: string; name: string; uf: string }[]>([]);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [c, a] = await Promise.all([
-          feedGestaoApi.catalogos(),
-          apiClient.get<{ audiencias: { id: string; name: string; estimated_size: number | null }[] }>(
-            "/feed/audiencias"
-          ),
-        ]);
-        setCatalogos(c);
-        setSalvos(a.audiencias);
-      } catch (e) {
-        setErro(e instanceof Error ? e.message : "Falha ao carregar os públicos");
-      }
-    })();
+  const [carregando, setCarregando] = useState(true);
+
+  /**
+   * Busca os catálogos e os públicos salvos.
+   *
+   * Isolada da montagem porque precisa rodar de novo se falhar — antes só
+   * existia dentro do `useEffect` de montagem, e uma falha (sessão que
+   * expirou no meio, rede instável, o que for) deixava `catalogos` null pra
+   * sempre. O erro ficava gravado em `erro`, mas o componente inteiro
+   * retorna cedo enquanto `catalogos` é null — a mensagem nunca tinha chance
+   * de aparecer. Era spinner girando pra sempre, sem explicação e sem saída,
+   * exatamente o que a Jéssica relatou como "fica carregando".
+   */
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro(null);
+    try {
+      const [c, a] = await Promise.all([
+        feedGestaoApi.catalogos(),
+        apiClient.get<{ audiencias: { id: string; name: string; estimated_size: number | null }[] }>(
+          "/feed/audiencias"
+        ),
+      ]);
+      setCatalogos(c);
+      setSalvos(a.audiencias);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao carregar os públicos");
+    } finally {
+      setCarregando(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void carregar();
+  }, [carregar]);
 
   /** Traduz o que está marcado na tela para a gramática do compilador. */
   const definicao = useMemo(() => {
@@ -204,6 +223,23 @@ export function SeletorDePublico({ audienceRuleId, aoEscolher }: Props) {
   };
 
   if (!catalogos) {
+    if (erro) {
+      return (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm">
+          <span className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="h-4 w-4 shrink-0" /> {erro}
+          </span>
+          <button
+            type="button"
+            onClick={() => void carregar()}
+            disabled={carregando}
+            className="shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
+          >
+            {carregando ? "Tentando..." : "Tentar de novo"}
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="flex items-center gap-2 rounded-md border p-4 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" /> Carregando públicos...

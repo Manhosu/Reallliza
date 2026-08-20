@@ -88,6 +88,19 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
   const [publicando, setPublicando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [erroTick, setErroTick] = useState(0);
+  /**
+   * Mostra um erro e força a rolagem até ele.
+   *
+   * `setErro` sozinho não bastava: se a mensagem for igual à que já estava
+   * na tela (ex.: clicar em "Publicar agora" duas vezes sem corrigir nada),
+   * o valor não muda e o efeito abaixo — que depende de `erro` — não roda de
+   * novo. `erroTick` muda sempre, então a rolagem acontece toda vez.
+   */
+  function mostrarErro(msg: string) {
+    setErro(msg);
+    setErroTick((t) => t + 1);
+  }
   /**
    * Id da publicação criada durante esta sessão do editor.
    *
@@ -97,6 +110,21 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
    */
   const [idCriado, setIdCriado] = useState<string | null>(null);
   const inputArquivo = useRef<HTMLInputElement>(null);
+  const bannerDeErro = useRef<HTMLDivElement>(null);
+
+  /**
+   * Rola até o erro quando ele aparece.
+   *
+   * O banner fica no topo do formulário, e "Publicar agora" fica no rodapé
+   * de um formulário comprido — título, conteúdo, categoria, público, mídia,
+   * botões, enquete, campanha, agendamento. Sem isto, clicar em Publicar sem
+   * ter preenchido algo obrigatório mostrava o erro ACIMA da parte visível
+   * da tela: nada mudava na área que a pessoa estava olhando, e o clique
+   * parecia não ter feito nada — foi exatamente o que a Jéssica relatou.
+   */
+  useEffect(() => {
+    if (erroTick > 0) bannerDeErro.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [erroTick]);
 
   const idAtual = post?.id ?? idCriado;
 
@@ -198,7 +226,7 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
    */
   async function salvar(avisar = true): Promise<string | null> {
     const problema = validar();
-    if (problema) { setErro(problema); return null; }
+    if (problema) { mostrarErro(problema); return null; }
 
     setSalvando(true);
     setErro(null);
@@ -217,7 +245,7 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
       return salvo.id;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Erro ao salvar";
-      setErro(msg);
+      mostrarErro(msg);
       return null;
     } finally {
       setSalvando(false);
@@ -245,7 +273,7 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
       onSalvo();
       onFechar();
     } catch (e: unknown) {
-      setErro(e instanceof Error ? e.message : "Erro ao publicar");
+      mostrarErro(e instanceof Error ? e.message : "Erro ao publicar");
     } finally {
       setPublicando(false);
     }
@@ -253,14 +281,27 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
 
   async function enviarArquivos(lista: FileList | null) {
     if (!lista || lista.length === 0) return;
-    const id = idAtual ?? (await salvar());
-    if (!id) {
-      setErro("Salve o rascunho antes de anexar mídia.");
-      return;
-    }
-    setEnviando(true);
-    setErro(null);
     try {
+      // `salvar()` cria o rascunho na hora, sem avisar — a pessoa só pediu
+      // pra anexar uma foto, não pra salvar nada. Mas ele ainda passa pela
+      // mesma validação de uma publicação de verdade (o servidor também
+      // exige título e conteúdo, então não dá pra pular por aqui): sem
+      // título e conteúdo preenchidos, ele falha.
+      //
+      // Antes essa falha virava sempre a mesma frase — "salve o rascunho
+      // antes de anexar mídia" — que não existe como passo na tela e não
+      // diz o que realmente falta. Quem tentava anexar a foto primeiro (o
+      // fluxo ao estilo Instagram que o José pediu) via uma instrução sem
+      // ação possível e desistia, ou tentava de novo com a MESMA foto — e
+      // como o campo de arquivo não tinha sido limpo, o navegador não
+      // considerava aquilo uma seleção nova e não disparava nada: nem
+      // erro, nem anexo. Silêncio total, que foi exatamente o que a
+      // Jéssica relatou.
+      const id = idAtual ?? (await salvar());
+      if (!id) return; // `salvar()` já deixou o motivo real em `erro`.
+
+      setEnviando(true);
+      setErro(null);
       for (const arquivo of Array.from(lista)) {
         // Dimensões e duração são medidas aqui porque só o navegador as
         // conhece — e sem a duração não há como calcular quartil de vídeo.
@@ -270,9 +311,12 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
       }
       toast.success("Mídia anexada");
     } catch (e: unknown) {
-      setErro(e instanceof Error ? e.message : "Erro ao enviar o arquivo");
+      mostrarErro(e instanceof Error ? e.message : "Erro ao enviar o arquivo");
     } finally {
       setEnviando(false);
+      // Limpa mesmo quando falhou — sem isto, escolher o MESMO arquivo de
+      // novo não muda o valor do input, e o navegador não dispara `onChange`
+      // uma segunda vez. A tentativa de novo parecia não fazer nada.
       if (inputArquivo.current) inputArquivo.current.value = "";
     }
   }
@@ -296,7 +340,10 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
 
       <DialogContent className="space-y-5 pt-4">
         {erro && (
-          <div className="flex items-start gap-2 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
+          <div
+            ref={bannerDeErro}
+            className="flex items-start gap-2 rounded-xl bg-destructive/10 p-3 text-sm text-destructive"
+          >
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{erro}</span>
           </div>
