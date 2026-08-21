@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { convertQuoteToServiceOrder } from "@/lib/quotes/convert-to-os";
+import { aprovarEPublicarCampanha } from "@/lib/feed/posts";
 
 const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
 const PAID_EVENTS = ["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"];
@@ -80,10 +81,15 @@ export async function POST(request: NextRequest) {
         newData: { event },
       });
 
-      // Só confirma pagamento — não publica nada. Quem publica é a
-      // aprovação (POST /feed/campaigns/[id]/approve), depois que o admin
-      // revisa o conteúdo.
-      return jsonResponse({ success: true, feed_campaign_id: campanha.id });
+      // Pagamento confirmado já aprova e publica sozinho (Karol, 21/08).
+      const resultado = await aprovarEPublicarCampanha(supabase, campanha.id, SYSTEM_USER_ID);
+
+      return jsonResponse({
+        success: true,
+        feed_campaign_id: campanha.id,
+        publicacoes_publicadas: resultado.publicacoes_publicadas,
+        publicacoes_com_falha: resultado.publicacoes_com_falha,
+      });
     }
     if (payment.status === "confirmed") {
       return jsonResponse({ success: true, deduplicated: true });

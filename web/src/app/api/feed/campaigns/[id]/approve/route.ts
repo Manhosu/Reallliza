@@ -2,21 +2,19 @@ import { NextRequest } from "next/server";
 import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
-import { logAudit } from "@/lib/api-helpers/audit";
-import { publicarPost } from "@/lib/feed/posts";
+import { aprovarEPublicarCampanha } from "@/lib/feed/posts";
 
 /**
  * POST /api/feed/campaigns/[id]/approve
  *
- * Aprovação editorial — é o controle da Reallliza sobre o que vai ao ar.
- * Recusa se o pagamento ainda está pendente: aprovar antes de pagar
- * inverteria o fluxo pedido. (A conta-casa nunca passa por aqui — pula
- * pagamento E aprovação, ver `garantirCampanhaLiberada`.)
+ * Desde 21/08 a aprovação já acontece sozinha assim que o pagamento é
+ * confirmado (manual pelo admin ou automático via webhook do PIX) — ver
+ * `aprovarEPublicarCampanha` em `lib/feed/posts.ts`. Karol pediu: aprovação
+ * manual virou gargalo pro volume real de uso.
  *
- * Aprovar publica sozinho: no diagrama pedido (CRIAR → CONFIGURAR → PAGAR →
- * APROVAR → PUBLICAR), não existe clique separado depois da aprovação. Por
- * isso, logo depois de marcar `approval_status='approved'`, publica todo
- * post em rascunho vinculado a esta campanha.
+ * Esta rota continua existindo pro caso raro de reprocessar: um post que
+ * nasceu em rascunho DEPOIS da campanha já estar paga/aprovada (ela chama a
+ * mesma função, que é idempotente).
  */
 export async function POST(
   request: NextRequest,
@@ -38,55 +36,19 @@ export async function POST(
     if (campanha.payment_status === "pending") {
       throw new AuthError(402, "Esta campanha ainda não teve o pagamento confirmado.");
     }
-    if (campanha.approval_status === "approved") {
-      throw new AuthError(400, "Esta campanha já está aprovada.");
-    }
 
-    const { data: atualizada, error: errUp } = await supabase
+    const resultado = await aprovarEPublicarCampanha(supabase, id, user.id);
+
+    const { data: atualizada } = await supabase
       .from("feed_campaigns")
-      .update({
-        approval_status: "approved",
-        approved_at: new Date().toISOString(),
-        approved_by: user.id,
-        rejection_reason: null,
-      })
-      .eq("id", id)
       .select("*")
+      .eq("id", id)
       .single();
-    if (errUp) throw new Error(errUp.message);
-
-    logAudit({
-      userId: user.id,
-      action: "feed_campaign.approved",
-      entityType: "feed_campaign",
-      entityId: id,
-    });
-
-    // Publica sozinho os rascunhos desta campanha. A aprovação em si já foi
-    // gravada — se um post falhar (ex.: audiência zerada), a falha fica
-    // isolada nesta lista em vez de desfazer a aprovação; aquele post
-    // continua em draft, publicável depois via POST /feed/[id]/publish.
-    const { data: rascunhos } = await supabase
-      .from("feed_posts")
-      .select("id")
-      .eq("campaign_id", id)
-      .eq("status", "draft");
-
-    const publicadas: string[] = [];
-    const falhas: Array<{ post_id: string; erro: string }> = [];
-    for (const post of rascunhos ?? []) {
-      try {
-        const r = await publicarPost(supabase, post.id, user.id);
-        publicadas.push(r.id);
-      } catch (e) {
-        falhas.push({ post_id: post.id, erro: e instanceof Error ? e.message : "erro desconhecido" });
-      }
-    }
 
     return jsonResponse({
       ...atualizada,
-      publicacoes_publicadas: publicadas,
-      publicacoes_com_falha: falhas,
+      publicacoes_publicadas: resultado.publicacoes_publicadas,
+      publicacoes_com_falha: resultado.publicacoes_com_falha,
     });
   } catch (error) {
     return errorResponse(error);

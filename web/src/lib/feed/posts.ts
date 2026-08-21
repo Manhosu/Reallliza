@@ -267,3 +267,70 @@ export async function publicarPost(
     notificacao_enfileirada: jobId,
   };
 }
+
+export interface ResultadoDeAprovacao {
+  publicacoes_publicadas: string[];
+  publicacoes_com_falha: Array<{ post_id: string; erro: string }>;
+}
+
+/**
+ * Aprova a campanha e publica sozinha todo post em rascunho vinculado a ela.
+ *
+ * Karol pediu (21/08): aprovação manual virou gargalo — "não vamos conseguir
+ * ficar aprovando sempre". A partir daqui, pagamento confirmado (manual pelo
+ * admin ou automático via webhook do PIX) já dispara isto direto, sem
+ * esperar um clique separado de "Aprovar". `POST /campaigns/[id]/approve`
+ * continua existindo — chama a mesma função, e fica útil só pro caso raro de
+ * reprocessar um post que entrou em rascunho depois da aprovação inicial.
+ *
+ * Idempotente: se a campanha já está aprovada, só tenta publicar os
+ * rascunhos pendentes de novo, sem reescrever `approved_at`/`approved_by`.
+ */
+export async function aprovarEPublicarCampanha(
+  supabase: SupabaseClient,
+  campaignId: string,
+  actorUserId: string
+): Promise<ResultadoDeAprovacao> {
+  const { data: aprovadaAgora } = await supabase
+    .from("feed_campaigns")
+    .update({
+      approval_status: "approved",
+      approved_at: new Date().toISOString(),
+      approved_by: actorUserId,
+      rejection_reason: null,
+    })
+    .eq("id", campaignId)
+    .neq("approval_status", "approved")
+    .select("id");
+
+  if (aprovadaAgora && aprovadaAgora.length > 0) {
+    logAudit({
+      userId: actorUserId,
+      action: "feed_campaign.approved",
+      entityType: "feed_campaign",
+      entityId: campaignId,
+    });
+  }
+
+  const { data: rascunhos } = await supabase
+    .from("feed_posts")
+    .select("id")
+    .eq("campaign_id", campaignId)
+    .eq("status", "draft");
+
+  const publicacoes_publicadas: string[] = [];
+  const publicacoes_com_falha: Array<{ post_id: string; erro: string }> = [];
+  for (const post of rascunhos ?? []) {
+    try {
+      const r = await publicarPost(supabase, post.id, actorUserId);
+      publicacoes_publicadas.push(r.id);
+    } catch (e) {
+      publicacoes_com_falha.push({
+        post_id: post.id,
+        erro: e instanceof Error ? e.message : "erro desconhecido",
+      });
+    }
+  }
+
+  return { publicacoes_publicadas, publicacoes_com_falha };
+}

@@ -3,14 +3,19 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { aprovarEPublicarCampanha } from "@/lib/feed/posts";
 
 /**
  * POST /api/feed/campaigns/[id]/pay
  *
  * Confirmação MANUAL — mesmo padrão do ramo sem-Asaas de `quotes/[id]/pay`.
- * PIX automático via Asaas é Fase 2; aqui o admin confirma que recebeu o
- * pagamento por fora (a campanha continua bloqueada de ir ao ar até isso
- * acontecer — ver o portão em `POST /feed/[id]/publish`).
+ * Usada quando o admin recebeu o pagamento por fora (PIX automático via
+ * Asaas é a rota `[id]/pix`).
+ *
+ * Pagamento confirmado já aprova e publica sozinho (Karol, 21/08: aprovação
+ * manual virou gargalo). Se a peça falhar ao publicar (ex.: audiência
+ * zerada), o pagamento continua confirmado — a falha só fica isolada na
+ * resposta, publicável depois via POST /feed/[id]/publish.
  */
 export async function POST(
   request: NextRequest,
@@ -58,7 +63,19 @@ export async function POST(
       newData: { amount_cents: campanha.total_price_cents },
     });
 
-    return jsonResponse(atualizada);
+    const resultado = await aprovarEPublicarCampanha(supabase, id, user.id);
+
+    const { data: campanhaFinal } = await supabase
+      .from("feed_campaigns")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    return jsonResponse({
+      ...(campanhaFinal ?? atualizada),
+      publicacoes_publicadas: resultado.publicacoes_publicadas,
+      publicacoes_com_falha: resultado.publicacoes_com_falha,
+    });
   } catch (error) {
     return errorResponse(error);
   }
