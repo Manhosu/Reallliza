@@ -29,6 +29,27 @@ export async function resolverSponsorDoUsuario(
   return data;
 }
 
+/**
+ * Mesma busca que `resolverSponsorDoUsuario`, mas devolve `null` em vez de
+ * lançar quando não há vínculo — usada em rotas abertas a mais de um papel
+ * (ex.: parceiro/loja comum vs. parceiro/loja também vinculado a um
+ * patrocinador), onde "não vinculado" não é erro, é só "trate como o outro
+ * caso".
+ */
+export async function resolverSponsorOpcional(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("feed_sponsor_users")
+    .select("sponsor_id")
+    .eq("user_id", userId)
+    .order("created_at")
+    .limit(1)
+    .maybeSingle();
+  return data?.sponsor_id ?? null;
+}
+
 /** Confere se um post pertence ao sponsor — direto ou via a campanha dele. */
 export async function postPertenceAoSponsor(
   supabase: SupabaseClient,

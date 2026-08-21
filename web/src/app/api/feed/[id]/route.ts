@@ -4,9 +4,9 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { sincronizarBotoes, sincronizarEnquete } from "@/lib/feed/anexos";
-import { resolverSponsorDoUsuario, postPertenceAoSponsor } from "@/lib/feed/sponsor-auth";
+import { resolverSponsorDoUsuario, resolverSponsorOpcional, postPertenceAoSponsor } from "@/lib/feed/sponsor-auth";
 
-/** Campos que um sponsor pode editar no próprio rascunho — o resto é admin only. */
+/** Campos que um sponsor (ou parceiro/loja vinculado) pode editar no próprio rascunho — o resto é admin only. */
 const CAMPOS_EDITAVEIS_POR_SPONSOR = new Set([
   "title", "content", "ctas", "publish_at", "comments_enabled",
 ]);
@@ -44,13 +44,19 @@ export async function GET(
     // Quem não é administrador só enxerga o que é da audiência dele — senão
     // bastaria adivinhar o endereço para ler conteúdo segmentado.
     //
-    // Sponsor é um caso à parte: precisa reabrir o PRÓPRIO rascunho antes de
-    // pagar, e `feed_pode_ver` avalia audiência de post JÁ publicado — um
-    // rascunho nunca passaria nela. Dono do post entra sempre, sem checar
-    // audiência; quem não é dono cai fora mesmo que a audiência bateria.
-    if (user.role === "sponsor") {
-      const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
-      const dono = await postPertenceAoSponsor(supabase, id, sponsor_id);
+    // Dono de um patrocinador (sponsor OU parceiro/loja vinculado via
+    // feed_sponsor_users) é um caso à parte: precisa reabrir o PRÓPRIO
+    // rascunho antes de pagar, e `feed_pode_ver` avalia audiência de post JÁ
+    // publicado — um rascunho nunca passaria nela. Dono do post entra
+    // sempre, sem checar audiência; quem não é dono cai fora mesmo que a
+    // audiência bateria.
+    const sponsorVinculado =
+      user.role === "sponsor" || user.role === "partner"
+        ? await resolverSponsorOpcional(supabase, user.id)
+        : null;
+
+    if (sponsorVinculado) {
+      const dono = await postPertenceAoSponsor(supabase, id, sponsorVinculado);
       if (!dono) throw new AuthError(404, "Publicação não encontrada");
     } else if (user.role !== "admin") {
       const { data: pode } = await supabase.rpc("feed_pode_ver", {
@@ -90,7 +96,7 @@ export async function PATCH(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin", "sponsor"]);
+    checkRole(user, ["admin", "sponsor", "partner"]);
     const { id } = await params;
     const body = await request.json();
     const supabase = getAdminClient();
@@ -102,7 +108,7 @@ export async function PATCH(
       .maybeSingle();
     if (!atual) throw new AuthError(404, "Publicação não encontrada");
 
-    if (user.role === "sponsor") {
+    if (user.role !== "admin") {
       const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
       const dono = await postPertenceAoSponsor(supabase, id, sponsor_id);
       if (!dono) throw new AuthError(404, "Publicação não encontrada");
@@ -180,7 +186,7 @@ export async function DELETE(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin", "sponsor"]);
+    checkRole(user, ["admin", "sponsor", "partner"]);
     const { id } = await params;
     const supabase = getAdminClient();
 
@@ -191,7 +197,7 @@ export async function DELETE(
       .maybeSingle();
     if (!post) throw new AuthError(404, "Publicação não encontrada");
 
-    if (user.role === "sponsor") {
+    if (user.role !== "admin") {
       const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
       const dono = await postPertenceAoSponsor(supabase, id, sponsor_id);
       if (!dono) throw new AuthError(404, "Publicação não encontrada");

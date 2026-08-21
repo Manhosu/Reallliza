@@ -165,7 +165,13 @@ const allNavItems = [
     label: "Meu Feed",
     href: "/portal-patrocinador",
     icon: Megaphone,
-    roles: [UserRole.SPONSOR],
+    // Parceiro/loja entra aqui também: Karol testou (21/08) com uma conta
+    // de loja e viu que "Feed" (o item de cima, leitura) não deixava criar
+    // publicação — o pedido é a loja conseguir fazer tudo pela PRÓPRIA
+    // conta. Loja sem vínculo de patrocinador vê a tela com aviso — sem
+    // vínculo é exceção, não regra, então não compensa esconder o item
+    // condicionalmente e complicar esta lista estática.
+    roles: [UserRole.SPONSOR, UserRole.PARTNER],
   },
   {
     label: "Chats",

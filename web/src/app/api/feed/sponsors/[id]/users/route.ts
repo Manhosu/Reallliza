@@ -7,16 +7,24 @@ import { logAudit } from "@/lib/api-helpers/audit";
 /**
  * POST /api/feed/sponsors/[id]/users
  *
- * Cria (ou vincula) o login de um patrocinador — a porta de entrada do
- * Portal do Patrocinador. Mesmo padrão de `POST /api/partners`: não existe
- * convite por e-mail em lugar nenhum do sistema, então o admin define e-mail
- * e senha na hora, a conta já nasce confirmada, e a pessoa recebe a senha
- * por fora (mesma coisa que já deve acontecer hoje com login de loja).
+ * Cria (ou vincula) o acesso de um patrocinador ao Feed.
+ *
+ * Karol testou (21/08) com uma conta de loja (Parceiro) já existente e viu
+ * que "Feed" não aparecia pra criar publicação — o esperado é que a loja
+ * consiga fazer tudo pela PRÓPRIA conta, sem precisar de um login novo.
+ * Por isso, se o e-mail já é de um Parceiro, este endpoint só vincula (sem
+ * criar conta nova, sem mexer em senha) — a mesma conta que já usa pra OS
+ * ganha acesso ao Feed. Fabricante sem nenhuma conta hoje continua usando o
+ * papel `sponsor` dedicado, criado na hora com e-mail+senha.
+ *
+ * Mesmo padrão de `POST /api/partners` pra conta nova: não existe convite
+ * por e-mail em lugar nenhum do sistema, o admin define e-mail e senha na
+ * hora, a conta já nasce confirmada, e a pessoa recebe a senha por fora.
  *
  * Body: { email, password?, full_name?, role?: "viewer"|"editor"|"admin" }
  * `role` aqui é o papel INTERNO dentro do patrocinador (quem pode editar
  * campanha vs. só ver) — não confundir com o `UserRole` do sistema, que
- * para essa conta é sempre "sponsor".
+ * pode ser "sponsor" (conta nova/dedicada) ou "partner" (loja já existente).
  */
 export async function POST(
   request: NextRequest,
@@ -49,14 +57,15 @@ export async function POST(
     let userId: string;
 
     if (existente) {
-      if (existente.role !== "sponsor") {
+      if (existente.role !== "sponsor" && existente.role !== "partner") {
         throw new AuthError(
           400,
           `Já existe um usuário com este e-mail, mas o perfil é '${existente.role}'. Use um e-mail diferente.`
         );
       }
-      // Conta de sponsor já existe (gerencia outra marca) — só vincula,
-      // sem criar conta nova nem mexer na senha.
+      // Conta já existe — sponsor (gerencia outra marca) ou parceiro/loja
+      // (login que já usa pra OS) — só vincula, sem criar conta nova nem
+      // mexer na senha. É exatamente o caso da loja que a Karol testou.
       userId = existente.id;
     } else {
       const password = body.password;

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { authenticateRequest } from "@/lib/api-helpers/auth";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
-import { resolverSponsorDoUsuario } from "@/lib/feed/sponsor-auth";
+import { resolverSponsorOpcional } from "@/lib/feed/sponsor-auth";
 
 /**
  * GET /api/feed/meta
@@ -18,12 +18,18 @@ export async function GET(request: NextRequest) {
     const user = await authenticateRequest(request);
     const supabase = getAdminClient();
 
-    // Sponsor só enxerga a própria linha e as próprias campanhas — sem
-    // filtro, este endpoint (aberto a qualquer autenticado, sem checkRole,
-    // porque hoje só admin loga) vazaria nome e status de campanha de
-    // fabricante concorrente pro sponsor que acabou de logar.
-    const meuSponsorId =
-      user.role === "sponsor" ? (await resolverSponsorDoUsuario(supabase, user.id)).sponsor_id : null;
+    // Só admin vê tudo sem filtro. Qualquer outro papel (sponsor, parceiro
+    // vinculado, ou até quem não tem nada a ver com o Feed — este endpoint
+    // não tem checkRole) só pode ver a própria linha, nunca a lista inteira
+    // de patrocinadores/campanhas de todo mundo.
+    const ehAdmin = user.role === "admin";
+    const poderEstarVinculado = user.role === "sponsor" || user.role === "partner";
+    const meuSponsorId = poderEstarVinculado ? await resolverSponsorOpcional(supabase, user.id) : null;
+
+    // Papel vinculável mas sem vínculo de verdade: não é admin, então não
+    // vê nada — nem consulta o banco à toa.
+    const semAcessoAPatrocinador = !ehAdmin && poderEstarVinculado && !meuSponsorId;
+    const semAcessoNenhum = !ehAdmin && !poderEstarVinculado;
 
     let consultaPatrocinadores = supabase
       .from("feed_sponsors")
@@ -49,8 +55,8 @@ export async function GET(request: NextRequest) {
         .from("feed_audience_rules")
         .select("id, name, description, estimated_size, computed_at")
         .order("name"),
-      consultaPatrocinadores,
-      consultaCampanhas,
+      semAcessoAPatrocinador || semAcessoNenhum ? Promise.resolve({ data: [] }) : consultaPatrocinadores,
+      semAcessoAPatrocinador || semAcessoNenhum ? Promise.resolve({ data: [] }) : consultaCampanhas,
     ]);
 
     return jsonResponse({

@@ -18,16 +18,16 @@ import { ROTULOS_CAMPO } from "@/lib/feed/audience";
 export async function GET(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin", "sponsor"]);
+    checkRole(user, ["admin", "sponsor", "partner"]);
     const supabase = getAdminClient();
 
     const { searchParams } = new URL(request.url);
     const buscaCidade = searchParams.get("cidade")?.trim();
 
-    // Sponsor só precisa de UF/região pra escolher a abrangência regional —
-    // o resto daqui (parceiros, equipes, saúde do cadastro) é informação
-    // interna da Reallliza, sem motivo pra sair pra fora.
-    if (user.role === "sponsor") {
+    // Sponsor e parceiro/loja só precisam de UF/região pra escolher a
+    // abrangência regional — o resto daqui (parceiros, equipes, saúde do
+    // cadastro) é informação interna da Reallliza, sem motivo pra sair.
+    if (user.role !== "admin") {
       const { data: ufsSponsor } = await supabase.from("br_ufs").select("uf, name, region").order("name");
       const regioesSponsor = [...new Set((ufsSponsor ?? []).map((u) => u.region))].sort();
       return jsonResponse({ ufs: ufsSponsor ?? [], regioes: regioesSponsor });

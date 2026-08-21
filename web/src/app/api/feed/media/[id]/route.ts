@@ -25,7 +25,7 @@ export async function PATCH(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin", "sponsor"]);
+    checkRole(user, ["admin", "sponsor", "partner"]);
     const { id } = await params;
     const body = await request.json();
     const supabase = getAdminClient();
@@ -37,7 +37,7 @@ export async function PATCH(
       .maybeSingle();
     if (error || !midia) throw new AuthError(404, "Mídia não encontrada");
 
-    if (user.role === "sponsor") {
+    if (user.role !== "admin") {
       const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
       const dono = await postPertenceAoSponsor(supabase, midia.post_id, sponsor_id);
       if (!dono) throw new AuthError(404, "Mídia não encontrada");
@@ -92,7 +92,7 @@ export async function DELETE(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin", "sponsor"]);
+    checkRole(user, ["admin", "sponsor", "partner"]);
     const { id } = await params;
     const supabase = getAdminClient();
 
@@ -103,7 +103,7 @@ export async function DELETE(
       .maybeSingle();
     if (!midia) throw new AuthError(404, "Mídia não encontrada");
 
-    if (user.role === "sponsor") {
+    if (user.role !== "admin") {
       const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
       const dono = await postPertenceAoSponsor(supabase, midia.post_id, sponsor_id);
       if (!dono) throw new AuthError(404, "Mídia não encontrada");

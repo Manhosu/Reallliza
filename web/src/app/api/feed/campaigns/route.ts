@@ -20,7 +20,7 @@ import { resolverSponsorDoUsuario } from "@/lib/feed/sponsor-auth";
 export async function GET(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin", "sponsor"]);
+    checkRole(user, ["admin", "sponsor", "partner"]);
     const supabase = getAdminClient();
 
     const { searchParams } = new URL(request.url);
@@ -39,10 +39,11 @@ export async function GET(request: NextRequest) {
 
     if (situacao) consulta = consulta.eq("status", situacao);
 
-    // Sponsor só enxerga o próprio — ignora ?sponsor_id= vindo da query,
-    // senão bastaria trocar o parâmetro pra listar campanha de outro
-    // fabricante.
-    if (user.role === "sponsor") {
+    // Quem não é admin (sponsor OU parceiro/loja vinculado via
+    // feed_sponsor_users) só enxerga o próprio — ignora ?sponsor_id= vindo
+    // da query, senão bastaria trocar o parâmetro pra listar campanha de
+    // outro patrocinador.
+    if (user.role !== "admin") {
       const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
       consulta = consulta.eq("sponsor_id", sponsor_id);
     } else if (patrocinador) {
@@ -108,14 +109,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin", "sponsor"]);
+    checkRole(user, ["admin", "sponsor", "partner"]);
     const body = await request.json();
 
-    // Sponsor nunca escolhe em nome de quem cria — o patrocinador é sempre
-    // o resolvido a partir do próprio login, ignorando qualquer
-    // `sponsor_id` que o body tenha mandado.
+    // Quem não é admin nunca escolhe em nome de quem cria — o patrocinador é
+    // sempre o resolvido a partir do próprio login (sponsor OU
+    // parceiro/loja vinculado), ignorando qualquer `sponsor_id` que o body
+    // tenha mandado.
     let sponsorId: string = body.sponsor_id;
-    if (user.role === "sponsor") {
+    if (user.role !== "admin") {
       sponsorId = (await resolverSponsorDoUsuario(supabase, user.id)).sponsor_id;
     }
 

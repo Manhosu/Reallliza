@@ -40,7 +40,7 @@ export async function GET(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin", "sponsor"]);
+    checkRole(user, ["admin", "sponsor", "partner"]);
     const { id } = await params;
     const supabase = getAdminClient();
 
@@ -51,7 +51,7 @@ export async function GET(
       .maybeSingle();
 
     if (!campanha) throw new AuthError(404, "Campanha não encontrada");
-    if (user.role === "sponsor") {
+    if (user.role !== "admin") {
       const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
       if (campanha.sponsor_id !== sponsor_id) throw new AuthError(404, "Campanha não encontrada");
     }
@@ -181,7 +181,7 @@ export async function PATCH(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin", "sponsor"]);
+    checkRole(user, ["admin", "sponsor", "partner"]);
     const { id } = await params;
     const supabase = getAdminClient();
     const body = await request.json();
@@ -195,7 +195,7 @@ export async function PATCH(
       .maybeSingle();
     if (!atual) throw new AuthError(404, "Campanha não encontrada");
 
-    if (user.role === "sponsor") {
+    if (user.role !== "admin") {
       const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
       if (atual.sponsor_id !== sponsor_id) throw new AuthError(404, "Campanha não encontrada");
       const camposForaDaLista = Object.keys(body).filter((c) => !CAMPOS_EDITAVEIS_POR_SPONSOR.has(c));

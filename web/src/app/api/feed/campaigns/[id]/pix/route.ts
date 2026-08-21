@@ -22,7 +22,7 @@ export async function POST(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin", "sponsor"]);
+    checkRole(user, ["admin", "sponsor", "partner"]);
     const { id } = await params;
     const supabase = getAdminClient();
 
@@ -35,7 +35,7 @@ export async function POST(
       .maybeSingle();
     if (error || !campanha) throw new AuthError(404, "Campanha não encontrada");
 
-    if (user.role === "sponsor") {
+    if (user.role !== "admin") {
       const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
       if (campanha.sponsor_id !== sponsor_id) {
         throw new AuthError(403, "Esta campanha não pertence ao seu patrocinador.");
