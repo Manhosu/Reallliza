@@ -102,12 +102,19 @@ export interface EstadoDeLiberacao {
 }
 
 /**
- * Portão: nenhuma campanha vai ao ar sem pagamento confirmado (ou isenção
- * de conta-casa) e aprovação editorial. Chamado tanto no PATCH de status da
- * campanha quanto em `POST /feed/[id]/publish` — a garantia real está no
- * publish, porque é ali que o conteúdo de fato aparece pra alguém.
+ * Portão: nenhuma campanha vai ao ar sem pagamento confirmado e aprovação
+ * editorial. Chamado tanto no PATCH de status da campanha quanto em
+ * `publicarPost` (lib/feed/posts.ts) — a garantia real está no publish,
+ * porque é ali que o conteúdo de fato aparece pra alguém.
+ *
+ * Conta-casa (`payment_status === 'waived'`) pula os dois checks, não só o
+ * de pagamento: o fluxo pedido pra ela é `CRIAR → CONFIGURAR →
+ * PUBLICAR/AGENDAR`, sem aprovação — é a própria Reallliza publicando o
+ * próprio conteúdo, o mesmo controle editorial que já não existe hoje pras
+ * publicações institucionais sem campanha.
  */
 export function garantirCampanhaLiberada(campanha: EstadoDeLiberacao): void {
+  if (campanha.payment_status === "waived") return;
   if (campanha.payment_status === "pending") {
     throw new AuthError(402, "Esta campanha ainda não teve o pagamento confirmado.");
   }

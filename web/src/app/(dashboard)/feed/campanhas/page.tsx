@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Plus, Building2, Megaphone, FileDown, Pencil, Power, X, Check, AlertTriangle,
+  Plus, Building2, Megaphone, FileDown, Pencil, Power, X, Check, AlertTriangle, KeyRound,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -52,6 +52,7 @@ export default function CampanhasEPatrocinadores() {
   const [aviso, setAviso] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [formulario, setFormulario] = useState<"patrocinador" | null>(null);
+  const [contaSponsorPara, setContaSponsorPara] = useState<Patrocinador | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -259,6 +260,15 @@ export default function CampanhasEPatrocinadores() {
                     <span>{numero(p.desempenho?.cliques ?? 0)} cliques</span>
                   </div>
                 </div>
+                {!p.is_house_account && (
+                  <button
+                    onClick={() => setContaSponsorPara(p)}
+                    title="Criar acesso ao Portal do Patrocinador"
+                    className="rounded-md border p-2 hover:bg-muted"
+                  >
+                    <KeyRound className="h-4 w-4" />
+                  </button>
+                )}
                 <button
                   onClick={() => void alternarPatrocinador(p)}
                   title={p.is_active ? "Desativar" : "Reativar"}
@@ -270,6 +280,17 @@ export default function CampanhasEPatrocinadores() {
             </Card>
           ))}
         </div>
+      )}
+
+      {contaSponsorPara && (
+        <FormularioAcessoSponsor
+          patrocinador={contaSponsorPara}
+          aoFechar={() => setContaSponsorPara(null)}
+          aoSalvar={(email) => {
+            setContaSponsorPara(null);
+            setAviso(`Acesso criado para ${email}. Combine a senha com quem vai usar.`);
+          }}
+        />
       )}
     </div>
   );
@@ -531,6 +552,75 @@ function FormularioPatrocinador({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Acesso ao Portal do Patrocinador — cria (ou vincula) o login que a loja ou
+ * fabricante vai usar pra criar a própria publicação. Mesmo padrão de sempre
+ * neste sistema: não existe convite por e-mail, o admin define e-mail e
+ * senha na hora e passa pra pessoa por fora.
+ */
+function FormularioAcessoSponsor({
+  patrocinador, aoFechar, aoSalvar,
+}: {
+  patrocinador: Patrocinador;
+  aoFechar: () => void;
+  aoSalvar: (email: string) => void;
+}) {
+  const [email, setEmail] = useState(patrocinador.contact_email ?? "");
+  const [senha, setSenha] = useState("");
+  const [nome, setNome] = useState(patrocinador.contact_name ?? "");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const enviar = async () => {
+    setSalvando(true);
+    setErro(null);
+    try {
+      const r = await feedGestaoApi.criarUsuarioDeSponsor(patrocinador.id, {
+        email: email.trim(),
+        password: senha || undefined,
+        full_name: nome.trim() || undefined,
+      });
+      aoSalvar(r.email);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao criar o acesso");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={aoFechar} />
+      <Card className="relative z-10 w-full max-w-md mx-4">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">Acesso — {patrocinador.name}</CardTitle>
+          <button onClick={aoFechar} aria-label="Fechar"><X className="h-4 w-4" /></button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Se o e-mail já tiver um login de patrocinador, só vincula esta marca a ele — sem
+            criar conta nova nem mudar a senha.
+          </p>
+          <Campo rotulo="E-mail de acesso" obrigatorio valor={email} aoMudar={setEmail} tipo="email" />
+          <Campo rotulo="Nome de quem vai logar" valor={nome} aoMudar={setNome} />
+          <Campo rotulo="Senha (só se for conta nova, mínimo 6 caracteres)" valor={senha} aoMudar={setSenha} tipo="password" />
+          {erro && <p className="text-sm text-destructive">{erro}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={aoFechar} className="rounded-md border px-4 py-2 text-sm hover:bg-muted">Cancelar</button>
+            <button
+              onClick={() => void enviar()}
+              disabled={salvando || !email.trim()}
+              className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+            >
+              {salvando ? "Salvando..." : "Criar acesso"}
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

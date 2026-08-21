@@ -5,6 +5,7 @@ import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { resolverPrecoCampanha, validarValorDeCobertura, type EscopoRegional } from "@/lib/feed/pricing";
 import { criarPost } from "@/lib/feed/posts";
+import { resolverSponsorDoUsuario } from "@/lib/feed/sponsor-auth";
 
 /**
  * Campanhas — o guarda-chuva comercial das publicações patrocinadas.
@@ -19,20 +20,34 @@ import { criarPost } from "@/lib/feed/posts";
 export async function GET(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "sponsor"]);
     const supabase = getAdminClient();
 
     const { searchParams } = new URL(request.url);
     const situacao = searchParams.get("status");
     const patrocinador = searchParams.get("sponsor_id");
 
+    // `posts` embutido: o Portal do Patrocinador lista campanha (que é como a
+    // Karol pensa) mas precisa abrir o post por trás dela para editar — sem
+    // isso a tela precisaria de uma segunda rota só para achar o id do post.
     let consulta = supabase
       .from("feed_campaigns")
-      .select("*, sponsor:feed_sponsors(id, name, logo_url, primary_color)")
+      .select(
+        "*, sponsor:feed_sponsors(id, name, logo_url, primary_color), posts:feed_posts(id, title, status, publish_at, published_at)"
+      )
       .order("created_at", { ascending: false });
 
     if (situacao) consulta = consulta.eq("status", situacao);
-    if (patrocinador) consulta = consulta.eq("sponsor_id", patrocinador);
+
+    // Sponsor só enxerga o próprio — ignora ?sponsor_id= vindo da query,
+    // senão bastaria trocar o parâmetro pra listar campanha de outro
+    // fabricante.
+    if (user.role === "sponsor") {
+      const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
+      consulta = consulta.eq("sponsor_id", sponsor_id);
+    } else if (patrocinador) {
+      consulta = consulta.eq("sponsor_id", patrocinador);
+    }
 
     const { data: campanhas, error } = await consulta;
     if (error) throw new Error(error.message);
@@ -93,19 +108,30 @@ export async function POST(request: NextRequest) {
 
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "sponsor"]);
     const body = await request.json();
+
+    // Sponsor nunca escolhe em nome de quem cria — o patrocinador é sempre
+    // o resolvido a partir do próprio login, ignorando qualquer
+    // `sponsor_id` que o body tenha mandado.
+    let sponsorId: string = body.sponsor_id;
+    if (user.role === "sponsor") {
+      sponsorId = (await resolverSponsorDoUsuario(supabase, user.id)).sponsor_id;
+    }
 
     const nome = String(body.name ?? "").trim();
     if (!nome) throw new AuthError(400, "Informe o nome da campanha");
-    if (!body.sponsor_id) throw new AuthError(400, "Toda campanha precisa de um patrocinador");
+    if (!sponsorId) throw new AuthError(400, "Toda campanha precisa de um patrocinador");
 
     const { data: patrocinador } = await supabase
       .from("feed_sponsors")
       .select("id, is_house_account")
-      .eq("id", body.sponsor_id)
+      .eq("id", sponsorId)
       .maybeSingle();
     if (!patrocinador) throw new AuthError(400, "Patrocinador não encontrado");
+    // Só admin pode criar campanha isenta — sponsor nunca marca a própria
+    // como conta-casa (esse flag mora no cadastro do patrocinador, que só
+    // admin edita).
 
     const coverageType = body.coverage_type === "regional" ? "regional" : "nacional";
     const coverageScope: EscopoRegional | null =
@@ -136,7 +162,7 @@ export async function POST(request: NextRequest) {
     const { data: campanha, error } = await supabase
       .from("feed_campaigns")
       .insert({
-        sponsor_id: body.sponsor_id,
+        sponsor_id: sponsorId,
         name: nome,
         objective: body.objective?.trim() || null,
         status: "draft",
@@ -172,7 +198,7 @@ export async function POST(request: NextRequest) {
       action: "feed_campaign.created",
       entityType: "feed_campaign",
       entityId: campanha.id,
-      newData: { nome, patrocinador: body.sponsor_id, total_cents: preco.total_cents },
+      newData: { nome, patrocinador: sponsorId, total_cents: preco.total_cents },
     });
 
     let post = null;
@@ -180,7 +206,7 @@ export async function POST(request: NextRequest) {
       const resultado = await criarPost(supabase, user.id, {
         ...body.post,
         campaign_id: campanha.id,
-        sponsor_id: body.sponsor_id,
+        sponsor_id: sponsorId,
         status: "draft", // publicar é sempre ato separado, mesmo aqui
       });
       post = resultado.post;

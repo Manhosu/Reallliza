@@ -301,6 +301,11 @@ export interface Campanha {
   approval_status: "pending" | "approved" | "rejected";
   approved_at: string | null;
   rejection_reason: string | null;
+  /** Só vem em `feedGestaoApi.campanhas()` — a peça por trás da campanha, pro Portal do Patrocinador abrir pra editar. */
+  posts?: Array<{
+    id: string; title: string; status: string;
+    publish_at: string | null; published_at: string | null;
+  }>;
 }
 
 export interface PrecoDeCampanha {
@@ -308,6 +313,17 @@ export interface PrecoDeCampanha {
   price_per_day_cents: number;
   total_cents: number;
   days: number;
+}
+
+export interface PixCampanha {
+  pix_disponivel: boolean;
+  mensagem?: string;
+  reaproveitado?: boolean;
+  asaas_id?: string;
+  checkout_url?: string;
+  qr_code_base64?: string;
+  copia_cola?: string;
+  expira_em?: string | null;
 }
 
 export interface RegraDePrecoDoFeed {
@@ -404,9 +420,19 @@ export const feedGestaoApi = {
     duration_days: number;
   }) => apiClient.post<PrecoDeCampanha>("/feed/campaigns/price-preview", dados),
   pagarCampanha: (id: string) => apiClient.post<Campanha>(`/feed/campaigns/${id}/pay`, {}),
+  gerarPixCampanha: (id: string) => apiClient.post<PixCampanha>(`/feed/campaigns/${id}/pix`, {}),
   aprovarCampanha: (id: string) => apiClient.post<Campanha>(`/feed/campaigns/${id}/approve`, {}),
   reprovarCampanha: (id: string, motivo: string) =>
     apiClient.post<Campanha>(`/feed/campaigns/${id}/reject`, { reason: motivo }),
+
+  criarUsuarioDeSponsor: (
+    sponsorId: string,
+    dados: { email: string; password?: string; full_name?: string; role?: "viewer" | "editor" | "admin" }
+  ) =>
+    apiClient.post<{ user_id: string; email: string; sponsor_id: string; role: string }>(
+      `/feed/sponsors/${sponsorId}/users`,
+      dados
+    ),
 
   precosDoFeed: () => apiClient.get<RegraDePrecoDoFeed[]>("/feed/pricing-rules"),
   salvarPrecosDoFeed: (regras: RegraDePrecoDoFeed[]) =>

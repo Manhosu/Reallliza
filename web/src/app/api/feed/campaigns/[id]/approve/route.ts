@@ -3,14 +3,20 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { publicarPost } from "@/lib/feed/posts";
 
 /**
  * POST /api/feed/campaigns/[id]/approve
  *
  * Aprovação editorial — é o controle da Reallliza sobre o que vai ao ar.
- * Exigida mesmo para a conta-casa (a isenção dela é só financeira). Recusa
- * se o pagamento ainda está pendente: aprovar antes de pagar inverteria o
- * fluxo pedido.
+ * Recusa se o pagamento ainda está pendente: aprovar antes de pagar
+ * inverteria o fluxo pedido. (A conta-casa nunca passa por aqui — pula
+ * pagamento E aprovação, ver `garantirCampanhaLiberada`.)
+ *
+ * Aprovar publica sozinho: no diagrama pedido (CRIAR → CONFIGURAR → PAGAR →
+ * APROVAR → PUBLICAR), não existe clique separado depois da aprovação. Por
+ * isso, logo depois de marcar `approval_status='approved'`, publica todo
+ * post em rascunho vinculado a esta campanha.
  */
 export async function POST(
   request: NextRequest,
@@ -56,7 +62,32 @@ export async function POST(
       entityId: id,
     });
 
-    return jsonResponse(atualizada);
+    // Publica sozinho os rascunhos desta campanha. A aprovação em si já foi
+    // gravada — se um post falhar (ex.: audiência zerada), a falha fica
+    // isolada nesta lista em vez de desfazer a aprovação; aquele post
+    // continua em draft, publicável depois via POST /feed/[id]/publish.
+    const { data: rascunhos } = await supabase
+      .from("feed_posts")
+      .select("id")
+      .eq("campaign_id", id)
+      .eq("status", "draft");
+
+    const publicadas: string[] = [];
+    const falhas: Array<{ post_id: string; erro: string }> = [];
+    for (const post of rascunhos ?? []) {
+      try {
+        const r = await publicarPost(supabase, post.id, user.id);
+        publicadas.push(r.id);
+      } catch (e) {
+        falhas.push({ post_id: post.id, erro: e instanceof Error ? e.message : "erro desconhecido" });
+      }
+    }
+
+    return jsonResponse({
+      ...atualizada,
+      publicacoes_publicadas: publicadas,
+      publicacoes_com_falha: falhas,
+    });
   } catch (error) {
     return errorResponse(error);
   }

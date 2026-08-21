@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { resolverSponsorDoUsuario, postPertenceAoSponsor } from "@/lib/feed/sponsor-auth";
 
 export const runtime = "nodejs";
 
@@ -30,7 +31,7 @@ const TAMANHO_MAX = 100 * 1024 * 1024; // alinhado ao bucket (migration 066)
 export async function POST(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "sponsor"]);
 
     const body = await request.json();
     const supabase = getAdminClient();
@@ -61,6 +62,12 @@ export async function POST(request: NextRequest) {
       .eq("id", post_id)
       .maybeSingle();
     if (!post) throw new AuthError(404, "Publicação não encontrada");
+
+    if (user.role === "sponsor") {
+      const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
+      const dono = await postPertenceAoSponsor(supabase, post_id, sponsor_id);
+      if (!dono) throw new AuthError(404, "Publicação não encontrada");
+    }
 
     const { data: ultima } = await supabase
       .from("feed_post_media")

@@ -6,6 +6,8 @@ export enum UserRole {
   ADMIN = "admin",
   TECHNICIAN = "technician",
   PARTNER = "partner",
+  /** Loja/fabricante que anuncia no Feed — vínculo em `feed_sponsor_users`. */
+  SPONSOR = "sponsor",
 }
 
 export enum UserStatus {
@@ -419,6 +421,7 @@ export const USER_ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.ADMIN]: "Administrador",
   [UserRole.TECHNICIAN]: "Técnico",
   [UserRole.PARTNER]: "Parceiro",
+  [UserRole.SPONSOR]: "Patrocinador",
 };
 
 export const USER_STATUS_LABELS: Record<UserStatus, string> = {

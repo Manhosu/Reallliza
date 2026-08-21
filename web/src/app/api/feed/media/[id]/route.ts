@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { resolverSponsorDoUsuario, postPertenceAoSponsor } from "@/lib/feed/sponsor-auth";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,7 @@ export async function PATCH(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "sponsor"]);
     const { id } = await params;
     const body = await request.json();
     const supabase = getAdminClient();
@@ -35,6 +36,12 @@ export async function PATCH(
       .eq("id", id)
       .maybeSingle();
     if (error || !midia) throw new AuthError(404, "Mídia não encontrada");
+
+    if (user.role === "sponsor") {
+      const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
+      const dono = await postPertenceAoSponsor(supabase, midia.post_id, sponsor_id);
+      if (!dono) throw new AuthError(404, "Mídia não encontrada");
+    }
 
     const pasta = midia.storage_path.split("/").slice(0, -1).join("/");
     const arquivo = midia.storage_path.split("/").pop();
@@ -85,16 +92,22 @@ export async function DELETE(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "sponsor"]);
     const { id } = await params;
     const supabase = getAdminClient();
 
     const { data: midia } = await supabase
       .from("feed_post_media")
-      .select("storage_path")
+      .select("post_id, storage_path")
       .eq("id", id)
       .maybeSingle();
     if (!midia) throw new AuthError(404, "Mídia não encontrada");
+
+    if (user.role === "sponsor") {
+      const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
+      const dono = await postPertenceAoSponsor(supabase, midia.post_id, sponsor_id);
+      if (!dono) throw new AuthError(404, "Mídia não encontrada");
+    }
 
     await supabase.storage.from("feed").remove([midia.storage_path]);
     const { error } = await supabase.from("feed_post_media").delete().eq("id", id);

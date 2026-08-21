@@ -10,6 +10,13 @@ import {
   garantirCampanhaLiberada,
   type EscopoRegional,
 } from "@/lib/feed/pricing";
+import { resolverSponsorDoUsuario } from "@/lib/feed/sponsor-auth";
+
+/** Campos que um sponsor pode editar na própria campanha — o resto é admin only. */
+const CAMPOS_EDITAVEIS_POR_SPONSOR = new Set([
+  "coverage_type", "coverage_scope", "coverage_value", "duration_days",
+  "name", "objective", "notes",
+]);
 
 /**
  * Transições permitidas da campanha.
@@ -33,7 +40,7 @@ export async function GET(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "sponsor"]);
     const { id } = await params;
     const supabase = getAdminClient();
 
@@ -44,6 +51,10 @@ export async function GET(
       .maybeSingle();
 
     if (!campanha) throw new AuthError(404, "Campanha não encontrada");
+    if (user.role === "sponsor") {
+      const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
+      if (campanha.sponsor_id !== sponsor_id) throw new AuthError(404, "Campanha não encontrada");
+    }
 
     const [publicacoes, diario, leads, recortes] = await Promise.all([
       supabase
@@ -170,7 +181,7 @@ export async function PATCH(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "sponsor"]);
     const { id } = await params;
     const supabase = getAdminClient();
     const body = await request.json();
@@ -178,11 +189,20 @@ export async function PATCH(
     const { data: atual } = await supabase
       .from("feed_campaigns")
       .select(
-        "id, status, name, payment_status, approval_status, coverage_type, coverage_scope, coverage_value, duration_days"
+        "id, status, name, sponsor_id, payment_status, approval_status, coverage_type, coverage_scope, coverage_value, duration_days"
       )
       .eq("id", id)
       .maybeSingle();
     if (!atual) throw new AuthError(404, "Campanha não encontrada");
+
+    if (user.role === "sponsor") {
+      const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
+      if (atual.sponsor_id !== sponsor_id) throw new AuthError(404, "Campanha não encontrada");
+      const camposForaDaLista = Object.keys(body).filter((c) => !CAMPOS_EDITAVEIS_POR_SPONSOR.has(c));
+      if (camposForaDaLista.length > 0) {
+        throw new AuthError(403, `Só o administrador altera: ${camposForaDaLista.join(", ")}.`);
+      }
+    }
 
     const mudancas: Record<string, unknown> = {};
 

@@ -7,6 +7,9 @@ import {
   type BotaoDeAcao,
   type EnquetePedida,
 } from "@/lib/feed/anexos";
+import { resolverAudiencia } from "@/lib/feed/audience";
+import { garantirCampanhaLiberada } from "@/lib/feed/pricing";
+import { logAudit } from "@/lib/api-helpers/audit";
 
 /**
  * Criação de publicação — compartilhada entre `POST /api/feed` (avulsa) e
@@ -121,4 +124,146 @@ export async function criarPost(
   const enquete = await sincronizarEnquete(supabase, post.id, body.poll);
 
   return { post, botoes, enquete };
+}
+
+export interface ResultadoDePublicacao {
+  id: string;
+  status: "scheduled" | "published";
+  publish_at: string | null;
+  audiencia_alcancada: number | null;
+  midias: number;
+  notificacao_enfileirada: string | null;
+}
+
+/**
+ * Publica ou agenda uma publicação já existente — compartilhada entre o
+ * clique manual (`POST /feed/[id]/publish`) e a auto-publicação ao aprovar
+ * uma campanha (`POST /feed/campaigns/[id]/approve`). `publishAtOverride` só
+ * existe pro clique manual (equivalente ao antigo `body.publish_at`); o
+ * gatilho de aprovação não passa nada e a função cai no `publish_at` já
+ * gravado no post — é isso que preserva o post agendado indo pra
+ * "scheduled" em vez de publicar na hora.
+ */
+export async function publicarPost(
+  supabase: SupabaseClient,
+  postId: string,
+  publishedByUserId: string,
+  publishAtOverride?: string | null
+): Promise<ResultadoDePublicacao> {
+  const { data: post, error } = await supabase
+    .from("feed_posts")
+    .select("id, title, status, audience_rule_id, notify_on_publish, notification_title, notification_body, publish_at, campaign_id")
+    .eq("id", postId)
+    .maybeSingle();
+
+  if (error || !post) throw new AuthError(404, "Publicação não encontrada");
+  if (post.status === "archived") {
+    throw new AuthError(400, "Publicação arquivada. Duplique para publicar de novo.");
+  }
+
+  // O portão de verdade: nenhuma peça de campanha vai ao ar sem pagamento
+  // confirmado (ou isenção de conta-casa) e aprovação editorial. O PATCH de
+  // status da campanha já checa isso, mas é aqui, no publish, que o
+  // conteúdo de fato aparece pra alguém — a garantia tem que estar aqui
+  // também, senão a UI errar significaria peça paga indo ao ar sem passar
+  // pelo controle pedido.
+  let campanha: {
+    id: string; status: string; payment_status: string; approval_status: string; duration_days: number | null;
+  } | null = null;
+  if (post.campaign_id) {
+    const { data: c } = await supabase
+      .from("feed_campaigns")
+      .select("id, status, payment_status, approval_status, duration_days")
+      .eq("id", post.campaign_id)
+      .maybeSingle();
+    if (!c) throw new AuthError(404, "Campanha da publicação não encontrada");
+    garantirCampanhaLiberada(c);
+    campanha = c;
+  }
+
+  // Publicação sem conteúdo visível seria uma linha em branco no feed.
+  const { count: qtdMidia } = await supabase
+    .from("feed_post_media")
+    .select("id", { count: "exact", head: true })
+    .eq("post_id", postId)
+    .eq("status", "ready");
+
+  const agendarPara: string | null = publishAtOverride ?? post.publish_at ?? null;
+  const agendado = !!agendarPara && new Date(agendarPara).getTime() > Date.now();
+
+  // Resolve a audiência antes de publicar: publicar com audiência vazia
+  // significaria conteúdo que ninguém vê, e é melhor descobrir agora.
+  let alcance: number | null = null;
+  if (post.audience_rule_id) {
+    const r = await resolverAudiencia(supabase, post.audience_rule_id);
+    alcance = r.total;
+    if (alcance === 0) {
+      throw new AuthError(
+        400,
+        "A audiência escolhida não alcança nenhuma pessoa hoje. Ajuste a segmentação antes de publicar."
+      );
+    }
+  }
+
+  const agora = new Date().toISOString();
+  const { error: errUp } = await supabase
+    .from("feed_posts")
+    .update({
+      status: agendado ? "scheduled" : "published",
+      publish_at: agendado ? agendarPara : null,
+      published_at: agendado ? null : agora,
+      published_by: publishedByUserId,
+    })
+    .eq("id", postId);
+
+  if (errUp) throw new Error(`Falha ao publicar: ${errUp.message}`);
+
+  // Primeira publicação da campanha: é aqui que ela sai de "draft" e ganha
+  // janela de veiculação. Publicações seguintes da mesma campanha não
+  // reescrevem a janela já ativa.
+  if (campanha && campanha.status === "draft") {
+    const inicioDaJanela = agendado ? agendarPara! : agora;
+    const fimDaJanela = campanha.duration_days
+      ? new Date(
+          new Date(inicioDaJanela).getTime() + campanha.duration_days * 24 * 60 * 60 * 1000
+        ).toISOString()
+      : null;
+    await supabase
+      .from("feed_campaigns")
+      .update({
+        status: agendado ? "scheduled" : "active",
+        starts_at: inicioDaJanela,
+        ends_at: fimDaJanela,
+      })
+      .eq("id", campanha.id);
+  }
+
+  // Notificação só quando publica de fato. Agendado enfileira na hora certa,
+  // pelo cron.
+  let jobId: string | null = null;
+  if (!agendado && post.notify_on_publish) {
+    const { data: job } = await supabase
+      .from("feed_notification_jobs")
+      .insert({ post_id: postId, status: "pending" })
+      .select("id")
+      .single();
+    jobId = job?.id ?? null;
+  }
+
+  logAudit({
+    userId: publishedByUserId,
+    action: agendado ? "feed_post.scheduled" : "feed_post.published",
+    entityType: "feed_post",
+    entityId: postId,
+    newData: { alcance, notificar: post.notify_on_publish, publish_at: agendarPara },
+  });
+
+  return {
+    id: postId,
+    status: agendado ? "scheduled" : "published",
+    publish_at: agendado ? agendarPara : null,
+    audiencia_alcancada: alcance,
+    midias: qtdMidia ?? 0,
+    notificacao_enfileirada: jobId,
+  };
 }

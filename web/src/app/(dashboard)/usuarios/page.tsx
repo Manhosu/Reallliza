@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Star,
   Trash2,
+  Megaphone,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -49,12 +50,14 @@ const ROLE_BADGE_VARIANT: Record<UserRole, string> = {
   [UserRole.ADMIN]: "purple",
   [UserRole.TECHNICIAN]: "info",
   [UserRole.PARTNER]: "success",
+  [UserRole.SPONSOR]: "warning",
 };
 
 const ROLE_ICONS: Record<UserRole, React.ReactNode> = {
   [UserRole.ADMIN]: <Shield className="h-3 w-3" />,
   [UserRole.TECHNICIAN]: <Wrench className="h-3 w-3" />,
   [UserRole.PARTNER]: <Building2 className="h-3 w-3" />,
+  [UserRole.SPONSOR]: <Megaphone className="h-3 w-3" />,
 };
 
 const STATUS_BADGE_VARIANT: Record<UserStatus, string> = {
@@ -762,11 +765,16 @@ export default function UsuariosPage() {
                 value={createForm.role}
                 onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })}
               >
-                {Object.values(UserRole).map((role) => (
-                  <option key={role} value={role}>
-                    {USER_ROLE_LABELS[role]}
-                  </option>
-                ))}
+                {/* Patrocinador não entra aqui: o acesso dele nasce vinculado
+                    a um patrocinador específico (Feed → Patrocinadores),
+                    não por esta tela genérica — que nem aceita o valor. */}
+                {Object.values(UserRole)
+                  .filter((role) => role !== UserRole.SPONSOR)
+                  .map((role) => (
+                    <option key={role} value={role}>
+                      {USER_ROLE_LABELS[role]}
+                    </option>
+                  ))}
               </SelectNative>
 
               {/* Especialidades com estrelas */}
@@ -866,12 +874,24 @@ export default function UsuariosPage() {
                 label="Perfil"
                 value={editForm.role}
                 onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                disabled={editingUser?.role === UserRole.SPONSOR}
               >
-                {Object.values(UserRole).map((role) => (
-                  <option key={role} value={role}>
-                    {USER_ROLE_LABELS[role]}
-                  </option>
-                ))}
+                {/* Trocar QUALQUER perfil para Patrocinador por aqui deixaria
+                    a conta sem vínculo em feed_sponsor_users (só a tela de
+                    Patrocinadores cria esse vínculo) — e se já é sponsor,
+                    trocar para outro perfil por aqui não desfaz o vínculo
+                    antigo. Mais seguro: trava o campo quando já é sponsor,
+                    e nem oferece virar sponsor por aqui. */}
+                {Object.values(UserRole)
+                  .filter((role) => role !== UserRole.SPONSOR)
+                  .map((role) => (
+                    <option key={role} value={role}>
+                      {USER_ROLE_LABELS[role]}
+                    </option>
+                  ))}
+                {editingUser?.role === UserRole.SPONSOR && (
+                  <option value={UserRole.SPONSOR}>{USER_ROLE_LABELS[UserRole.SPONSOR]}</option>
+                )}
               </SelectNative>
               <SelectNative
                 label="Status"

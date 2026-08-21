@@ -43,7 +43,47 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (!payment) {
-      return jsonResponse({ message: "Pagamento não encontrado" }, 404);
+      // Não é orçamento — tenta campanha do Feed. A cobrança de campanha
+      // nunca cria linha em `payments` (ver POST /feed/campaigns/[id]/pix):
+      // o externalReference mandado pro Asaas é o próprio feed_campaigns.id.
+      const { data: campanha } = await supabase
+        .from("feed_campaigns")
+        .select("id, payment_status, total_price_cents")
+        .eq("id", externalReference)
+        .maybeSingle();
+
+      if (!campanha) {
+        return jsonResponse({ message: "Pagamento não encontrado" }, 404);
+      }
+      if (campanha.payment_status !== "pending") {
+        return jsonResponse({ success: true, deduplicated: true });
+      }
+
+      const agora = new Date().toISOString();
+      await supabase
+        .from("feed_campaigns")
+        .update({
+          payment_status: "paid",
+          paid_at: agora,
+          paid_amount_cents: campanha.total_price_cents,
+          // payment_confirmed_by fica NULL de propósito: distingue
+          // confirmação automática (aqui) de confirmação manual (o botão
+          // /pay grava quem clicou).
+        })
+        .eq("id", campanha.id);
+
+      logAudit({
+        userId: SYSTEM_USER_ID,
+        action: "feed_campaign.paid_webhook",
+        entityType: "feed_campaign",
+        entityId: campanha.id,
+        newData: { event },
+      });
+
+      // Só confirma pagamento — não publica nada. Quem publica é a
+      // aprovação (POST /feed/campaigns/[id]/approve), depois que o admin
+      // revisa o conteúdo.
+      return jsonResponse({ success: true, feed_campaign_id: campanha.id });
     }
     if (payment.status === "confirmed") {
       return jsonResponse({ success: true, deduplicated: true });

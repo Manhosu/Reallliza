@@ -158,6 +158,15 @@ const allNavItems = [
     icon: Wallet,
     roles: [UserRole.PARTNER],
   },
+  // Portal do Patrocinador: área exclusiva de quem anuncia no Feed. De
+  // propósito só este item pro papel SPONSOR — o resto do menu admin não
+  // faz sentido pra quem só cria e acompanha a própria publicação paga.
+  {
+    label: "Meu Feed",
+    href: "/portal-patrocinador",
+    icon: Megaphone,
+    roles: [UserRole.SPONSOR],
+  },
   {
     label: "Chats",
     href: "/chats",

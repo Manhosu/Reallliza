@@ -23,6 +23,7 @@ import {
   type BotaoNoEditor, type EnqueteNoEditor,
 } from "@/components/feed/editor-de-anexos";
 import { EditorDePatrocinio, type CoberturaEditada } from "@/components/feed/editor-de-patrocinio";
+import { medirArquivo } from "@/lib/feed/medir-arquivo";
 import { feedApi } from "@/lib/api";
 import { feedGestaoApi } from "@/lib/api/feed";
 import type { FeedPost, FeedMeta, FeedMedia, FeedInsights, Campanha } from "@/lib/api/feed";
@@ -210,7 +211,9 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
   const catSelecionada = meta?.categorias.find((c) => c.id === categoria);
   const exigePatrocinador = !!catSelecionada?.requires_sponsor;
   const portaoLiberado =
-    !campanhaVinculada || (campanhaVinculada.payment_status !== "pending" && campanhaVinculada.approval_status === "approved");
+    !campanhaVinculada ||
+    campanhaVinculada.payment_status === "waived" ||
+    (campanhaVinculada.payment_status !== "pending" && campanhaVinculada.approval_status === "approved");
 
   function montarPayload() {
     return {
@@ -686,31 +689,6 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
       </DialogFooter>
     </Dialog>
   );
-}
-
-/** Lê dimensões e duração no navegador — o servidor não tem como saber. */
-async function medirArquivo(
-  arquivo: File
-): Promise<{ width?: number; height?: number; duration_seconds?: number }> {
-  if (arquivo.type.startsWith("image/")) {
-    return new Promise((resolve) => {
-      const img = new window.Image();
-      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-      img.onerror = () => resolve({});
-      img.src = URL.createObjectURL(arquivo);
-    });
-  }
-  if (arquivo.type.startsWith("video/")) {
-    return new Promise((resolve) => {
-      const v = document.createElement("video");
-      v.preload = "metadata";
-      v.onloadedmetadata = () =>
-        resolve({ width: v.videoWidth, height: v.videoHeight, duration_seconds: v.duration });
-      v.onerror = () => resolve({});
-      v.src = URL.createObjectURL(arquivo);
-    });
-  }
-  return {};
 }
 
 // ============================================================

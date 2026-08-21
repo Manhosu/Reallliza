@@ -13,7 +13,7 @@ import { resolverPrecoCampanha, validarValorDeCobertura, type EscopoRegional } f
 export async function POST(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "sponsor"]);
     const supabase = getAdminClient();
     const body = await request.json();
 

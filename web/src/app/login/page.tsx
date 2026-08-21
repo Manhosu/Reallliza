@@ -78,6 +78,9 @@ function LoginForm() {
           case UserRole.PARTNER:
             router.push("/os");
             break;
+          case UserRole.SPONSOR:
+            router.push("/portal-patrocinador");
+            break;
           default:
             router.push("/dashboard");
         }

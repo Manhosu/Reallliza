@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularPrecoCampanha, type RegraDePreco } from "./pricing";
+import { calcularPrecoCampanha, garantirCampanhaLiberada, type RegraDePreco } from "./pricing";
 
 /**
  * O cálculo de preço é o único lugar que decide quanto uma loja/fabricante
@@ -100,5 +100,36 @@ describe("calcularPrecoCampanha", () => {
     expect(() =>
       calcularPrecoCampanha({ coverage_type: "nacional", duration_days: 5 }, [inativa])
     ).toThrow(/Não há preço configurado/);
+  });
+});
+
+/**
+ * A conta-casa (loja Reallliza) publica sem passar por aprovação — pedido
+ * explícito da Karol (`CRIAR → CONFIGURAR → PUBLICAR/AGENDAR`, sem etapa de
+ * aprovação no meio). Qualquer sponsor pagante segue o portão normal.
+ */
+describe("garantirCampanhaLiberada", () => {
+  it("libera campanha isenta mesmo sem aprovação", () => {
+    expect(() =>
+      garantirCampanhaLiberada({ payment_status: "waived", approval_status: "pending" })
+    ).not.toThrow();
+  });
+
+  it("barra campanha paga mas ainda não aprovada", () => {
+    expect(() =>
+      garantirCampanhaLiberada({ payment_status: "paid", approval_status: "pending" })
+    ).toThrow(/aprovada/);
+  });
+
+  it("barra campanha com pagamento pendente, mesmo já aprovada", () => {
+    expect(() =>
+      garantirCampanhaLiberada({ payment_status: "pending", approval_status: "approved" })
+    ).toThrow(/pagamento/);
+  });
+
+  it("libera campanha paga e aprovada", () => {
+    expect(() =>
+      garantirCampanhaLiberada({ payment_status: "paid", approval_status: "approved" })
+    ).not.toThrow();
   });
 });

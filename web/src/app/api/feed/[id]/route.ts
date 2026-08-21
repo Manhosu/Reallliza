@@ -4,6 +4,12 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { sincronizarBotoes, sincronizarEnquete } from "@/lib/feed/anexos";
+import { resolverSponsorDoUsuario, postPertenceAoSponsor } from "@/lib/feed/sponsor-auth";
+
+/** Campos que um sponsor pode editar no próprio rascunho — o resto é admin only. */
+const CAMPOS_EDITAVEIS_POR_SPONSOR = new Set([
+  "title", "content", "ctas", "publish_at", "comments_enabled",
+]);
 
 const SELECAO = `
   *,
@@ -37,7 +43,16 @@ export async function GET(
 
     // Quem não é administrador só enxerga o que é da audiência dele — senão
     // bastaria adivinhar o endereço para ler conteúdo segmentado.
-    if (user.role !== "admin") {
+    //
+    // Sponsor é um caso à parte: precisa reabrir o PRÓPRIO rascunho antes de
+    // pagar, e `feed_pode_ver` avalia audiência de post JÁ publicado — um
+    // rascunho nunca passaria nela. Dono do post entra sempre, sem checar
+    // audiência; quem não é dono cai fora mesmo que a audiência bateria.
+    if (user.role === "sponsor") {
+      const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
+      const dono = await postPertenceAoSponsor(supabase, id, sponsor_id);
+      if (!dono) throw new AuthError(404, "Publicação não encontrada");
+    } else if (user.role !== "admin") {
       const { data: pode } = await supabase.rpc("feed_pode_ver", {
         p_post: id,
         p_user: user.id,
@@ -75,7 +90,7 @@ export async function PATCH(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "sponsor"]);
     const { id } = await params;
     const body = await request.json();
     const supabase = getAdminClient();
@@ -86,6 +101,16 @@ export async function PATCH(
       .eq("id", id)
       .maybeSingle();
     if (!atual) throw new AuthError(404, "Publicação não encontrada");
+
+    if (user.role === "sponsor") {
+      const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
+      const dono = await postPertenceAoSponsor(supabase, id, sponsor_id);
+      if (!dono) throw new AuthError(404, "Publicação não encontrada");
+      const camposForaDaLista = Object.keys(body).filter((c) => !CAMPOS_EDITAVEIS_POR_SPONSOR.has(c));
+      if (camposForaDaLista.length > 0) {
+        throw new AuthError(403, `Só o administrador altera: ${camposForaDaLista.join(", ")}.`);
+      }
+    }
 
     const campos = [
       "title", "content", "category_id", "campaign_id", "sponsor_id",
@@ -155,7 +180,7 @@ export async function DELETE(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "sponsor"]);
     const { id } = await params;
     const supabase = getAdminClient();
 
@@ -165,6 +190,12 @@ export async function DELETE(
       .eq("id", id)
       .maybeSingle();
     if (!post) throw new AuthError(404, "Publicação não encontrada");
+
+    if (user.role === "sponsor") {
+      const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
+      const dono = await postPertenceAoSponsor(supabase, id, sponsor_id);
+      if (!dono) throw new AuthError(404, "Publicação não encontrada");
+    }
 
     const jaFoiAoAr = !!post.published_at;
 

@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AlertCircle, Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { feedGestaoApi } from "@/lib/api/feed";
-import type { Campanha, Catalogos, PrecoDeCampanha, TipoDeAbrangencia, EscopoRegional } from "@/lib/api/feed";
+import type { Campanha, Catalogos, PixCampanha, PrecoDeCampanha, TipoDeAbrangencia, EscopoRegional } from "@/lib/api/feed";
 
 /** UFs e regiões — busca própria, mesmo padrão do SeletorDePublico. */
 function useCatalogos(): Catalogos | null {
@@ -20,9 +20,7 @@ function useCatalogos(): Catalogos | null {
  * Patrocínio e cobrança — a parte do editor que a Karol pediu pra não ficar
  * mais numa tela "Campanhas" separada.
  *
- * Fase 1a: quem cria e opera é o admin (loja/fabricante ainda não loga
- * sozinho — isso é Fase 1b) e a confirmação de pagamento é manual (PIX
- * automático é Fase 2). O valor nunca é calculado aqui na tela: é sempre o
+ * O valor nunca é calculado aqui na tela: é sempre o
  * `POST /feed/campaigns/price-preview` que decide, contra as regras do
  * admin — esta tela só mostra o resultado.
  */
@@ -54,10 +52,12 @@ interface Props {
   cobertura: CoberturaEditada;
   aoMudarCobertura: (v: CoberturaEditada) => void;
   aoAtualizarCampanha: (c: Campanha) => void;
+  /** Sponsor não vê Aprovar/Reprovar nem o botão de confirmação manual — só o PIX. */
+  papel?: "admin" | "sponsor";
 }
 
 export function EditorDePatrocinio({
-  campanha, cobertura, aoMudarCobertura, aoAtualizarCampanha,
+  campanha, cobertura, aoMudarCobertura, aoAtualizarCampanha, papel = "admin",
 }: Props) {
   const catalogos = useCatalogos();
   const [preco, setPreco] = useState<PrecoDeCampanha | null>(null);
@@ -66,6 +66,9 @@ export function EditorDePatrocinio({
   const [processando, setProcessando] = useState(false);
   const [mostrarReprovar, setMostrarReprovar] = useState(false);
   const [motivoReprovacao, setMotivoReprovacao] = useState("");
+  const [pix, setPix] = useState<PixCampanha | null>(null);
+  const [carregandoPix, setCarregandoPix] = useState(false);
+  const pixJaPedidoPara = useRef<string | null>(null);
 
   // Cobertura só é editável (e recalcula preço) enquanto a campanha ainda
   // não foi paga — depois de paga, o valor está travado.
@@ -120,6 +123,54 @@ export function EditorDePatrocinio({
       setProcessando(false);
     }
   }
+
+  async function gerarPix() {
+    if (!campanha) return;
+    setCarregandoPix(true);
+    try {
+      const resultado = await feedGestaoApi.gerarPixCampanha(campanha.id);
+      setPix(resultado);
+      if (!resultado.pix_disponivel && resultado.mensagem) toast.error(resultado.mensagem);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar o PIX");
+    } finally {
+      setCarregandoPix(false);
+    }
+  }
+
+  function copiarCodigoPix() {
+    if (!pix?.copia_cola) return;
+    navigator.clipboard.writeText(pix.copia_cola).then(
+      () => toast.success("Código copiado"),
+      () => toast.error("Não foi possível copiar")
+    );
+  }
+
+  // Gera o PIX assim que o bloco de pagamento aparece — a pessoa não deveria
+  // precisar clicar em nada só para ver o QR Code da campanha que acabou de criar.
+  useEffect(() => {
+    if (!campanha || campanha.payment_status !== "pending") return;
+    if (pixJaPedidoPara.current === campanha.id) return;
+    pixJaPedidoPara.current = campanha.id;
+    void gerarPix();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campanha?.id, campanha?.payment_status]);
+
+  // Confirmação do PIX é automática (webhook da Asaas) — sem isso, a pessoa
+  // só saberia que pagou recarregando a página manualmente.
+  useEffect(() => {
+    if (!campanha || campanha.payment_status !== "pending") return;
+    const intervalo = setInterval(() => {
+      feedGestaoApi
+        .buscarCampanha(campanha.id)
+        .then((atualizada) => {
+          if (atualizada.payment_status !== "pending") aoAtualizarCampanha(atualizada);
+        })
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(intervalo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campanha?.id, campanha?.payment_status]);
 
   async function aprovar() {
     if (!campanha) return;
@@ -286,40 +337,88 @@ export function EditorDePatrocinio({
             <p className="text-xs text-destructive">Motivo da reprovação: {campanha.rejection_reason}</p>
           )}
 
+          {campanha.payment_status === "pending" && (
+            <div className="space-y-2 rounded-md bg-background/60 p-3">
+              {carregandoPix ? (
+                <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Gerando cobrança PIX...
+                </span>
+              ) : pix?.pix_disponivel ? (
+                <div className="flex flex-col items-center gap-2 sm:flex-row sm:items-start">
+                  {pix.qr_code_base64 && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`data:image/png;base64,${pix.qr_code_base64}`}
+                      alt="QR Code do PIX"
+                      className="h-32 w-32 shrink-0 rounded-md border bg-white p-1"
+                    />
+                  )}
+                  <div className="w-full space-y-1.5">
+                    <p className="text-xs text-muted-foreground">
+                      Escaneie o QR Code ou copie o código PIX Copia e Cola. A confirmação é automática.
+                    </p>
+                    <div className="flex gap-1.5">
+                      <input
+                        readOnly
+                        value={pix.copia_cola ?? ""}
+                        onClick={(e) => e.currentTarget.select()}
+                        className="h-8 flex-1 truncate rounded-md border border-input bg-background px-2 text-[11px]"
+                      />
+                      <button
+                        type="button"
+                        onClick={copiarCodigoPix}
+                        className="flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted"
+                      >
+                        <Copy className="h-3 w-3" /> Copiar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : pix && !pix.pix_disponivel ? (
+                <p className="text-xs text-muted-foreground">
+                  {pix.mensagem ?? "Pagamento por PIX automático indisponível no momento."}
+                </p>
+              ) : null}
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2">
-            {campanha.payment_status === "pending" && (
+            {campanha.payment_status === "pending" && papel === "admin" && (
               <button
                 type="button"
                 disabled={processando}
                 onClick={() => void confirmarPagamento()}
                 className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
               >
-                Confirmar pagamento
+                Confirmar pagamento manualmente
               </button>
             )}
-            {campanha.payment_status !== "pending" && campanha.approval_status === "pending" && !mostrarReprovar && (
-              <>
-                <button
-                  type="button"
-                  disabled={processando}
-                  onClick={() => void aprovar()}
-                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
-                >
-                  Aprovar
-                </button>
-                <button
-                  type="button"
-                  disabled={processando}
-                  onClick={() => setMostrarReprovar(true)}
-                  className="rounded-md border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
-                >
-                  Reprovar
-                </button>
-              </>
-            )}
+            {papel === "admin" &&
+              campanha.payment_status !== "pending" &&
+              campanha.approval_status === "pending" &&
+              !mostrarReprovar && (
+                <>
+                  <button
+                    type="button"
+                    disabled={processando}
+                    onClick={() => void aprovar()}
+                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                  >
+                    Aprovar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={processando}
+                    onClick={() => setMostrarReprovar(true)}
+                    className="rounded-md border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                  >
+                    Reprovar
+                  </button>
+                </>
+              )}
           </div>
 
-          {mostrarReprovar && (
+          {papel === "admin" && mostrarReprovar && (
             <div className="space-y-2">
               <textarea
                 className="w-full rounded-md border border-input bg-background p-2 text-xs"
