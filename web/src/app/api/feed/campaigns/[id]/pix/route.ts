@@ -83,6 +83,16 @@ export async function POST(
       .maybeSingle();
     if (!patrocinador) throw new AuthError(404, "Patrocinador não encontrado");
 
+    // A Asaas recusa criar cliente sem CPF/CNPJ válido (erro 400) — sem essa
+    // checagem antes, a pessoa via um 500 genérico sem entender o motivo.
+    if (!patrocinador.cnpj) {
+      return jsonResponse({
+        pix_disponivel: false,
+        mensagem:
+          "Falta o CNPJ deste patrocinador. Peça ao administrador para completar o cadastro antes de gerar o PIX.",
+      });
+    }
+
     const charge = await createPixCharge({
       amount: (campanha.total_price_cents ?? 0) / 100,
       description: `Campanha do Feed — ${campanha.name}`,

@@ -47,7 +47,7 @@ export async function POST(
     const { data: quote } = await supabase
       .from("quotes")
       .select(
-        "id, quote_number, partner_id, client_name, client_email, modality, total_amount, payout_amount, service_order_id, address_state, region_state"
+        "id, quote_number, partner_id, client_name, client_email, client_document, modality, total_amount, payout_amount, service_order_id, address_state, region_state"
       )
       .eq("id", id)
       .maybeSingle();
@@ -187,6 +187,7 @@ export async function POST(
         amount: diff,
         description: `Ajuste de proposta — Orçamento #${quote.quote_number}`,
         customerName: quote.client_name as string,
+        customerDocument: (quote.client_document as string | null) ?? undefined,
         customerEmail: (quote.client_email as string | null) ?? undefined,
         externalReference: (payment as { id: string }).id,
       });

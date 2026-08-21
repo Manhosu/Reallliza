@@ -84,6 +84,7 @@ export async function POST(
         amount: Number(quote.total_amount),
         description: `Orçamento #${quote.quote_number} — Reallliza`,
         customerName: quote.client_name,
+        customerDocument: quote.client_document || undefined,
         customerEmail: quote.client_email || undefined,
         externalReference: payment.id,
       });
