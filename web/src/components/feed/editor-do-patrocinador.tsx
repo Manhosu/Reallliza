@@ -8,6 +8,15 @@
  * existente, nenhum dos quais está na lista que a Karol pediu. Aqui é só:
  * mídia, título, conteúdo, botões de ação, abrangência/dias/valor e
  * pagamento. Audiência é sempre "Todos" — não aparece na tela.
+ *
+ * Também usado pelo admin (`papel="admin"`, atalho "Publicação patrocinada"
+ * na Central de Conteúdo) — a Karol notou que testar como admin caía num
+ * editor bem diferente do que a loja via, mesmo a parte de patrocínio sendo
+ * o mesmo componente por baixo (`EditorDePatrocinio`). O que sobrava era o
+ * caminho pra chegar lá: no editor grande, o bloco só aparece depois de
+ * escolher uma categoria "exige patrocinador" — fácil de esquecer. Aqui o
+ * admin cai direto nele, só ganhando a escolha de qual patrocinador (o
+ * sponsor/parceiro logado não escolhe — é sempre o próprio).
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -23,7 +32,7 @@ import { EditorDePatrocinio, type CoberturaEditada } from "@/components/feed/edi
 import { medirArquivo } from "@/lib/feed/medir-arquivo";
 import { feedApi } from "@/lib/api";
 import { feedGestaoApi } from "@/lib/api/feed";
-import type { FeedPost, FeedMedia, Campanha } from "@/lib/api/feed";
+import type { FeedPost, FeedMedia, Campanha, Patrocinador } from "@/lib/api/feed";
 
 function paraInputDate(iso: string | null): string {
   if (!iso) return "";
@@ -38,9 +47,11 @@ interface Props {
   post: FeedPost | null;
   onFechar: () => void;
   onSalvo: () => void;
+  /** Admin escolhe o patrocinador e ganha Aprovar/Reprovar/Confirmar manual; sponsor/parceiro é sempre o próprio. */
+  papel?: "admin" | "sponsor";
 }
 
-export function EditorDoPatrocinador({ aberto, post, onFechar, onSalvo }: Props) {
+export function EditorDoPatrocinador({ aberto, post, onFechar, onSalvo, papel = "sponsor" }: Props) {
   const editando = !!post;
   const [titulo, setTitulo] = useState("");
   const [conteudo, setConteudo] = useState("");
@@ -58,6 +69,18 @@ export function EditorDoPatrocinador({ aberto, post, onFechar, onSalvo }: Props)
   const [erroTick, setErroTick] = useState(0);
   const inputArquivo = useRef<HTMLInputElement>(null);
   const bannerDeErro = useRef<HTMLDivElement>(null);
+
+  // Só o admin escolhe o patrocinador — sponsor/parceiro logado é sempre o
+  // próprio, resolvido no servidor.
+  const [patrocinadores, setPatrocinadores] = useState<Patrocinador[]>([]);
+  const [patrocinadorId, setPatrocinadorId] = useState("");
+  useEffect(() => {
+    if (papel !== "admin" || !aberto) return;
+    feedGestaoApi.patrocinadores().then((r) => setPatrocinadores(r.patrocinadores)).catch(() => {});
+  }, [papel, aberto]);
+  useEffect(() => {
+    setPatrocinadorId(campanhaVinculada?.sponsor_id ?? "");
+  }, [campanhaVinculada]);
 
   function mostrarErro(msg: string) {
     setErro(msg);
@@ -86,14 +109,17 @@ export function EditorDoPatrocinador({ aberto, post, onFechar, onSalvo }: Props)
     );
     setIdCriado(null);
     setErro(null);
+    // Reseta aqui, não só no efeito abaixo — para uma "Nova publicação"
+    // (post sempre null), `post?.campaign_id` nunca muda entre uma abertura
+    // e outra, e o efeito de baixo não dispara de novo. Sem isto, criar uma
+    // campanha, fechar e abrir "Nova publicação" de novo reaproveitava a
+    // campanha da vez anterior.
+    setCampanhaVinculada(null);
+    setCobertura({ coverage_type: "nacional", coverage_scope: null, coverage_value: null, duration_days: 7 });
   }, [aberto, post]);
 
   useEffect(() => {
-    if (!post?.campaign_id) {
-      setCampanhaVinculada(null);
-      setCobertura({ coverage_type: "nacional", coverage_scope: null, coverage_value: null, duration_days: 7 });
-      return;
-    }
+    if (!post?.campaign_id) return;
     let cancelado = false;
     feedGestaoApi
       .buscarCampanha(post.campaign_id)
@@ -134,6 +160,9 @@ export function EditorDoPatrocinador({ aberto, post, onFechar, onSalvo }: Props)
   function validar(): string | null {
     if (!titulo.trim()) return "Dê um título à publicação.";
     if (!conteudo.trim()) return "Escreva a descrição da publicação.";
+    if (papel === "admin" && !campanhaVinculada && !patrocinadorId) {
+      return "Escolha o patrocinador.";
+    }
     if (!campanhaVinculada) {
       if (cobertura.coverage_type === "regional" && !cobertura.coverage_value) {
         return "Escolha a UF ou a região da divulgação regional.";
@@ -158,6 +187,9 @@ export function EditorDoPatrocinador({ aberto, post, onFechar, onSalvo }: Props)
       // único que a Karol pediu, sem passar por uma tela de campanha à parte.
       if (!idAtual && !campanhaVinculada) {
         const criada = await feedGestaoApi.criarCampanhaComPost({
+          // Sponsor/parceiro: o servidor ignora e resolve pelo próprio login.
+          // Admin: é o único jeito de dizer pra quem é a campanha.
+          ...(papel === "admin" ? { sponsor_id: patrocinadorId } : {}),
           name: titulo.trim(),
           coverage_type: cobertura.coverage_type,
           coverage_scope: cobertura.coverage_scope,
@@ -238,7 +270,9 @@ export function EditorDoPatrocinador({ aberto, post, onFechar, onSalvo }: Props)
   return (
     <Dialog open={aberto} onClose={onFechar} size="lg">
       <DialogHeader>
-        <DialogTitle>{editando ? "Editar publicação" : "Nova publicação"}</DialogTitle>
+        <DialogTitle>
+          {editando ? "Editar publicação" : papel === "admin" ? "Nova publicação patrocinada" : "Nova publicação"}
+        </DialogTitle>
       </DialogHeader>
 
       <DialogContent className="space-y-5 pt-4">
@@ -249,6 +283,29 @@ export function EditorDoPatrocinador({ aberto, post, onFechar, onSalvo }: Props)
           >
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{erro}</span>
+          </div>
+        )}
+
+        {papel === "admin" && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground/80">Patrocinador *</label>
+            {campanhaVinculada ? (
+              <p className="text-sm text-muted-foreground">
+                {campanhaVinculada.sponsor?.name ?? "—"}{" "}
+                <span className="text-xs">— não muda depois que a campanha já existe.</span>
+              </p>
+            ) : (
+              <select
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={patrocinadorId}
+                onChange={(e) => setPatrocinadorId(e.target.value)}
+              >
+                <option value="">Escolha o patrocinador</option>
+                {patrocinadores.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )}
           </div>
         )}
 
@@ -332,7 +389,7 @@ export function EditorDoPatrocinador({ aberto, post, onFechar, onSalvo }: Props)
           cobertura={cobertura}
           aoMudarCobertura={setCobertura}
           aoAtualizarCampanha={setCampanhaVinculada}
-          papel="sponsor"
+          papel={papel}
         />
 
         <div className="space-y-2">

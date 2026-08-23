@@ -23,6 +23,7 @@ import {
   type BotaoNoEditor, type EnqueteNoEditor,
 } from "@/components/feed/editor-de-anexos";
 import { EditorDePatrocinio, type CoberturaEditada } from "@/components/feed/editor-de-patrocinio";
+import { EditorDoPatrocinador } from "@/components/feed/editor-do-patrocinador";
 import { medirArquivo } from "@/lib/feed/medir-arquivo";
 import { feedApi } from "@/lib/api";
 import { feedGestaoApi } from "@/lib/api/feed";
@@ -209,7 +210,11 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
   }, [campanha]);
 
   const catSelecionada = meta?.categorias.find((c) => c.id === categoria);
-  const exigePatrocinador = !!catSelecionada?.requires_sponsor;
+  // Também true quando a publicação JÁ tem campanha vinculada, independente
+  // da categoria — senão reabrir um post patrocinado criado sem categoria
+  // (ex.: pelo atalho "Publicação patrocinada", ou por uma loja/sponsor)
+  // esconde o bloco inteiro de patrocínio/PIX/aprovação.
+  const exigePatrocinador = !!catSelecionada?.requires_sponsor || !!campanha;
   const portaoLiberado =
     !campanhaVinculada ||
     campanhaVinculada.payment_status === "waived" ||
@@ -825,6 +830,7 @@ function FeedAdmin() {
   const [carregando, setCarregando] = useState(true);
   const [editorAberto, setEditorAberto] = useState(false);
   const [emEdicao, setEmEdicao] = useState<FeedPost | null>(null);
+  const [editorPatrocinadoAberto, setEditorPatrocinadoAberto] = useState(false);
   const [insightsDe, setInsightsDe] = useState<FeedPost | null>(null);
   const [filtro, setFiltro] = useState<string>("todos");
   const [busca, setBusca] = useState("");
@@ -952,9 +958,14 @@ function FeedAdmin() {
             Publicações do feed dos profissionais — com público-alvo, agendamento e desempenho.
           </p>
         </div>
-        <Button onClick={() => { setEmEdicao(null); setEditorAberto(true); }}>
-          <Plus className="h-4 w-4" /> Nova publicação
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setEditorPatrocinadoAberto(true)}>
+            <Megaphone className="h-4 w-4" /> Publicação patrocinada
+          </Button>
+          <Button onClick={() => { setEmEdicao(null); setEditorAberto(true); }}>
+            <Plus className="h-4 w-4" /> Nova publicação
+          </Button>
+        </div>
       </motion.div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -1105,6 +1116,13 @@ function FeedAdmin() {
         post={emEdicao}
         meta={meta}
         onFechar={() => setEditorAberto(false)}
+        onSalvo={carregar}
+      />
+      <EditorDoPatrocinador
+        aberto={editorPatrocinadoAberto}
+        post={null}
+        papel="admin"
+        onFechar={() => setEditorPatrocinadoAberto(false)}
         onSalvo={carregar}
       />
       {insightsDe && <PainelInsights post={insightsDe} onFechar={() => setInsightsDe(null)} />}
