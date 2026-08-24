@@ -5,11 +5,20 @@
 > olhando os nomes das opções, porque muitas funcionalidades podem depender
 > umas das outras ou fazer parte de um mesmo fluxo operacional."*
 >
-> **Versão 2 — 17/08/2026.** A versão 1 (15/08) cobria as seis partes pedidas,
-> mas com profundidade desigual: os dez atributos por item apareciam em cerca
-> de um terço dos casos, e o módulo Feed estava descrito como um mural sem uso
-> — no dia seguinte ele virou o maior módulo do sistema. Esta versão refaz o
-> inventário com os dez atributos em **cada** item e recontou tudo no código.
+> **Versão 3 — 24/08/2026.** A versão 2 (17/08) refez o inventário com os dez
+> atributos em cada item. Esta versão soma o que mudou numa semana de ritmo
+> alto: dois itens de menu novos (**Cadastros de Empresas**, **Meu Feed** —
+> este último batizando na prática o **Portal do Patrocinador**, que já
+> existia mas ainda não tinha entrado no inventário), um quarto papel de
+> usuário (**patrocinador**, além de admin/técnico/parceiro), a correção de
+> uma ficha que estava errada (item 12, **Garantias** — não tem relação
+> nenhuma com a integração por chave de API, ao contrário do que a v2 dizia),
+> aprofundamento real do módulo **Ferramentas** (a v2 tratava as nove abas
+> como uma linha só) e seis achados novos, um deles confirmando ao vivo — pela
+> terceira vez em três semanas — a conclusão 5 desta mesma versão anterior:
+> esconder item de menu não fecha a rota. Uma conta de teste com o papel mais
+> novo da plataforma (patrocinador) chegou a ver os números de OS de toda a
+> Reallliza pelo `/dashboard`, sem nenhum item de menu apontando pra lá.
 
 ---
 
@@ -53,14 +62,19 @@ só com o Reallliza.
 
 | | Reallliza | Garantias |
 |---|---|---|
-| Itens de menu | **40** | **28**, sendo **5 atalhos externos** |
-| Páginas | **59** no painel | **48** |
-| Rotas de API | **228** em 48 pastas | **111** |
+| Itens de menu | **43** | **28**, sendo **5 atalhos externos** |
+| Páginas | **61** no painel | **48** |
+| Rotas de API | **249** em 52 pastas | **111** |
 | Telas do aplicativo | **22** · 9 abas | — |
-| Migrations | **70** (005–075) | — |
-| Tabelas com dado | **52 de 103** | **25 de 60** |
+| Migrations | **76** (005–081) | — |
+| Tabelas com dado | **68 de 105** | **25 de 60** |
 
-**Cinco conclusões que importam para a reorganização:**
+Os números do Garantias e do aplicativo não mudaram desde a v2 (nenhum
+trabalho tocou os dois nesta semana); os do Reallliza web são todos
+reconferidos hoje, pelos mesmos comandos do anexo.
+
+**Seis conclusões que importam para a reorganização** (a quinta é a mesma da
+v2 — só ganhou uma terceira confirmação prática):
 
 1. **`service_orders` é o eixo absoluto.** Mais de vinte tabelas apontam para
    ela. Qualquer agrupamento de menu que separe o que gira em torno dela
@@ -87,6 +101,17 @@ só com o Reallliza.
    aplicativo. **Reorganizar menu não muda permissão nenhuma** — quem souber a
    URL da API continua alcançando. Sem isso escrito, a reorganização passa uma
    falsa sensação de controle de acesso.
+
+6. **A conclusão 5 já não é teórica.** Em três semanas, três rotas reais
+   ficaram sem checagem de papel enquanto o item de menu correspondente já
+   estava escondido — `GET /api/feed/meta`, `GET /api/service-orders` e as
+   quatro rotas por trás do `/dashboard`. A última foi encontrada porque uma
+   loja/fabricante recém-cadastrada viu, sem querer, os números de OS da
+   Reallliza inteira — dado real vazando, não um risco hipotético. As três
+   já estão corrigidas, mas o padrão se repetiu três vezes com autores e
+   datas diferentes: é um risco estrutural do jeito como a autorização é
+   feita hoje (checagem por rota, nunca centralizada), não um lapso pontual
+   de alguém. Ver achado 7.6.
 
 ---
 
@@ -117,7 +142,9 @@ Execução**
 Quem executa: cadastro, homologação, especialidade, nota, nível e o que cada
 um pode receber.
 
-**Usuários** · **Parceiros** · **Homologação** · **Especialidades** ·
+**Usuários** · **Parceiros** · **Homologação** · **Cadastros de Empresas**
+(novo, 24/08 — o mesmo papel de "quem pode entrar", só que para loja e
+fabricante em vez de profissional autônomo) · **Especialidades** ·
 **Qualidade** · **Níveis e Avaliação** · **Avaliações**
 
 ### 1.4 Almoxarifado
@@ -132,7 +159,9 @@ aprovação, entrega, devolução, manutenção e baixa.
 Comunicação com a rede e formação.
 
 **Feed** · **Painel do Feed** · **Campanhas** · **Pedidos e moderação** ·
-**Cursos** · **Aprendizado** · **Notificações**
+**Meu Feed / Portal do Patrocinador** (novo, já existia mas só entrou no
+inventário em 24/08 — é o Feed visto pelo lado de quem paga) · **Cursos** ·
+**Aprendizado** · **Notificações**
 
 ### 1.6 Financeiro e gestão
 
@@ -341,18 +370,29 @@ Comunicação com a rede e formação.
 
 #### 12. Garantias · `/garantias` · admin, técnico, parceiro
 
+> **Correção de 24/08 — a ficha da v2 estava errada.** Conferindo o código de
+> novo (não achou nenhum `fetch` externo, nenhuma leitura de `api_keys` em
+> `garantias/` nem em `api/warranties/`), este módulo **não tem relação
+> nenhuma** com a integração por chave de API — essa é outra porta
+> (`/api/external/service-orders`, item que cria Ordem de Serviço a partir do
+> sistema Garantias). Os dois só compartilham o nome. `/garantias` é uma
+> reclamação de pós-venda 100% interna do Reallliza: a loja abre garantia
+> sobre uma OS que **o próprio Reallliza já concluiu**, não sobre um ticket do
+> outro sistema. A confusão importa porque a v2 já a usou para justificar um
+> "impacto se mexer" errado — abaixo, corrigido.
+
 | | |
 |---|---|
-| **Finalidade** | Acompanhar, do lado do Reallliza, o que nasce como reclamação no sistema Garantias |
-| **Na prática** | Lista as garantias e o que virou OS |
-| **Cadastra / consulta / altera** | `warranties` — **tabela vazia em produção** |
-| **Depende de** | Integração com o Garantias |
-| **Dependem dela** | Nada |
-| **Fluxo** | Ticket → triagem → perícia → laudo → decisão da fábrica → OS |
-| **Tipo** | Módulo principal (sem uso) |
-| **Semelhante a** | O sistema Garantias inteiro |
-| **Automação e integração** | Roteamento de garantia; recebe do Garantias por chave de API |
-| **Impacto se mexer** | Baixo hoje, por falta de uso — mas é a ponta de um fluxo entre sistemas. Remover fecharia a porta de entrada da integração |
+| **Finalidade** | A loja parceira formaliza reclamação de garantia sobre uma OS que o Reallliza já concluiu, com foto/vídeo, para reavaliação e eventual OS de assistência |
+| **Na prática** | Loja/homologado abrem garantia escolhendo uma OS concluída; admin lista e filtra por situação. A metade "resolver" já tem rota pronta (`PATCH`, muda status, grava parecer, linka a OS de assistência) mas **nenhum botão a chama** — hoje só dá pra listar e apagar |
+| **Cadastra / consulta / altera** | `warranties` (ainda pouco usada, mas deixou de estar vazia — ver contagem geral) |
+| **Depende de** | **Ordens de Serviço** (a garantia só existe sobre uma OS concluída), **Orçamentos** (popula o seletor de OS de origem), **Parceiros** |
+| **Dependem dela** | **Dashboard** (cards "Garantias Abertas/Concluídas"), **BI** (taxa de garantia), **Fechamento Mensal** (contagem do mês). Nenhuma delas quebra sem dado — todas já tratam ausência com `?? 0` |
+| **Fluxo** | OS concluída → [opcional] loja abre garantia → Reallliza avalia → [opcional] gera OS de assistência (hoje só via chamada direta à API, sem botão) |
+| **Tipo** | Etapa de um processo maior (pós-venda), não configuração/governança — **reclassificar**: a v2 agrupava este item em 1.7 "Configuração e governança", mas o próprio menu já o coloca no bloco operacional da loja, entre Propostas e Relatórios |
+| **Semelhante a** | Nome duplicado com o sistema Garantias externo — é a maior fonte de confusão do inventário inteiro, e a v2 chegou a herdar essa confusão numa ficha oficial |
+| **Automação e integração** | Roteamento automático pro homologado que executou a OS original, com notificação de prioridade alta. **Nenhuma** integração externa — bucket de evidências é **público** (qualquer um com a URL acessa, sem login) |
+| **Impacto se mexer** | Baixo tecnicamente — nenhuma ligação de código com o sistema Garantias externo, então mexer aqui **não** fecha porta de integração nenhuma (ao contrário do que a v2 registrava). O risco real é de produto: qualquer reorganização de menu precisa deixar claríssimo que isto não é o sistema Garantias, porque até este documento já confundiu os dois uma vez |
 
 ---
 
@@ -511,18 +551,25 @@ Comunicação com a rede e formação.
 
 #### 22. Ferramentas · `/ferramentas` · admin, técnico
 
+> **Aprofundado em 24/08.** A v2 tratava as nove abas como uma linha só; o
+> módulo carrega duas gerações de modelo de dados convivendo (a migration 053
+> tratava `tool_inventory` como a própria peça física; a 058 separou TIPO
+> `tool_inventory` de UNIDADE FÍSICA `tool_units`, com histórico em
+> `tool_events`) e **duas das nove abas nunca foram atualizadas pra segunda
+> geração** — ver achado abaixo.
+
 | | |
 |---|---|
-| **Finalidade** | Ferramenta como ativo com dono e responsável |
-| **Na prática** | Nove abas: catálogo, inventário, pedidos, custódias, devoluções, manutenção, baixas, busca e unidades |
-| **Cadastra / consulta / altera** | `tool_inventory`, `tool_units`, `tool_requests`, `tool_custody`, `tool_events` |
+| **Finalidade** | Ferramenta como ativo com dono e responsável, rastreado por unidade física (peças de valor) ou por saldo (itens de consumo) |
+| **Na prática** | Nove abas: catálogo (o TIPO), inventário (a UNIDADE física), pedidos, custódias, devoluções, manutenção, baixas, busca e unidades (ficha/histórico de uma peça) |
+| **Cadastra / consulta / altera** | `tool_inventory` (tipo), `tool_units` (unidade física), `tool_requests`, `tool_custody`, `tool_maintenance`, `tool_retirements`, `tool_events` (histórico append-only, nunca apagado) |
 | **Depende de** | **Usuários**, **Ordens de Serviço** (a custódia é por OS) |
-| **Dependem dela** | **Financeiro** (repasse desconta ferramenta não devolvida) |
-| **Fluxo** | Pedido → aprovação → separação → entrega → custódia → devolução |
+| **Dependem dela** | **Financeiro** (repasse desconta ferramenta não devolvida), **Dashboard**, **Relatórios** (custódia) |
+| **Fluxo** | Cadastro do tipo → cadastro da unidade → pedido → aprovação/reserva → separação → entrega (abre custódia) → uso → devolução (fecha custódia) → [opcional] manutenção → volta ao estoque ou baixa definitiva |
 | **Tipo** | Módulo principal |
-| **Semelhante a** | `ferramentas` no Garantias, vazia |
-| **Automação e integração** | Custódia amarrada à OS; eventos de ferramenta; tipo de aviso de atraso existe e **nenhuma rotina o dispara** |
-| **Impacto se mexer** | Médio. As abas `unidades` e `unidades/[id]` **estão fora da barra de abas** do próprio módulo — alcançáveis só por link interno |
+| **Semelhante a** | `ferramentas` no Garantias, vazia. **Dentro do próprio módulo**: Custódias e Devoluções são a mesma tela — mesma API, mesmo componente de ação, a única diferença é um filtro de 1 linha no cliente |
+| **Automação e integração** | Custódia amarrada à OS; toda edição de cadastro gera evento imutável em `tool_events`; tipo de aviso de atraso existe e **nenhuma rotina o dispara** |
+| **Impacto se mexer** | Médio, mas com um bug real que qualquer reorganização deveria corrigir, não só reposicionar: **Manutenção e Baixas escrevem status no TIPO (`tool_inventory.status`), nunca na UNIDADE (`tool_units.status`)** — e pra ferramenta rastreada por unidade é `tool_units.status` que decide se ela aparece disponível pra pedido. Resultado: mandar uma furadeira específica pra manutenção ou dar baixa nela **não impede que ela continua aparecendo disponível** em Pedidos. Só funciona certo pra ferramenta rastreada por saldo. As abas `unidades` e `unidades/[id]` seguem fora da barra de abas do próprio módulo — alcançáveis só por link interno |
 
 ---
 
@@ -783,16 +830,24 @@ Comunicação com a rede e formação.
 
 #### 38. Auditoria · `/auditoria` · admin
 
+> **Ajuste de 24/08**: "Dependem dela: Nada" continua certo no sentido
+> estrito (nada trava se sumir — a chamada é sempre "dispara e esquece", erro
+> vira só `console.error`), mas **137 arquivos de rota diferentes** chamam
+> `logAudit()` — é o alvo de escrita mais universal da plataforma, ao lado de
+> Notificações. Mudar o formato de `action`/`entity_type` é uma mudança de
+> contrato espalhada por praticamente todo o produto, mesmo sem nenhum outro
+> módulo "depender" dela pra funcionar.
+
 | | |
 |---|---|
 | **Finalidade** | Quem fez o quê |
 | **Na prática** | Registro de ações, com filtro |
 | **Cadastra / consulta / altera** | `audit_logs` — **909 linhas, o segundo maior volume do sistema** |
 | **Depende de** | Nada |
-| **Dependem dela** | Nada |
+| **Dependem dela** | Nada quebra sem ela (fire-and-forget), mas 137 rotas gravam nela — ver nota acima |
 | **Fluxo** | Governança |
 | **Tipo** | Relatório |
-| **Semelhante a** | Nada |
+| **Semelhante a** | Sobreposição parcial com `os_status_history` (Timeline da OS + "Atividade Recente" do Dashboard) — a mesma mudança de status de uma OS gera as duas trilhas, em tabelas diferentes |
 | **Automação e integração** | Gravado por praticamente toda rota de escrita |
 | **Impacto se mexer** | Baixo para mover. **Não remover** — é a prova de quem alterou o quê |
 
@@ -813,6 +868,14 @@ Comunicação com a rede e formação.
 | **Automação e integração** | Expo Push em lote de 100. **Nenhum aparelho registrado** — 300 notificações criadas, zero entregues no celular |
 | **Impacto se mexer** | Médio. O canal existe e **nunca chegou a ninguém no celular** |
 
+> **Achado de 24/08**: os tipos de notificação divergem entre front e back.
+> O enum do front (`types.ts`) tem 8 valores; o que o backend de fato emite
+> (21 arquivos chamam `createNotification`) tem 12, e só 5 coincidem —
+> `os_created` (front) nunca é emitido de verdade; `message_received`,
+> `proposal_available`, `tool_overdue`, `warranty_opened`, `os_rework`
+> (back) caem no ícone genérico cinza por não bater com nada do front. Não
+> impede o uso, mas tira a distinção visual por tipo que o design pretendia.
+
 ---
 
 #### 40. Configurações · `/configuracoes` · admin, técnico, parceiro
@@ -827,8 +890,57 @@ Comunicação com a rede e formação.
 | **Fluxo** | Nenhum |
 | **Tipo** | Configuração |
 | **Semelhante a** | **Config. Globais** — nomes parecidos, escopos opostos (**um do usuário, outro da empresa**) |
-| **Automação e integração** | LGPD |
-| **Impacto se mexer** | Baixo. **Renomear resolveria a confusão com Config. Globais** |
+| **Automação e integração** | Nenhuma de verdade, corrigindo a v2: os toggles de "Modo Escuro", "Notificações Push" e "Notificações no Aplicativo" são só `useState` local, resetam a cada recarregamento — o comentário no próprio código admite "visual only, o toggle de verdade é no cabeçalho". O botão "Alterar foto" não tem ação amarrada, embora `POST /profile/me/avatar` funcione perfeitamente. **LGPD não passa por aqui** — ver "Páginas fora do menu" |
+| **Impacto se mexer** | Baixo. **Renomear resolveria a confusão com Config. Globais.** Vale também religar ou remover os três controles decorativos antes de qualquer reorganização — hoje enganam quem usa |
+
+---
+
+> **Os dois itens abaixo são novos desde a v2** — não seguem a ordem do menu
+> real (ficam entre Homologação/Parceiros e dentro do bloco do Feed,
+> respectivamente) porque inserir no meio obrigaria renumerar item por item;
+> preferiu-se manter os números 1–40 intactos e somar aqui.
+
+#### 41. Cadastros de Empresas · `/cadastros-empresas` · admin
+
+| | |
+|---|---|
+| **Finalidade** | Fila de aprovação do autocadastro público de loja/fabricante — a mesma ideia de **Homologação**, só que para pessoa jurídica em vez de profissional autônomo |
+| **Na prática** | Empresa se cadastra sozinha em `/cadastro-empresa` (público, sem login), escolhe Loja ou Fabricante, preenche CNPJ/responsável/contato; a conta nasce com acesso bloqueado (`status='pending'`); aqui o admin aprova (com provisionamento automático) ou reprova (com motivo, notificado ao solicitante) |
+| **Cadastra / consulta / altera** | `company_signup_requests`. Ao aprovar, uma função SQL única (`aprovar_cadastro_empresa`) grava, numa transação só: loja → `partners` + `feed_sponsors` (`sponsor_type='loja'`) + `feed_sponsor_users`; fabricante → só `feed_sponsors` (`sponsor_type='fabricante'`) + `feed_sponsor_users`. Sempre `profiles.role`/`status='active'` |
+| **Depende de** | **Usuários** (`profiles`), **Parceiros** (a função RPC insere direto em `partners`, sem passar pela rota `/api/partners`), **Feed** (`feed_sponsors`) |
+| **Dependem dela** | **Parceiros** (linha criada aqui aparece lá idêntica), **Meu Feed/Portal do Patrocinador**, **Financeiro (loja)**, **Relatórios (loja)** uma vez ativo |
+| **Fluxo** | Empresa se cadastra → aprovação → provisionamento automático de acesso → mesmo login já entra no ambiente certo (loja: OS/Pedidos/Financeiro completo; fabricante: só Portal do Patrocinador), sem nenhum vínculo manual depois |
+| **Tipo** | Etapa de um processo maior (onboarding de pessoa jurídica), paralela a Homologação |
+| **Semelhante a** | **Homologação** — mesma ideia, com diferenças reais que valem nivelar: aqui a conta **fica bloqueada** enquanto pendente (`status='pending'`, barrado em toda rota) e o solicitante **é notificado** em aprovação/reprovação; em Homologação nenhuma das duas coisas acontece — o profissional autônomo usa o sistema livre enquanto aguarda, e nunca é avisado do resultado |
+| **Automação e integração** | Verificação prévia de CNPJ duplicado (contra `partners` **e** `feed_sponsors`) antes de aceitar o cadastro — evita erro tardio e confuso na hora do PIX; notificação in-app na aprovação e na reprovação; bloqueio de acesso via `profiles.status='pending'`, mais forte que o de Homologação |
+| **Impacto se mexer** | Alto se removido sem alternativa — hoje é o único caminho de onboarding self-service de loja/fabricante; sem ele, todo cadastro volta a ser manual (como era até 23/08) |
+
+> **De brinde, este recurso revelou um bug de infraestrutura que não tinha
+> nada a ver com ele**: o gatilho que cria o `profiles` ao criar uma conta
+> (`handle_new_user`) estava **quebrado silenciosamente há meses**, faltando
+> `SET search_path = public` — a falha era engolida por um `EXCEPTION WHEN
+> OTHERS` que só loga e segue, então a conta em `auth.users` nascia normal e
+> o perfil correspondente simplesmente nunca era criado. Isso também afetava
+> `/cadastro-profissional`, que já existia antes. Corrigido em 24/08; um
+> caso real de vítima (cadastrado em maio, nunca conseguiu entrar) foi
+> encontrado e restaurado manualmente.
+
+---
+
+#### 42. Meu Feed / Portal do Patrocinador · `/portal-patrocinador` · patrocinador, parceiro
+
+| | |
+|---|---|
+| **Finalidade** | O Feed visto do lado de quem paga — criar publicação patrocinada, pagar por PIX, acompanhar aprovação e, desde 24/08, ver o desempenho da própria campanha |
+| **Na prática** | Cria publicação (texto + mídia + abrangência) num fluxo só, sem passar por uma tela de campanha à parte; gera e paga o PIX; acompanha situação (aguardando aprovação/aprovada/reprovada, com motivo); vê impressões, cliques, CTR, pedidos recebidos, alcance, engajamento e um gráfico de evolução — mesmos números do Painel do Feed, recortados pro próprio patrocinador |
+| **Cadastra / consulta / altera** | `feed_campaigns`, `feed_posts` (via `feed_sponsor_users`, o vínculo que resolve "de quem é isso"); paga via `feed_campaigns.pix_*` (Asaas) |
+| **Depende de** | **Feed** (o motor de campanha/post é o mesmo do admin), **Campanhas** (preço, aprovação), **Cadastros de Empresas** ou cadastro manual do admin (é o que dá acesso a este papel) |
+| **Dependem dela** | Nada — é a ponta final do fluxo de monetização |
+| **Fluxo** | Cadastro de empresa aprovado → login → cria publicação → paga PIX → aguarda aprovação do admin → publicada → métricas |
+| **Tipo** | Módulo principal, self-service |
+| **Semelhante a** | **Painel do Feed** (admin) — mesmo cálculo de métricas, recortado por patrocinador em vez de global. Historicamente existiam **dois jeitos** de chegar aqui — login de patrocinador dedicado, e (desde 21/08) a própria conta de loja (papel `partner`) já existente — hoje convergem no mesmo módulo |
+| **Automação e integração** | Reaproveita a cobrança PIX já gerada enquanto válida (não abre cobrança nova a cada recarregar a tela); recorte de métrica **nunca confia no que vem da URL** — mesmo que o patrocinador force outro `sponsor_id` na query, o servidor sempre resolve pelo próprio vínculo de login, testado ao vivo em produção |
+| **Impacto se mexer** | Médio-alto. É o único lugar onde loja/fabricante interage com o Feed sem passar pelo admin — reorganizar tem que preservar que só este item apareça no menu de quem tem o papel `sponsor` (hoje já é assim: a barra lateral desse papel mostra só "Meu Feed") |
 
 ---
 
@@ -839,6 +951,7 @@ Comunicação com a rede e formação.
 | `/solicitacoes` | **Única órfã de verdade.** Zero links de entrada; o item de menu foi removido e o arquivo continua no build. Candidata a consolidação com Orçamentos ou remoção |
 | `/ferramentas/unidades` e `/unidades/[id]` | Existem **fora das nove abas** do próprio módulo de Ferramentas; alcançáveis só por link interno do Inventário |
 | 17 sub-rotas de detalhe | `/os/[id]`, `/os/nova`, `/orcamentos/[id]`, `/orcamentos/novo`, `/cursos/[id]`, `/aprendizado/[id]`, `/equipes/[id]/calendario`, `/relatorios-loja/[osId]` e as 8 abas de Ferramentas. Todas alcançáveis pelo módulo pai — **não são órfãs**, são o miolo dos módulos |
+| `/api/lgpd/*` (achado 24/08) | **4 rotas prontas, zero tela.** Portabilidade de dados, consentimento e anonimização (exigência legal da LGPD) existem e funcionam via API, mas nenhum botão do site nem do aplicativo aponta pra lá — confirmado por busca em todo `.tsx` do web e do mobile. O único fluxo de consentimento em uso de verdade é `POST /auth/accept-terms` (chamado pela tela de termos do aplicativo), que grava na mesma tabela `user_consents`, só que com um formato de campo diferente do par `GET/PUT /lgpd/consent`. Hoje, atender um pedido de exclusão/portabilidade de dados exige alguém chamar a API na mão — não é falha técnica, é risco de compliance real, sem dono nem prazo |
 
 ---
 
@@ -914,17 +1027,18 @@ O aplicativo fala **só com o Reallliza**. O técnico enxerga 7 abas; o parceiro
 
 ## 3. Árvore atual
 
-### 3.1 Reallliza — 40 itens
+### 3.1 Reallliza — 42 itens
 
 ```
 Dashboard
 Feed ──────────────── Painel do Feed · Campanhas · Pedidos e moderação
+Meu Feed / Portal do Patrocinador ── (novo — único item do papel patrocinador)
 Ordens de Serviço ─── Aguardando Designação · OSs Homologados
 Orçamentos · Clientes (loja) · Propostas
 Garantias
 Relatórios (loja) · Financeiro (loja)
 Chats · Agenda · Mapa
-Usuários · Parceiros · Equipes · Homologação
+Usuários · Parceiros · Equipes · Homologação · Cadastros de Empresas (novo)
 Ferramentas ───────── catálogo · inventário · pedidos · custódias ·
                       devoluções · manutenção · baixas · busca
                       (unidades fica FORA da barra de abas)
@@ -935,7 +1049,16 @@ Config. Globais · Cursos · Aprendizado
 Auditoria · Notificações · Configurações
 ```
 
-Por papel: **administrador 33** · **técnico 9** · **parceiro 8**.
+Por papel: **administrador 34** · **técnico 9** · **parceiro 9** ·
+**patrocinador 1** — o quarto papel da plataforma, que só existe desde a
+Fase 1 do Feed monetizado e ganhou autocadastro público em 24/08. É um menu
+propositalmente enxuto (um item só), mas o achado 7.6 mostra que "menu
+enxuto" e "rota protegida" não são a mesma garantia.
+
+**A lista continua sendo uma pilha só, sem nenhum agrupamento** — o mesmo
+array plano desde a v2, sem seções nem headers. A reorganização que o José
+pediu não está competindo com uma estrutura existente: está criando a
+primeira.
 
 ### 3.2 Garantias — 28 itens, 5 deles externos
 
@@ -1005,9 +1128,16 @@ flowchart TD
 6. **Distribuição a homologados por UF**, com o primeiro aceite fechando.
 7. **Recálculo de nota e nível** a partir de qualidade e avaliação.
 8. **Custódia e repasse** — ferramenta não devolvida desconta do repasse.
-9. **Roteamento de garantia** entre os dois sistemas.
+9. **Roteamento de garantia** — mas só dentro do Reallliza (correção de
+   24/08: não atravessa pro sistema Garantias externo, ver item 12).
 10. **Feed** — publicação agendada, encerramento, fixação com prazo, recálculo
     de audiência, notificação em lote e agregação de métricas.
+11. **Provisionamento de acesso na aprovação de empresa** (novo, 24/08) —
+    uma função SQL só, não uma sequência de inserts: aprovar loja cria
+    `partners` + `feed_sponsors` + vínculo numa transação; aprovar fabricante
+    cria só `feed_sponsors` + vínculo. O papel (`partner`/`sponsor`) já nasce
+    certo no cadastro; quem bloqueia o uso até a aprovação é
+    `profiles.status='pending'`, checado em toda rota autenticada.
 
 ### 4.3 Integrações externas
 
@@ -1065,6 +1195,14 @@ Patrocinador → campanha → publicação com botão e enquete → **segmentaç
 16 recortes** → publicação ou agendamento → notificação → leitura no
 aplicativo e no site → métrica → pedido → conversão → relatório
 
+**6 · Cadastro autônomo de empresa** (novo, 24/08)
+Empresa se cadastra sozinha (`/cadastro-empresa`, escolhe Loja ou
+Fabricante) → conta nasce bloqueada (`status='pending'`) → aparece na fila
+do admin (**Cadastros de Empresas**) → aprovar dispara provisionamento
+automático (loja ganha ambiente completo + Feed; fabricante ganha só o
+**Meu Feed**) **ou** reprovar com motivo, notificado ao solicitante →
+mesmo login já entra no ambiente certo, sem nenhum vínculo manual depois
+
 ---
 
 ## 6. Diagrama geral da arquitetura
@@ -1085,6 +1223,9 @@ flowchart LR
     FD[Feed e Campanhas] --> MTR[Metricas e Pedidos]
     CAD[(Perfis - Servicos - Categorias - Equipes)] --> OS
     CAD --> FD
+    SIGNUP[Autocadastro loja-fabricante] -->|aprovacao provisiona| CAD
+    SIGNUP -->|fabricante| PORT[Meu Feed - Portal do Patrocinador]
+    PORT --> FD
   end
 
   subgraph APP[Aplicativo do profissional]
@@ -1113,14 +1254,34 @@ lados.
 ### 7.2 Redundância dentro do Reallliza
 
 - Três entradas para o mesmo eixo de avaliação: **Qualidade**, **Níveis e
-  Avaliação**, **Avaliações**
+  Avaliação**, **Avaliações** — e aqui a redundância é uma armadilha, não só
+  duplicação: `professional_ratings` (a tela **Avaliações**) só alimenta um
+  card do BI; o score/nível real do profissional é calculado a partir de
+  **Qualidade** (`quality_evaluations`) e da nota do cliente
+  (`customer_ratings`), nunca de `professional_ratings`. Um admin preenchendo
+  "Avaliações" hoje acredita estar mudando o nível do técnico — não está
+  (24/08)
 - Quatro entradas para análise: **Dashboard**, **BI / Dashboards**,
   **Relatórios**, **Painel do Feed**
 - Três entradas para a mesma tabela de OS: **Ordens de Serviço**, **Aguardando
   Designação**, **OSs Homologados**
 - Três noções de região convivendo: **Regiões** (vazia), `operating_region`
-  (texto livre) e a macro-região do IBGE (usada pelo Feed)
+  (texto livre) e a macro-região do IBGE (usada pelo Feed) — conferido de
+  novo em 24/08: **nenhum arquivo do sistema** lê `region_id` ou usa
+  `regionsApi` fora do próprio módulo Regiões; é o cadastro mais órfão da
+  plataforma, não só redundante
 - **Configurações** × **Config. Globais** — nomes quase iguais, escopos opostos
+- Dentro de **Ferramentas**: **Custódias** e **Devoluções** são a mesma tela
+  — mesma API (`GET /tools/custody/active`), mesmo componente de ação; a
+  única diferença é um filtro de uma linha no cliente (24/08)
+- **Três sistemas de "checklist" sem relação entre si** (24/08):
+  `checklist_templates` (a tela **Checklists** — itens booleanos, **não**
+  trava a conclusão da OS), `step_template_groups`/`os_step_executions` (a
+  tela **Templates de Execução** — sequência com fotos mínimas e **este sim
+  trava** a conclusão) e `specialties.checklist` (usado só em **Qualidade**,
+  critérios com peso 1–5, sem ligação de tabela com os outros dois). Três
+  telas de manutenção diferentes para um conceito que o usuário provavelmente
+  pensa como um só
 
 ### 7.3 O que está sem uso, e por quê
 
@@ -1147,6 +1308,73 @@ continua alcançando.
 5. Renomear **Configurações** ou **Config. Globais**
 6. Decidir o destino de `/solicitacoes`
 7. Trazer `unidades` para dentro da barra de abas de Ferramentas
+8. Corrigir o bug de Manutenção/Baixas em Ferramentas (grava status no tipo,
+   não na unidade — ver item 22)
+9. Dar uma tela a `/api/lgpd/*` ou decidir formalmente adiar (risco de
+   compliance, não só UX)
+
+### 7.6 Esconder item de menu não fecha a rota — já não é hipótese
+
+A conclusão 7.4 desta auditoria (v2, 17/08) já avisava que permissão é toda
+de aplicação. Em três semanas, o mesmo padrão de bug apareceu **três vezes**,
+em módulos e datas diferentes, sempre com a mesma forma: o item de menu já
+estava escondido do papel errado, mas a rota por trás continuava aceitando
+qualquer papel autenticado porque faltava a checagem explícita.
+
+| Rota | O que vazava | Achado em |
+|---|---|---|
+| `GET /api/feed/meta` | Sponsor/parceiro sem vínculo viam **todos** os patrocinadores e campanhas, não só os próprios | Sessão de 21–24/08 |
+| `GET /api/service-orders`, `GET /api/service-orders/[id]` | Qualquer papel fora de técnico/parceiro caía no ramo "admin vê tudo" sem filtro — um fabricante recém-aprovado veria toda OS da Reallliza | Sessão de 24/08, ao ligar o autocadastro de empresa |
+| `GET /api/dashboard/{stats,os-per-month,recent-activity,upcoming-schedules}` | O mesmo — nenhuma das quatro rotas tinha checagem de papel; só sabiam filtrar loja/técnico. Uma conta de fabricante real chegou a ver os números de OS de toda a plataforma no `/dashboard` | 24/08, reportado ao vivo por quem testava |
+
+As três já estão corrigidas (checagem de papel adicionada, e o `/dashboard`
+ganhou redirecionamento automático de quem tem o papel `sponsor` pro Portal
+do Patrocinador). O ponto para a reorganização não é a correção pontual —
+é que o padrão se repetiu de forma idêntica três vezes, o que sugere que
+**checar papel rota por rota, sem uma camada central, vai continuar
+produzindo esse mesmo bug** toda vez que um papel novo for introduzido (como
+foi `sponsor`, o quarto papel da plataforma, criado em agosto). Vale
+considerar, como item técnico separado da reorganização de menu: uma
+varredura sistemática de toda rota alcançável por `sponsor`/`partner`, e/ou
+uma checagem central que force toda rota nova a declarar explicitamente
+quem pode chamá-la, em vez de "quem não é X, Y, Z cai no ramo de admin".
+
+### 7.7 Cursos é pré-requisito oculto de Ordem de Serviço
+
+`service_categories.required_course_ids[]` e uma função de validação
+(`course-prerequisites.ts`) fazem o cadastro de **Cursos** funcionar como
+**gate de designação de OS**: uma categoria de serviço pode exigir 1+ cursos
+concluídos, e designar um técnico numa OS dessa categoria falha com 400 se
+ele não cumpriu. Isso não é visível pelo nome do menu ("Capacitação") nem
+pela tela de Categorias de Serviço — hoje só existe como comentário no
+código. Qualquer reorganização que trate Cursos como puramente "conteúdo e
+capacitação" (1.5) sem sinalizar essa ligação esconde uma dependência real
+de Operações (1.2).
+
+### 7.8 Antes de reorganizar Financeiro, os números precisam bater
+
+Três achados do cluster Financeiro (24/08), juntos, formam um problema de
+confiança que a reorganização de menu sozinha não resolve:
+
+- **"Financeiro" tem dois números de receita diferentes com o mesmo nome.**
+  `/financeiro`, `/financeiro-loja`, `/fechamento-mensal` e `/bi` somam
+  `payments.amount` (dinheiro confirmado via PIX/Asaas). O card "Financeiro"
+  dentro de `/relatorios` (`/api/reports/financial`) soma
+  `service_orders.final_value` (valor contratado da OS) — um conceito
+  diferente, exposto sob o mesmo rótulo em dois lugares do menu.
+- **"Fechamento Mensal" não fecha nada.** A tela promete que, após o
+  fechamento, "edições retroativas ficam bloqueadas" — nenhuma rota de
+  `payments`, `quotes` ou `service_orders` verifica isso no código. É
+  puramente um snapshot histórico, sem enforcement.
+- **Os filtros de Técnico/Parceiro/Usuário em `/relatorios` são mockados.**
+  As opções no formulário são nomes fictícios fixos no componente
+  (`"Carlos Silva"`, ids `"u1"`/`"p1"`), não vêm do banco — mesmo a API
+  aceitando IDs reais via query string.
+
+Nenhum dos três é causado pela árvore de menus, e reorganizar sozinho não
+corrige nenhum — mas vale resolver antes, porque uma reorganização que deixe
+"Financeiro" mais visível/central sem isso corrigido amplifica a chance de
+alguém decidir algo com o número errado.
 
 ---
 
