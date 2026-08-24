@@ -239,7 +239,11 @@ export function EditorDoPatrocinador({ aberto, post, onFechar, onSalvo, papel = 
   async function enviarArquivos(lista: FileList | null) {
     if (!lista || lista.length === 0) return;
     try {
-      const id = idAtual ?? (await salvar());
+      // avisar=false: isto é só o passo implícito de garantir um id antes de
+      // anexar mídia — sem isso, o toast "Publicação salva"/"Rascunho
+      // criado" aparecia antes da imagem em si terminar de subir, dando a
+      // entender que já tinha terminado quando só a parte de texto salvou.
+      const id = idAtual ?? (await salvar(false));
       if (!id) return;
 
       setEnviando(true);

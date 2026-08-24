@@ -401,7 +401,7 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
       // considerava aquilo uma seleção nova e não disparava nada: nem
       // erro, nem anexo. Silêncio total, que foi exatamente o que a
       // Jéssica relatou.
-      const id = idAtual ?? (await salvar());
+      const id = idAtual ?? (await salvar(false));
       if (!id) return; // `salvar()` já deixou o motivo real em `erro`.
 
       setEnviando(true);
