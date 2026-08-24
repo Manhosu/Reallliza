@@ -44,10 +44,15 @@ CREATE POLICY "Solicitante vê o próprio cadastro"
 -- Provisiona loja (partners + feed_sponsors + feed_sponsor_users) ou
 -- fabricante (só feed_sponsors + feed_sponsor_users) numa transação única —
 -- uma falha no meio não pode deixar a empresa num estado pela metade.
+--
+-- As colunas de retorno usam prefixo `out_` de propósito: um nome de coluna
+-- de RETURNS TABLE vira variável implícita no corpo da função, e sem o
+-- prefixo colidia com a coluna `sponsor_id` de `feed_sponsor_users` dentro
+-- do ON CONFLICT — "column reference sponsor_id is ambiguous".
 CREATE OR REPLACE FUNCTION public.aprovar_cadastro_empresa(
   p_request_id UUID,
   p_reviewer_id UUID
-) RETURNS TABLE(partner_id UUID, sponsor_id UUID)
+) RETURNS TABLE(out_partner_id UUID, out_sponsor_id UUID)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_req company_signup_requests%ROWTYPE;
