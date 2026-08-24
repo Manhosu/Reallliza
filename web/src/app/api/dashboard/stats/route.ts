@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import {
   authenticateRequest,
+  checkRole,
   AuthError,
 } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
@@ -25,6 +26,10 @@ async function resolvePartnerId(userId: string, userRole: string): Promise<strin
 export async function GET(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
+    // Sem isto, qualquer papel fora de partner/technician (ex.: sponsor)
+    // caia no ramo "admin — sem filtro" abaixo e via os números da
+    // plataforma inteira sem nenhuma restrição.
+    checkRole(user, ["admin", "technician", "partner"]);
     const supabase = getAdminClient();
 
     const partnerId = await resolvePartnerId(user.id, user.role);

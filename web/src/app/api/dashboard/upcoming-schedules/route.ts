@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
-import { authenticateRequest } from "@/lib/api-helpers/auth";
+import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 
 /**
@@ -41,6 +41,7 @@ async function getPartnerOrderIds(partnerId: string): Promise<string[]> {
 export async function GET(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
+    checkRole(user, ["admin", "technician", "partner"]);
     const supabase = getAdminClient();
     const today = new Date().toISOString().slice(0, 10);
 

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   ClipboardList,
@@ -208,7 +209,19 @@ interface PartnerExtras {
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
+  const router = useRouter();
   const isPartner = user?.role === UserRole.PARTNER;
+  const isSponsor = user?.role === UserRole.SPONSOR;
+
+  // Fabricante (sponsor puro) não tem OS/Pedidos/Financeiro — as rotas de
+  // /dashboard/* já bloqueiam esse papel com 403, então sem isto a tela
+  // ficaria vazia/quebrada em vez de ir direto pra onde o papel realmente
+  // tem o que fazer.
+  useEffect(() => {
+    if (isSponsor) {
+      router.replace("/portal-patrocinador");
+    }
+  }, [isSponsor, router]);
 
   // KPIs extras do partner (Fase 3 — Jessica spec Loja Parceira)
   const [partnerExtras, setPartnerExtras] = useState<PartnerExtras | null>(null);
@@ -301,6 +314,10 @@ export default function DashboardPage() {
           { name: "Atrasadas", value: stats.overdueOs, color: "#EF4444" },
         ].filter(d => d.value > 0)
   ) : [];
+
+  if (isSponsor) {
+    return null; // redirecionando pro Portal do Patrocinador (useEffect acima)
+  }
 
   return (
     <div className="space-y-6">

@@ -85,22 +85,40 @@ export async function POST(
 
     // A Asaas recusa criar cliente sem CPF/CNPJ válido (erro 400) — sem essa
     // checagem antes, a pessoa via um 500 genérico sem entender o motivo.
-    if (!patrocinador.cnpj) {
+    // Cadastros feitos depois do fix em /api/company-signup já não deixam
+    // passar CNPJ com tamanho errado, mas cadastros antigos (ou criados
+    // direto pelo admin) ainda podem ter um valor inválido salvo.
+    if (!patrocinador.cnpj || patrocinador.cnpj.length !== 14) {
       return jsonResponse({
         pix_disponivel: false,
-        mensagem:
-          "Falta o CNPJ deste patrocinador. Peça ao administrador para completar o cadastro antes de gerar o PIX.",
+        mensagem: !patrocinador.cnpj
+          ? "Falta o CNPJ deste patrocinador. Peça ao administrador para completar o cadastro antes de gerar o PIX."
+          : "O CNPJ cadastrado para este patrocinador está inválido (não tem 14 dígitos). Peça ao administrador para corrigir antes de gerar o PIX.",
       });
     }
 
-    const charge = await createPixCharge({
-      amount: (campanha.total_price_cents ?? 0) / 100,
-      description: `Campanha do Feed — ${campanha.name}`,
-      customerName: patrocinador.legal_name || patrocinador.name,
-      customerDocument: patrocinador.cnpj || undefined,
-      customerEmail: patrocinador.contact_email || undefined,
-      externalReference: campanha.id,
-    });
+    let charge;
+    try {
+      charge = await createPixCharge({
+        amount: (campanha.total_price_cents ?? 0) / 100,
+        description: `Campanha do Feed — ${campanha.name}`,
+        customerName: patrocinador.legal_name || patrocinador.name,
+        customerDocument: patrocinador.cnpj || undefined,
+        customerEmail: patrocinador.contact_email || undefined,
+        externalReference: campanha.id,
+      });
+    } catch (asaasError) {
+      // Sem isto, qualquer rejeição da Asaas (CNPJ que passou nas checagens
+      // acima mas ainda assim é recusado, valor inválido, etc.) derrubava a
+      // rota com 500 cru — a tela ficava com o bloco de PIX em branco, sem
+      // nenhuma mensagem, e a pessoa achava que só não tinha acontecido nada.
+      console.error(`createPixCharge falhou: ${asaasError instanceof Error ? asaasError.message : asaasError}`);
+      return jsonResponse({
+        pix_disponivel: false,
+        mensagem:
+          "Não foi possível gerar o PIX com os dados cadastrados. Peça ao administrador para conferir o CNPJ e tentar de novo, ou confirmar o pagamento manualmente.",
+      });
+    }
 
     if (!charge) {
       return jsonResponse({

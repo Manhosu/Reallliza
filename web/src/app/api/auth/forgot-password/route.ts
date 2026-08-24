@@ -13,8 +13,12 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getAdminClient();
-    const redirectUrl =
-      process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    // Deriva da própria requisição em vez de uma env var — `NEXT_PUBLIC_APP_URL`
+    // nunca foi configurada em produção, então isto sempre gerou link de
+    // recuperação apontando pra localhost, mesmo pra quem clicava em
+    // produção. A origem da requisição está sempre certa, sem depender de
+    // ninguém lembrar de configurar mais uma variável.
+    const redirectUrl = request.nextUrl.origin;
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${redirectUrl}/auth/reset-password`,

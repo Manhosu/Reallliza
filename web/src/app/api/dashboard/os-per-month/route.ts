@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
-import { authenticateRequest } from "@/lib/api-helpers/auth";
+import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 
 /** Portuguese month abbreviations (0-indexed). */
@@ -28,6 +28,7 @@ async function resolvePartnerId(userId: string, userRole: string): Promise<strin
 export async function GET(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
+    checkRole(user, ["admin", "technician", "partner"]);
     const supabase = getAdminClient();
 
     const now = new Date();

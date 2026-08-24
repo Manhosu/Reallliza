@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
-import { authenticateRequest } from "@/lib/api-helpers/auth";
+import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 
 /**
@@ -51,6 +51,7 @@ async function getAccessibleOrderIds(
 export async function GET(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
+    checkRole(user, ["admin", "technician", "partner"]);
     const supabase = getAdminClient();
 
     // For non-admin roles we first determine the set of service order IDs the user can access

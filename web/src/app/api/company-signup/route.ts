@@ -68,6 +68,11 @@ export async function POST(request: NextRequest) {
     if (!companyType) throw new AuthError(400, "Escolha se é Loja ou Fabricante");
     if (!companyName) throw new AuthError(400, "Informe a razão social ou nome da empresa");
     if (!cnpj) throw new AuthError(400, "Informe o CNPJ");
+    // CNPJ tem 14 dígitos sempre — sem checar isso aqui, um CNPJ digitado
+    // errado só ia aparecer quebrado bem mais tarde, na hora de gerar o PIX
+    // (a Asaas recusa e a mensagem que sobra é confusa: "Asaas customer
+    // falhou: 400", sem dizer que o problema é o CNPJ).
+    if (cnpj.length !== 14) throw new AuthError(400, "CNPJ inválido — deve ter 14 dígitos.");
     if (!contactName) throw new AuthError(400, "Informe o nome do responsável");
     if (!contactPhone) throw new AuthError(400, "Informe o telefone/WhatsApp");
     if (!email || !email.includes("@")) throw new AuthError(400, "E-mail inválido");
