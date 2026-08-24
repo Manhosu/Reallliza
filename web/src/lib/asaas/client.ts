@@ -166,3 +166,51 @@ export async function createPixCharge(
     expiraEm: qr.expirationDate ?? null,
   };
 }
+
+export interface CreateCardChargeInput extends DadosDoCliente {
+  amount: number;
+  description: string;
+  externalReference: string;
+}
+
+export interface CardChargeResult {
+  asaasId: string;
+  checkoutUrl: string;
+}
+
+/**
+ * Cria uma cobrança explicitamente de cartão (não deixa escolher outro meio
+ * na página de checkout) — quem clicar em "Pagar com cartão" sabe pra onde
+ * está indo. O número do cartão nunca passa pelo nosso servidor: quem
+ * coleta é a própria página de checkout da Asaas (`invoiceUrl`).
+ * Retorna null se o Asaas não estiver configurado.
+ */
+export async function createCardCharge(
+  input: CreateCardChargeInput
+): Promise<CardChargeResult | null> {
+  const apiKey = process.env.ASAAS_API_KEY;
+  if (!apiKey) return null;
+
+  const customer = await criarClienteAsaas(apiKey, input);
+
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 3);
+  const chargeRes = await fetch(`${getBaseUrl()}/payments`, {
+    method: "POST",
+    headers: { access_token: apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customer: customer.id,
+      billingType: "CREDIT_CARD",
+      value: input.amount,
+      dueDate: dueDate.toISOString().slice(0, 10),
+      description: input.description,
+      externalReference: input.externalReference,
+    }),
+  });
+  if (!chargeRes.ok) {
+    throw new Error(`Asaas payment (cartão) falhou: ${chargeRes.status}`);
+  }
+  const charge = (await chargeRes.json()) as { id: string; invoiceUrl: string };
+
+  return { asaasId: charge.id, checkoutUrl: charge.invoiceUrl };
+}

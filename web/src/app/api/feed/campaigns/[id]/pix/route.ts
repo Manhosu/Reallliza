@@ -3,7 +3,7 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
-import { createPixCharge, isAsaasConfigured } from "@/lib/asaas/client";
+import { createPixCharge, createCardCharge, isAsaasConfigured } from "@/lib/asaas/client";
 import { resolverSponsorDoUsuario } from "@/lib/feed/sponsor-auth";
 
 /**
@@ -12,6 +12,12 @@ import { resolverSponsorDoUsuario } from "@/lib/feed/sponsor-auth";
  * Gera (ou reaproveita) a cobrança PIX da campanha — QR Code + copia-e-cola.
  * Quem paga é sempre quem está pedindo: admin (que pode repassar o PIX pro
  * cliente por fora) ou o próprio sponsor dono da campanha.
+ *
+ * Aceita `{ metodo: "cartao" }` no corpo pra abrir o checkout de cartão da
+ * Asaas em vez do PIX embutido — pedido da Karol (24/08), pra quem não quer
+ * pagar por PIX. O número do cartão nunca passa pelo nosso servidor: quem
+ * coleta é a própria página da Asaas (`checkout_url`), então essa cobrança
+ * não é cacheada/reaproveitada como o PIX é — cada clique abre uma nova.
  *
  * Não publica nada — confirma pagamento. Quem publica é a aprovação
  * (POST /feed/campaigns/[id]/approve), depois que o admin revisa.
@@ -25,6 +31,8 @@ export async function POST(
     checkRole(user, ["admin", "sponsor", "partner"]);
     const { id } = await params;
     const supabase = getAdminClient();
+    const body = await request.json().catch(() => ({}));
+    const metodo = body?.metodo === "cartao" ? "cartao" : "pix";
 
     const { data: campanha, error } = await supabase
       .from("feed_campaigns")
@@ -47,6 +55,72 @@ export async function POST(
     }
     if (campanha.payment_status === "paid") {
       throw new AuthError(400, "Esta campanha já está paga.");
+    }
+
+    if (metodo === "cartao") {
+      if (!isAsaasConfigured()) {
+        return jsonResponse({
+          cartao_disponivel: false,
+          mensagem:
+            "Pagamento por cartão não está configurado. Peça ao administrador para confirmar o pagamento manualmente.",
+        });
+      }
+
+      const { data: patrocinadorCartao } = await supabase
+        .from("feed_sponsors")
+        .select("name, legal_name, cnpj, contact_email")
+        .eq("id", campanha.sponsor_id)
+        .maybeSingle();
+      if (!patrocinadorCartao) throw new AuthError(404, "Patrocinador não encontrado");
+
+      if (!patrocinadorCartao.cnpj || patrocinadorCartao.cnpj.length !== 14) {
+        return jsonResponse({
+          cartao_disponivel: false,
+          mensagem: !patrocinadorCartao.cnpj
+            ? "Falta o CNPJ deste patrocinador. Peça ao administrador para completar o cadastro antes de pagar com cartão."
+            : "O CNPJ cadastrado para este patrocinador está inválido (não tem 14 dígitos). Peça ao administrador para corrigir antes de pagar com cartão.",
+        });
+      }
+
+      let cobrancaCartao;
+      try {
+        cobrancaCartao = await createCardCharge({
+          amount: (campanha.total_price_cents ?? 0) / 100,
+          description: `Campanha do Feed — ${campanha.name}`,
+          customerName: patrocinadorCartao.legal_name || patrocinadorCartao.name,
+          customerDocument: patrocinadorCartao.cnpj || undefined,
+          customerEmail: patrocinadorCartao.contact_email || undefined,
+          externalReference: campanha.id,
+        });
+      } catch (asaasError) {
+        console.error(`createCardCharge falhou: ${asaasError instanceof Error ? asaasError.message : asaasError}`);
+        return jsonResponse({
+          cartao_disponivel: false,
+          mensagem:
+            "Não foi possível abrir o checkout de cartão com os dados cadastrados. Peça ao administrador para conferir o CNPJ e tentar de novo, ou pague por PIX.",
+        });
+      }
+
+      if (!cobrancaCartao) {
+        return jsonResponse({
+          cartao_disponivel: false,
+          mensagem: "Pagamento por cartão não está configurado. Peça ao administrador para confirmar o pagamento manualmente.",
+        });
+      }
+
+      logAudit({
+        userId: user.id,
+        action: "feed_campaign.card_checkout_generated",
+        entityType: "feed_campaign",
+        entityId: id,
+        newData: { asaas_id: cobrancaCartao.asaasId },
+      });
+
+      return jsonResponse({
+        cartao_disponivel: true,
+        checkout_url: cobrancaCartao.checkoutUrl,
+        asaas_id: cobrancaCartao.asaasId,
+      });
     }
 
     // Reaproveita a cobrança já gerada enquanto ela ainda vale — evita abrir

@@ -326,6 +326,13 @@ export interface PixCampanha {
   expira_em?: string | null;
 }
 
+export interface CartaoCampanha {
+  cartao_disponivel: boolean;
+  mensagem?: string;
+  checkout_url?: string;
+  asaas_id?: string;
+}
+
 export interface RegraDePrecoDoFeed {
   scope_type: TipoDeAbrangencia;
   scope_kind: EscopoRegional | null;
@@ -421,6 +428,8 @@ export const feedGestaoApi = {
   }) => apiClient.post<PrecoDeCampanha>("/feed/campaigns/price-preview", dados),
   pagarCampanha: (id: string) => apiClient.post<Campanha>(`/feed/campaigns/${id}/pay`, {}),
   gerarPixCampanha: (id: string) => apiClient.post<PixCampanha>(`/feed/campaigns/${id}/pix`, {}),
+  gerarCartaoCampanha: (id: string) =>
+    apiClient.post<CartaoCampanha>(`/feed/campaigns/${id}/pix`, { metodo: "cartao" }),
   aprovarCampanha: (id: string) => apiClient.post<Campanha>(`/feed/campaigns/${id}/approve`, {}),
   reprovarCampanha: (id: string, motivo: string) =>
     apiClient.post<Campanha>(`/feed/campaigns/${id}/reject`, { reason: motivo }),

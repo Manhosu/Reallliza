@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Copy, Loader2 } from "lucide-react";
+import { AlertCircle, Copy, CreditCard, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { feedGestaoApi } from "@/lib/api/feed";
@@ -68,6 +68,7 @@ export function EditorDePatrocinio({
   const [motivoReprovacao, setMotivoReprovacao] = useState("");
   const [pix, setPix] = useState<PixCampanha | null>(null);
   const [carregandoPix, setCarregandoPix] = useState(false);
+  const [carregandoCartao, setCarregandoCartao] = useState(false);
   const pixJaPedidoPara = useRef<string | null>(null);
 
   // Cobertura só é editável (e recalcula preço) enquanto a campanha ainda
@@ -135,6 +136,26 @@ export function EditorDePatrocinio({
       toast.error(e instanceof Error ? e.message : "Erro ao gerar o PIX");
     } finally {
       setCarregandoPix(false);
+    }
+  }
+
+  async function pagarComCartao() {
+    if (!campanha) return;
+    setCarregandoCartao(true);
+    try {
+      // Cada clique abre um checkout novo de propósito — diferente do PIX,
+      // não fica reaproveitando (a Asaas nunca cobra por abrir a página, só
+      // quando o cartão de fato é confirmado nela).
+      const resultado = await feedGestaoApi.gerarCartaoCampanha(campanha.id);
+      if (resultado.cartao_disponivel && resultado.checkout_url) {
+        window.open(resultado.checkout_url, "_blank", "noopener,noreferrer");
+      } else {
+        toast.error(resultado.mensagem ?? "Não foi possível abrir o pagamento por cartão");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao abrir o pagamento por cartão");
+    } finally {
+      setCarregandoCartao(false);
     }
   }
 
@@ -379,6 +400,23 @@ export function EditorDePatrocinio({
                   {pix.mensagem ?? "Pagamento por PIX automático indisponível no momento."}
                 </p>
               ) : null}
+
+              <div className="flex items-center gap-2 border-t pt-2">
+                <span className="text-xs text-muted-foreground">Prefere não pagar por PIX?</span>
+                <button
+                  type="button"
+                  disabled={carregandoCartao}
+                  onClick={() => void pagarComCartao()}
+                  className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                >
+                  {carregandoCartao ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <CreditCard className="h-3 w-3" />
+                  )}
+                  Pagar com cartão
+                </button>
+              </div>
             </div>
           )}
 
