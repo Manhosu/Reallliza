@@ -42,6 +42,14 @@ export type {
   HomologationProfile,
   RegisterProfessionalPayload,
 } from "./homologation";
+export { companySignupApi } from "./company-signup";
+export type {
+  CompanySignupRequest,
+  CompanySignupStatus,
+  CompanySignupProfile,
+  CompanyType,
+  RegisterCompanyPayload,
+} from "./company-signup";
 export { specialtiesApi } from "./specialties";
 export type {
   Specialty,

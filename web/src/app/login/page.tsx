@@ -205,6 +205,13 @@ function LoginForm() {
         >
           Entrar
         </Button>
+
+        <p className="text-center text-sm text-muted-foreground">
+          É loja ou fabricante?{" "}
+          <Link href="/cadastro-empresa" className="font-medium text-primary">
+            Criar conta
+          </Link>
+        </p>
       </motion.form>
 
       <motion.p

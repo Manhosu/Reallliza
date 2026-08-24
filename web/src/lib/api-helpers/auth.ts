@@ -57,6 +57,17 @@ export async function authenticateRequest(
     );
   }
 
+  // Cadastro autônomo de empresa (loja/fabricante): a conta já nasce com o
+  // papel final, mas fica bloqueada até um admin aprovar em
+  // POST /api/company-signup — middleware.ts não protege /api (seu matcher
+  // exclui explicitamente), então este é o único ponto real de bloqueio.
+  if (profile?.status === "pending") {
+    throw new AuthError(
+      403,
+      "Seu cadastro ainda está em análise. Você será avisado quando for aprovado."
+    );
+  }
+
   return {
     id: user.id,
     email: user.email!,

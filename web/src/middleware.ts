@@ -7,6 +7,7 @@ const publicRoutes = [
   "/auth/callback",
   "/auth/confirm",
   "/cadastro-profissional",
+  "/cadastro-empresa",
 ];
 
 export async function middleware(request: NextRequest) {

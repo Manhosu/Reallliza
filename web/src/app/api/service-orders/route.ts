@@ -17,6 +17,9 @@ import { redactOsListForRole } from "@/lib/api-helpers/redact";
 export async function GET(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
+    // Sem isto, qualquer papel fora de technician/partner (ex.: sponsor)
+    // caía no ramo implícito "admin/manager vê tudo", sem filtro nenhum.
+    checkRole(user, ["admin", "manager", "technician", "partner"]);
 
     const searchParams = request.nextUrl.searchParams;
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));

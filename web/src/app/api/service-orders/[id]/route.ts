@@ -22,6 +22,9 @@ export async function GET(
 ) {
   try {
     const user = await authenticateRequest(request);
+    // Sem isto, qualquer papel fora de technician/partner (ex.: sponsor)
+    // caía no ramo implícito "admin/manager vê tudo", sem filtro nenhum.
+    checkRole(user, ["admin", "manager", "technician", "partner"]);
     const { id } = await params;
 
     const supabase = getAdminClient();

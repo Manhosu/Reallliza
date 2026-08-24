@@ -55,6 +55,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { notificationsApi, serviceOrdersApi } from "@/lib/api";
 import { TermsModal } from "@/components/terms-modal";
+import { AccountReviewGate } from "@/components/account-review-gate";
 
 // ============================================================
 // Navigation Configuration
@@ -216,6 +217,12 @@ const allNavItems = [
     roles: [UserRole.ADMIN],
   },
   {
+    label: "Cadastros de Empresas",
+    href: "/cadastros-empresas",
+    icon: Building2,
+    roles: [UserRole.ADMIN],
+  },
+  {
     label: "Ferramentas",
     href: "/ferramentas",
     icon: Wrench,
@@ -347,6 +354,7 @@ const breadcrumbLabels: Record<string, string> = {
   usuarios: "Usuários",
   parceiros: "Parceiros",
   homologacao: "Homologação",
+  "cadastros-empresas": "Cadastros de Empresas",
   ferramentas: "Ferramentas",
   checklists: "Checklists",
   "templates-execucao": "Templates de Execução",
@@ -586,6 +594,14 @@ export default function DashboardLayout({
   };
 
   const sidebarWidth = isCollapsed ? "w-[72px]" : "w-[280px]";
+
+  // Cadastro de empresa pendente/reprovado, ou conta desativada por outro
+  // motivo: nunca monta a sidebar/dashboard, nem por um instante — a API já
+  // bloqueia tudo pra esta conta (ver authenticateRequest), então deixar o
+  // layout normal aparecer só resultaria em cada card quebrando um por um.
+  if (!authLoading && user && user.status !== "active") {
+    return <AccountReviewGate user={user} onSignOut={handleSignOut} />;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
