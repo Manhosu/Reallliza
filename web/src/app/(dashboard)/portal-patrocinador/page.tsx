@@ -9,16 +9,31 @@
  * reprovar, confirmar pagamento manual) — isso é sempre ação do admin.
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { Plus, Megaphone, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Plus, Megaphone, Pencil, Trash2, AlertTriangle,
+  Eye, MousePointerClick, Users, Target, TrendingUp, Video,
+  Heart, MessageCircle, Share2, Bookmark,
+} from "lucide-react";
 import { toast } from "sonner";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { feedApi } from "@/lib/api";
 import { feedGestaoApi } from "@/lib/api/feed";
-import type { Campanha, FeedPost } from "@/lib/api/feed";
+import type { Campanha, FeedPost, PainelFeed } from "@/lib/api/feed";
 import { EditorDoPatrocinador } from "@/components/feed/editor-do-patrocinador";
+
+const JANELAS = [
+  { dias: 7, rotulo: "7 dias" },
+  { dias: 30, rotulo: "30 dias" },
+  { dias: 90, rotulo: "90 dias" },
+];
+
+const numero = (n: number) => (n >= 1000 ? n.toLocaleString("pt-BR") : String(n ?? 0));
 
 const SITUACAO_PAGAMENTO: Record<string, { rotulo: string; cor: string }> = {
   pending: { rotulo: "Aguardando pagamento", cor: "bg-amber-500/15 text-amber-600" },
@@ -64,6 +79,36 @@ export default function PortalDoPatrocinador() {
   useEffect(() => {
     void carregar();
   }, [carregar]);
+
+  // Métricas das próprias publicações — reaproveita o mesmo cálculo do
+  // Painel do Feed (admin); o backend já recorta pelo patrocinador do
+  // próprio login, então aqui só pede sem passar sponsor_id nenhum.
+  const [dias, setDias] = useState(30);
+  const [painel, setPainel] = useState<PainelFeed | null>(null);
+  const [carregandoPainel, setCarregandoPainel] = useState(true);
+
+  useEffect(() => {
+    let vivo = true;
+    setCarregandoPainel(true);
+    feedGestaoApi
+      .painel(dias)
+      .then((p) => vivo && setPainel(p))
+      .catch(() => vivo && setPainel(null))
+      .finally(() => vivo && setCarregandoPainel(false));
+    return () => {
+      vivo = false;
+    };
+  }, [dias]);
+
+  const serie = useMemo(() => {
+    if (!painel) return [];
+    return Object.entries(painel.evolucao_diaria)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([iso, v]) => ({
+        dia: new Date(`${iso}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+        ...v,
+      }));
+  }, [painel]);
 
   function abrirNova() {
     setPostEmEdicao(null);
@@ -115,6 +160,89 @@ export default function PortalDoPatrocinador() {
           <span>{erro}</span>
         </div>
       )}
+
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">Desempenho das suas publicações</h2>
+          <div className="flex rounded-md border text-xs">
+            {JANELAS.map((j) => (
+              <button
+                key={j.dias}
+                onClick={() => setDias(j.dias)}
+                className={cn(
+                  "px-2.5 py-1.5 first:rounded-l-md last:rounded-r-md",
+                  dias === j.dias ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                )}
+              >
+                {j.rotulo}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {carregandoPainel || !painel ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
+          </div>
+        ) : painel.totais.publicacoes === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="p-6 text-center text-sm text-muted-foreground">
+              Assim que sua publicação for aprovada e entrar no ar, os números aparecem aqui.
+            </CardContent>
+          </Card>
+        ) : (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Indicador icone={Eye} rotulo="Impressões" valor={painel.totais.impressoes}
+                nota={`${numero(painel.totais.visualizacoes)} visualizações`} />
+              <Indicador icone={MousePointerClick} rotulo="Cliques" valor={painel.totais.cliques}
+                nota={`CTR de ${painel.totais.ctr}%`} />
+              <Indicador icone={Target} rotulo="Pedidos recebidos" valor={painel.totais.leads} destaque />
+              <Indicador icone={Users} rotulo="Pessoas alcançadas" valor={painel.totais.usuarios_alcancados} />
+              <Indicador icone={TrendingUp} rotulo="Taxa de engajamento" valor={painel.totais.taxa_engajamento} sufixo="%" />
+              <Indicador icone={Video} rotulo="Publicações no ar" valor={painel.totais.publicacoes_no_ar}
+                nota={`${numero(painel.totais.publicacoes)} no total`} />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Miudo icone={Heart} rotulo="Curtidas" valor={painel.totais.curtidas} />
+              <Miudo icone={MessageCircle} rotulo="Comentários" valor={painel.totais.comentarios} />
+              <Miudo icone={Share2} rotulo="Compartilhamentos" valor={painel.totais.compartilhamentos} />
+              <Miudo icone={Bookmark} rotulo="Salvamentos" valor={painel.totais.salvamentos} />
+            </div>
+
+            {serie.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Evolução no período</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <AreaChart data={serie}>
+                      <defs>
+                        <linearGradient id="gImpressoes" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.35} />
+                          <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                      <XAxis dataKey="dia" fontSize={12} tickLine={false} axisLine={false} />
+                      <YAxis fontSize={12} tickLine={false} axisLine={false} />
+                      <Tooltip contentStyle={{ borderRadius: 8, fontSize: 13 }} />
+                      <Area type="monotone" dataKey="impressoes" name="Impressões"
+                        stroke="var(--primary)" fill="url(#gImpressoes)" strokeWidth={2} />
+                      <Area type="monotone" dataKey="cliques" name="Cliques"
+                        stroke="#2C7A55" fill="transparent" strokeWidth={2} />
+                      <Area type="monotone" dataKey="leads" name="Pedidos"
+                        stroke="#B87A16" fill="transparent" strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
+          </>
+        )}
+      </section>
 
       {carregando ? (
         <div className="space-y-3">
@@ -193,6 +321,41 @@ export default function PortalDoPatrocinador() {
         onFechar={() => setEditorAberto(false)}
         onSalvo={() => void carregar()}
       />
+    </div>
+  );
+}
+
+function Indicador({
+  icone: Icone, rotulo, valor, nota, sufixo, destaque,
+}: {
+  icone: React.ElementType; rotulo: string; valor: number;
+  nota?: string; sufixo?: string; destaque?: boolean;
+}) {
+  return (
+    <Card className={cn(destaque && "border-primary/40")}>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">{rotulo}</span>
+          <Icone className={cn("h-4 w-4", destaque ? "text-primary" : "text-muted-foreground")} />
+        </div>
+        <div className="mt-2 text-2xl font-semibold tabular-nums">
+          {numero(valor ?? 0)}
+          {sufixo && <span className="text-base font-normal text-muted-foreground">{sufixo}</span>}
+        </div>
+        {nota && <p className="mt-1 text-xs text-muted-foreground">{nota}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Miudo({ icone: Icone, rotulo, valor }: { icone: React.ElementType; rotulo: string; valor: number }) {
+  return (
+    <div className="flex items-center gap-3 rounded-md border bg-card p-3">
+      <Icone className="h-4 w-4 text-muted-foreground" />
+      <div>
+        <div className="text-lg font-semibold tabular-nums leading-none">{numero(valor ?? 0)}</div>
+        <div className="text-xs text-muted-foreground">{rotulo}</div>
+      </div>
     </div>
   );
 }

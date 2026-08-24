@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { resolverSponsorDoUsuario } from "@/lib/feed/sponsor-auth";
 
 /**
  * O cliente do Supabase perde o tipo quando o `select` cresce e passa a
@@ -39,16 +40,26 @@ interface PublicacaoResumo {
  * Aceita `?dias=30` para a janela e `?sponsor_id=` para recortar por
  * patrocinador — que é a forma como o Portal do Patrocinador reaproveita
  * exatamente este cálculo, sem uma segunda implementação dos mesmos números.
+ *
+ * `sponsor`/`partner` também podem chamar, mas nunca escolhem QUAL
+ * patrocinador veem: o `sponsor_id` da query é só pro admin (que pode
+ * inspecionar qualquer um). Pra quem não é admin, o recorte vem sempre de
+ * `resolverSponsorDoUsuario` — o próprio vínculo em `feed_sponsor_users` —
+ * senão um patrocinador conseguiria ler as métricas de outro só trocando o
+ * parâmetro na URL.
  */
 export async function GET(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "sponsor", "partner"]);
     const supabase = getAdminClient();
 
     const { searchParams } = new URL(request.url);
     const dias = Math.min(Math.max(Number(searchParams.get("dias") ?? 30), 1), 365);
-    const patrocinador = searchParams.get("sponsor_id");
+    const patrocinador =
+      user.role === "admin"
+        ? searchParams.get("sponsor_id")
+        : (await resolverSponsorDoUsuario(supabase, user.id)).sponsor_id;
 
     const desde = new Date();
     desde.setDate(desde.getDate() - dias);
