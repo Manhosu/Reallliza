@@ -40,7 +40,7 @@ export async function POST(
       .select("role, full_name")
       .eq("id", user.id)
       .maybeSingle();
-    const isOperator = ["admin", "supervisor", "gestor"].includes(
+    const isOperator = ["admin", "supervisor", "gestor", "almoxarifado"].includes(
       (profile?.role as string) || ""
     );
     if (custody.user_id !== user.id && !isOperator) {
@@ -76,7 +76,7 @@ export async function POST(
       const { data: admins } = await supabase
         .from("profiles")
         .select("id")
-        .eq("role", "admin")
+        .in("role", ["admin", "almoxarifado"])
         .eq("status", "active");
       await Promise.allSettled(
         ((admins ?? []) as Array<{ id: string }>).map((a) =>

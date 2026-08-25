@@ -83,7 +83,7 @@ export async function POST(
       const { data: admins } = await supabase
         .from("profiles")
         .select("id")
-        .eq("role", "admin")
+        .in("role", ["admin", "almoxarifado"])
         .eq("status", "active");
       await Promise.allSettled(
         ((admins ?? []) as Array<{ id: string }>).map((a) =>
@@ -127,7 +127,7 @@ export async function PATCH(
       .select("role")
       .eq("id", user.id)
       .maybeSingle();
-    if (!["admin", "supervisor", "gestor"].includes((profile?.role as string) || "")) {
+    if (!["admin", "supervisor", "gestor", "almoxarifado"].includes((profile?.role as string) || "")) {
       throw new AuthError(403, "Apenas o almoxarifado pode decidir a prorrogação");
     }
 

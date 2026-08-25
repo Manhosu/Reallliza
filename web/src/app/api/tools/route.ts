@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "almoxarifado"]);
 
     const body = await request.json();
     const supabase = getAdminClient();

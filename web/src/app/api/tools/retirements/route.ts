@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin", "manager"]);
+    checkRole(user, ["admin", "manager", "almoxarifado"]);
     const body = await request.json();
     if (!body.tool_id || !body.reason) {
       throw new AuthError(400, "tool_id e reason obrigatorios");

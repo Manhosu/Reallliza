@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     const role = profile?.role as string | undefined;
-    const isAdmin = role === "admin" || role === "supervisor" || role === "gestor";
+    const isAdmin =
+      role === "admin" || role === "supervisor" || role === "gestor" || role === "almoxarifado";
 
     let query = supabase
       .from("tool_requests")

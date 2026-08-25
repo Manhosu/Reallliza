@@ -14,7 +14,7 @@ import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 export async function GET(request: NextRequest) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "almoxarifado"]);
 
     const supabase = getAdminClient();
     const now = new Date();

@@ -226,7 +226,7 @@ const allNavItems = [
     label: "Ferramentas",
     href: "/ferramentas",
     icon: Wrench,
-    roles: [UserRole.ADMIN, UserRole.TECHNICIAN],
+    roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.ALMOXARIFADO],
   },
   {
     label: "Checklists",

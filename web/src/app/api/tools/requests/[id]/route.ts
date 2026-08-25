@@ -51,7 +51,7 @@ export async function PATCH(
       .maybeSingle();
 
     const role = profile?.role as string | undefined;
-    const isOperator = ["admin", "supervisor", "gestor"].includes(role || "");
+    const isOperator = ["admin", "supervisor", "gestor", "almoxarifado"].includes(role || "");
 
     const { data: current, error: fetchError } = await supabase
       .from("tool_requests")

@@ -18,7 +18,7 @@ export async function POST(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin", "manager"]);
+    checkRole(user, ["admin", "manager", "almoxarifado"]);
     const { custodyId } = await params;
 
     const body = await request.json();

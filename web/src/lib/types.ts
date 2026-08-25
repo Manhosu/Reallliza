@@ -8,6 +8,8 @@ export enum UserRole {
   PARTNER = "partner",
   /** Loja/fabricante que anuncia no Feed — vínculo em `feed_sponsor_users`. */
   SPONSOR = "sponsor",
+  /** Acesso restrito ao módulo Ferramentas/estoque — pedido da Jéssica. */
+  ALMOXARIFADO = "almoxarifado",
 }
 
 export enum UserStatus {
@@ -422,6 +424,7 @@ export const USER_ROLE_LABELS: Record<UserRole, string> = {
   [UserRole.TECHNICIAN]: "Técnico",
   [UserRole.PARTNER]: "Parceiro",
   [UserRole.SPONSOR]: "Patrocinador",
+  [UserRole.ALMOXARIFADO]: "Almoxarifado",
 };
 
 export const USER_STATUS_LABELS: Record<UserStatus, string> = {

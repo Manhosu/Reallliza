@@ -65,7 +65,7 @@ export async function PUT(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "almoxarifado"]);
     const { id } = await params;
 
     const body = await request.json();

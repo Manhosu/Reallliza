@@ -19,6 +19,7 @@ import {
   Star,
   Trash2,
   Megaphone,
+  Boxes,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -51,6 +52,7 @@ const ROLE_BADGE_VARIANT: Record<UserRole, string> = {
   [UserRole.TECHNICIAN]: "info",
   [UserRole.PARTNER]: "success",
   [UserRole.SPONSOR]: "warning",
+  [UserRole.ALMOXARIFADO]: "gray",
 };
 
 const ROLE_ICONS: Record<UserRole, React.ReactNode> = {
@@ -58,6 +60,7 @@ const ROLE_ICONS: Record<UserRole, React.ReactNode> = {
   [UserRole.TECHNICIAN]: <Wrench className="h-3 w-3" />,
   [UserRole.PARTNER]: <Building2 className="h-3 w-3" />,
   [UserRole.SPONSOR]: <Megaphone className="h-3 w-3" />,
+  [UserRole.ALMOXARIFADO]: <Boxes className="h-3 w-3" />,
 };
 
 const STATUS_BADGE_VARIANT: Record<UserStatus, string> = {

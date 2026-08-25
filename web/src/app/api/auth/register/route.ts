@@ -45,7 +45,11 @@ export async function POST(request: NextRequest) {
       throw new AuthError(400, "Password must be at least 6 characters");
     }
 
-    const validRoles = ["admin", "manager", "technician", "partner"];
+    // "manager" nunca existiu no enum real (user_role só tem admin/
+    // technician/partner/sponsor/almoxarifado) — cadastro com esse valor
+    // sempre falharia no INSERT. "sponsor" estava faltando aqui apesar de
+    // já ser um papel real desde a Fase 1 do Feed monetizado.
+    const validRoles = ["admin", "technician", "partner", "sponsor", "almoxarifado"];
     if (!validRoles.includes(role)) {
       throw new AuthError(
         400,

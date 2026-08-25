@@ -212,16 +212,19 @@ export default function DashboardPage() {
   const router = useRouter();
   const isPartner = user?.role === UserRole.PARTNER;
   const isSponsor = user?.role === UserRole.SPONSOR;
+  const isAlmoxarifado = user?.role === UserRole.ALMOXARIFADO;
 
   // Fabricante (sponsor puro) não tem OS/Pedidos/Financeiro — as rotas de
   // /dashboard/* já bloqueiam esse papel com 403, então sem isto a tela
   // ficaria vazia/quebrada em vez de ir direto pra onde o papel realmente
-  // tem o que fazer.
+  // tem o que fazer. Mesma lógica pro Almoxarifado, que só tem Ferramentas.
   useEffect(() => {
     if (isSponsor) {
       router.replace("/portal-patrocinador");
+    } else if (isAlmoxarifado) {
+      router.replace("/ferramentas");
     }
-  }, [isSponsor, router]);
+  }, [isSponsor, isAlmoxarifado, router]);
 
   // KPIs extras do partner (Fase 3 — Jessica spec Loja Parceira)
   const [partnerExtras, setPartnerExtras] = useState<PartnerExtras | null>(null);
@@ -315,8 +318,8 @@ export default function DashboardPage() {
         ].filter(d => d.value > 0)
   ) : [];
 
-  if (isSponsor) {
-    return null; // redirecionando pro Portal do Patrocinador (useEffect acima)
+  if (isSponsor || isAlmoxarifado) {
+    return null; // redirecionando (useEffect acima)
   }
 
   return (
