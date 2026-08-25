@@ -142,6 +142,7 @@ export function MainTabs() {
             fontSize: 20,
             color: colors.primary,
           },
+          headerRight: () => <HeaderBellButton />,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar-outline" size={size} color={color} />
           ),

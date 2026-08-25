@@ -26,13 +26,22 @@ export async function GET(request: NextRequest) {
     const teamIds = await getUserTeamIds(supabase, user.id);
     const scope = buildTeamScopeFilter(user.id, teamIds);
 
+    // A nova Agenda (pedido da Jéssica, ago/2026) mostra endereço completo,
+    // contato do cliente e "tipo de serviço" (derivado de external_metadata)
+    // em cada card — nenhum desses campos vinha antes, e a tela só sabia
+    // exibir a cidade.
     let query = supabase
       .from("schedules")
       .select(
         `
         *,
         technician:profiles!schedules_technician_id_fkey(id, full_name, email, phone, avatar_url),
-        service_order:service_orders!schedules_service_order_id_fkey(id, order_number, title, status, client_name, address_city)
+        service_order:service_orders!schedules_service_order_id_fkey(
+          id, order_number, title, status, priority,
+          client_name, client_phone, client_email,
+          address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip,
+          external_metadata
+        )
       `
       );
 
