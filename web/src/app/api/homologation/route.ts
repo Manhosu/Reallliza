@@ -4,6 +4,8 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 
+const VALID_PIX_KEY_TYPES = ["CPF", "CNPJ", "EMAIL", "PHONE", "EVP"];
+
 /**
  * GET /api/homologation
  * Fila de solicitações de homologação. Apenas admin.
@@ -20,7 +22,7 @@ export async function GET(request: NextRequest) {
       .select(
         `
         *,
-        profile:profiles!profile_id(id, full_name, email, phone, specialties, professional_type, is_homologated)
+        profile:profiles!profile_id(id, full_name, email, phone, specialties, professional_type, is_homologated, pix_key, pix_key_type)
       `
       )
       .order("created_at", { ascending: false });
@@ -42,7 +44,8 @@ export async function GET(request: NextRequest) {
  * Cria a conta, o profile (technician, professional_type=external, não
  * homologado) e a solicitação de homologação pendente.
  *
- * Body: { full_name, email, password, phone?, cpf?, specialties?, documents? }
+ * Body: { full_name, email, password, phone?, cpf?, specialties?, documents?,
+ *         pix_key, pix_key_type }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -60,6 +63,18 @@ export async function POST(request: NextRequest) {
     }
     if (password.length < 6) {
       throw new AuthError(400, "A senha deve ter ao menos 6 caracteres");
+    }
+
+    // Repasse automático (release-payout) transfere pra essa chave — sem
+    // ela o homologado nunca conseguiria receber, só de forma manual.
+    const pixKey = typeof body.pix_key === "string" ? body.pix_key.trim() : "";
+    const pixKeyType =
+      typeof body.pix_key_type === "string" ? body.pix_key_type : "";
+    if (!pixKey) {
+      throw new AuthError(400, "Chave PIX é obrigatória");
+    }
+    if (!VALID_PIX_KEY_TYPES.includes(pixKeyType)) {
+      throw new AuthError(400, "Tipo de chave PIX inválido");
     }
 
     const supabase = getAdminClient();
@@ -97,6 +112,8 @@ export async function POST(request: NextRequest) {
         specialties,
         professional_type: "external",
         is_homologated: false,
+        pix_key: pixKey,
+        pix_key_type: pixKeyType,
       })
       .eq("id", profileId);
 

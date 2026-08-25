@@ -132,14 +132,24 @@ export async function POST(
     // confirmar. Agora marcamos como pago e convertemos na hora.
     const paidAt = new Date().toISOString();
 
+    // Mesma regra de custódia do webhook (webhook/asaas/route.ts): sem isso,
+    // uma quote homologados paga por esse caminho nunca chegaria em 'held' e
+    // o release-payout rejeitaria pra sempre por custody_status errado.
+    const custodyStatus: "held" | "not_applicable" =
+      quote.modality === "homologados" ? "held" : "not_applicable";
+
     await supabase
       .from("payments")
-      .update({ status: "confirmed", paid_at: paidAt })
+      .update({ status: "confirmed", paid_at: paidAt, custody_status: custodyStatus })
       .eq("id", payment.id);
 
     await supabase
       .from("quotes")
-      .update({ status: "paid", paid_at: paidAt })
+      .update({
+        status: "paid",
+        paid_at: paidAt,
+        custody_held: custodyStatus === "held",
+      })
       .eq("id", id);
 
     const { convertQuoteToServiceOrder } = await import(

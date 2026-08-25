@@ -214,3 +214,51 @@ export async function createCardCharge(
 
   return { asaasId: charge.id, checkoutUrl: charge.invoiceUrl };
 }
+
+export interface CreateTransferInput {
+  /** Valor em reais. */
+  value: number;
+  /** Chave PIX de destino — CPF, CNPJ, e-mail, telefone ou chave aleatória. */
+  pixAddressKey: string;
+  pixAddressKeyType: "CPF" | "CNPJ" | "EMAIL" | "PHONE" | "EVP";
+  description?: string;
+  externalReference?: string;
+}
+
+export interface TransferResult {
+  asaasTransferId: string;
+  status: string;
+}
+
+/**
+ * Transfere via PIX direto da conta Asaas da Reallliza pra uma chave PIX —
+ * é assim que o repasse automático pro homologado sai da custódia
+ * (`release-payout`). Diferente das cobranças acima, não precisa criar
+ * cliente antes: `POST /transfers` já aceita a chave PIX como destino.
+ * Retorna null se o Asaas não estiver configurado.
+ */
+export async function createTransfer(
+  input: CreateTransferInput
+): Promise<TransferResult | null> {
+  const apiKey = process.env.ASAAS_API_KEY;
+  if (!apiKey) return null;
+
+  const res = await fetch(`${getBaseUrl()}/transfers`, {
+    method: "POST",
+    headers: { access_token: apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      value: input.value,
+      pixAddressKey: input.pixAddressKey,
+      pixAddressKeyType: input.pixAddressKeyType,
+      description: input.description,
+      externalReference: input.externalReference,
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Asaas transfer falhou: ${res.status} ${errText.slice(0, 200)}`);
+  }
+  const transfer = (await res.json()) as { id: string; status: string };
+
+  return { asaasTransferId: transfer.id, status: transfer.status };
+}

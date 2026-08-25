@@ -113,9 +113,13 @@ export interface Profile {
   specialties: string[] | null;
   operating_region: string | null;
   documents_urls: string[] | null;
+  pix_key: string | null;
+  pix_key_type: PixKeyType | null;
   created_at: string;
   updated_at: string;
 }
+
+export type PixKeyType = "CPF" | "CNPJ" | "EMAIL" | "PHONE" | "EVP";
 
 export interface Partner {
   id: string;

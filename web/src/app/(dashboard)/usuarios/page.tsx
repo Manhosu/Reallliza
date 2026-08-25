@@ -36,12 +36,21 @@ import {
   USER_ROLE_LABELS,
   USER_STATUS_LABELS,
   type Profile,
+  type PixKeyType,
 } from "@/lib/types";
 import { usersApi, apiClient, specialtiesApi } from "@/lib/api";
 import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 import type { Specialty } from "@/lib/api/specialties";
 import { usePaginatedApi } from "@/hooks/use-api";
 import { useAuthStore } from "@/stores/auth-store";
+
+const PIX_KEY_TYPE_LABELS: Record<PixKeyType, string> = {
+  CPF: "CPF",
+  CNPJ: "CNPJ",
+  EMAIL: "E-mail",
+  PHONE: "Telefone",
+  EVP: "Chave aleatória",
+};
 
 // ============================================================
 // Badge Variant Maps
@@ -166,6 +175,8 @@ export default function UsuariosPage() {
     phone: "",
     role: "" as string,
     status: "" as string,
+    pix_key: "",
+    pix_key_type: "CPF" as string,
     specialty_ratings: [] as Array<{ specialty_id: string; name: string; stars: number }>,
   });
 
@@ -316,6 +327,8 @@ export default function UsuariosPage() {
       phone: user.phone || "",
       role: user.role,
       status: user.status,
+      pix_key: user.pix_key || "",
+      pix_key_type: user.pix_key_type || "CPF",
       specialty_ratings: ratings,
     });
     setActionMenuId(null);
@@ -335,6 +348,8 @@ export default function UsuariosPage() {
         phone: editForm.phone || null,
         role: editForm.role as UserRole,
         status: editForm.status as UserStatus,
+        pix_key: editForm.pix_key.trim() || null,
+        pix_key_type: editForm.pix_key.trim() ? (editForm.pix_key_type as PixKeyType) : null,
         // Manda só pra técnicos — outros perfis ignoram. A rota PUT normaliza
         // e sincroniza technician_specialty_scores.
         ...(editForm.role === UserRole.TECHNICIAN
@@ -907,6 +922,32 @@ export default function UsuariosPage() {
                   </option>
                 ))}
               </SelectNative>
+
+              {/* Chave PIX — pra onde o repasse automático (release-payout)
+                  transfere quando um homologado (technician ou partner)
+                  conclui uma OS. Sem isso o repasse fica preso em "manual". */}
+              {(editForm.role === UserRole.TECHNICIAN ||
+                editForm.role === UserRole.PARTNER) && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Chave PIX"
+                    placeholder="CPF, e-mail, telefone..."
+                    value={editForm.pix_key}
+                    onChange={(e) => setEditForm({ ...editForm, pix_key: e.target.value })}
+                  />
+                  <SelectNative
+                    label="Tipo da chave"
+                    value={editForm.pix_key_type}
+                    onChange={(e) => setEditForm({ ...editForm, pix_key_type: e.target.value })}
+                  >
+                    {Object.entries(PIX_KEY_TYPE_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </SelectNative>
+                </div>
+              )}
 
               {/* Especialidades — só pra técnicos.
                   Jessica 11/06: precisa poder acrescentar/remover depois do cadastro. */}

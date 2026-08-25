@@ -30,6 +30,32 @@ export async function PATCH(
 
     const supabase = getAdminClient();
 
+    // Aprovar sem chave PIX deixaria o homologado sem como receber o
+    // repasse automático (release-payout) — barra antes de gravar qualquer
+    // coisa, pra não deixar a solicitação "aprovada" mas travada.
+    if (status === "approved") {
+      const { data: pending, error: findErr } = await supabase
+        .from("homologation_requests")
+        .select("profile_id, profile:profiles!profile_id(pix_key)")
+        .eq("id", id)
+        .single();
+
+      if (findErr || !pending) {
+        throw new AuthError(404, "Solicitação não encontrada");
+      }
+      const rawProfile = pending.profile as
+        | { pix_key: string | null }
+        | { pix_key: string | null }[]
+        | null;
+      const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
+      if (!profile?.pix_key) {
+        throw new AuthError(
+          400,
+          "Este profissional não tem chave PIX cadastrada — não é possível homologar sem isso, o repasse automático depende dela."
+        );
+      }
+    }
+
     const { data: req, error } = await supabase
       .from("homologation_requests")
       .update({

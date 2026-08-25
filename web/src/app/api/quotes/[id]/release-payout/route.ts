@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { createTransfer } from "@/lib/asaas/client";
 
 /**
  * POST /api/quotes/[id]/release-payout
@@ -17,7 +18,9 @@ import { logAudit } from "@/lib/api-helpers/audit";
  *
  * Acao:
  *   - Marca payments.custody_status='released' + released_at + released_by
- *   - Cria Transfer Asaas pro homologado (se ASAAS_API_KEY + asaas_account_id)
+ *   - Cria Transfer Asaas via PIX pro homologado (se ASAAS_API_KEY +
+ *     profiles.pix_key/pix_key_type) — sem isso, fica marcado como liberado
+ *     mas com aviso de transferencia manual necessaria
  *   - Audit log
  *
  * Body opcional: { reason?: string }
@@ -123,50 +126,44 @@ export async function POST(
       );
     }
 
-    // Asaas Transfer (best-effort — sem chave configurada, marca apenas no DB)
-    const asaasApiKey = process.env.ASAAS_API_KEY;
-    const asaasEnv = process.env.ASAAS_ENV ?? "sandbox";
-    const baseUrl =
-      asaasEnv === "production"
-        ? "https://api.asaas.com/v3"
-        : "https://sandbox.asaas.com/api/v3";
-
+    // Asaas Transfer via chave PIX (best-effort — sem Asaas configurado ou
+    // sem chave PIX cadastrada, marca a custódia liberada mas registra que a
+    // transferência precisa ser feita à mão).
     let asaasTransferId: string | null = null;
     let transferError: string | null = null;
 
-    // Carrega wallet_id do tecnico (caso F2.x — homologado tem subaccount)
-    if (asaasApiKey && os.technician_id) {
+    if (os.technician_id) {
       const { data: techProfile } = await supabase
         .from("profiles")
-        .select("asaas_wallet_id")
+        .select("pix_key, pix_key_type")
         .eq("id", os.technician_id)
         .maybeSingle();
 
-      const walletId = (techProfile as { asaas_wallet_id?: string } | null)
-        ?.asaas_wallet_id;
+      const pixKey = (techProfile as { pix_key?: string | null } | null)
+        ?.pix_key;
+      const pixKeyType = (
+        techProfile as { pix_key_type?: string | null } | null
+      )?.pix_key_type;
 
-      if (walletId) {
+      if (pixKey && pixKeyType) {
         try {
-          const res = await fetch(`${baseUrl}/transfers`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              access_token: asaasApiKey,
-            },
-            body: JSON.stringify({
-              walletId,
-              value: Number(quote.payout_amount),
-              externalReference: payment.id,
-              description: `Repasse OS #${quote.service_order_id?.slice(0, 8)}`,
-            }),
+          const transfer = await createTransfer({
+            value: Number(quote.payout_amount),
+            pixAddressKey: pixKey,
+            pixAddressKeyType: pixKeyType as
+              | "CPF"
+              | "CNPJ"
+              | "EMAIL"
+              | "PHONE"
+              | "EVP",
+            externalReference: payment.id,
+            description: `Repasse OS #${quote.service_order_id?.slice(0, 8)}`,
           });
-          if (res.ok) {
-            const data = (await res.json()) as { id?: string };
-            asaasTransferId = data.id ?? null;
+          if (transfer) {
+            asaasTransferId = transfer.asaasTransferId;
           } else {
-            const errText = await res.text();
-            transferError = `Asaas transfer failed: ${res.status} ${errText.slice(0, 200)}`;
-            console.error(transferError);
+            transferError =
+              "Asaas não configurado — repasse marcado como liberado mas transferência manual necessária.";
           }
         } catch (err) {
           transferError = err instanceof Error ? err.message : "transfer error";
@@ -174,7 +171,7 @@ export async function POST(
         }
       } else {
         transferError =
-          "Homologado sem asaas_wallet_id — repasse marcado como liberado mas transferência manual necessária.";
+          "Homologado sem chave PIX cadastrada — repasse marcado como liberado mas transferência manual necessária.";
       }
     }
 

@@ -8,7 +8,17 @@ import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SelectNative } from "@/components/ui/select-native";
 import { homologationApi } from "@/lib/api";
+import type { PixKeyType } from "@/lib/types";
+
+const PIX_KEY_TYPE_LABELS: Record<PixKeyType, string> = {
+  CPF: "CPF",
+  CNPJ: "CNPJ",
+  EMAIL: "E-mail",
+  PHONE: "Telefone",
+  EVP: "Chave aleatória",
+};
 
 export default function CadastroProfissionalPage() {
   const [fullName, setFullName] = useState("");
@@ -17,6 +27,8 @@ export default function CadastroProfissionalPage() {
   const [phone, setPhone] = useState("");
   const [cpf, setCpf] = useState("");
   const [specialties, setSpecialties] = useState("");
+  const [pixKey, setPixKey] = useState("");
+  const [pixKeyType, setPixKeyType] = useState<PixKeyType>("CPF");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -37,6 +49,12 @@ export default function CadastroProfissionalPage() {
       setError("A senha deve ter ao menos 6 caracteres.");
       return;
     }
+    if (!pixKey.trim()) {
+      setError(
+        "Informe sua chave PIX — é pra onde o pagamento do serviço é liberado quando você conclui uma OS."
+      );
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -50,6 +68,8 @@ export default function CadastroProfissionalPage() {
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean),
+        pix_key: pixKey.trim(),
+        pix_key_type: pixKeyType,
       });
       setDone(true);
       toast.success("Cadastro enviado para análise");
@@ -159,6 +179,40 @@ export default function CadastroProfissionalPage() {
                     />
                   </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground/80">
+                      Chave PIX
+                    </label>
+                    <Input
+                      value={pixKey}
+                      onChange={(e) => setPixKey(e.target.value)}
+                      placeholder="CPF, e-mail, telefone..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground/80">
+                      Tipo da chave
+                    </label>
+                    <SelectNative
+                      value={pixKeyType}
+                      onChange={(e) =>
+                        setPixKeyType(e.target.value as PixKeyType)
+                      }
+                    >
+                      {Object.entries(PIX_KEY_TYPE_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </SelectNative>
+                  </div>
+                </div>
+                <p className="-mt-2 text-xs text-muted-foreground">
+                  É pra essa chave que o pagamento do serviço é liberado
+                  automaticamente quando você conclui uma OS.
+                </p>
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground/80">

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { UserCheck, Check, X, Clock, Mail, Phone, Trash2 } from "lucide-react";
+import { UserCheck, Check, X, Clock, Mail, Phone, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -213,6 +213,17 @@ export default function HomologacaoPage() {
                             <span className="flex items-center gap-1">
                               <Phone className="h-3 w-3" />
                               {r.profile.phone}
+                            </span>
+                          )}
+                          {r.profile?.pix_key ? (
+                            <span className="flex items-center gap-1">
+                              <Wallet className="h-3 w-3" />
+                              {r.profile.pix_key}
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-destructive">
+                              <Wallet className="h-3 w-3" />
+                              Sem chave PIX
                             </span>
                           )}
                         </div>

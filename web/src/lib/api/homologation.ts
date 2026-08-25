@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import type { PixKeyType } from "@/lib/types";
 
 export type HomologationStatus =
   | "pending"
@@ -14,6 +15,8 @@ export interface HomologationProfile {
   specialties: string[] | null;
   professional_type: string;
   is_homologated: boolean;
+  pix_key: string | null;
+  pix_key_type: PixKeyType | null;
 }
 
 export interface HomologationRequest {
@@ -35,6 +38,8 @@ export interface RegisterProfessionalPayload {
   phone?: string;
   cpf?: string;
   specialties?: string[];
+  pix_key: string;
+  pix_key_type: PixKeyType;
 }
 
 export const homologationApi = {
