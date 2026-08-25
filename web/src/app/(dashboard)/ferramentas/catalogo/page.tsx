@@ -13,6 +13,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toolsApi } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth-store";
+import { UserRole } from "@/lib/types";
 import type { ToolInventory, PaginatedResponse } from "@/lib/types";
 import { ToolPhotosField, type PhotoRef } from "@/components/ferramentas/tool-photos-field";
 import { HardDeleteDialog, type Dependency } from "@/components/admin/hard-delete-dialog";
@@ -56,6 +58,10 @@ export default function CatalogoPage() {
   const [excluindo, setExcluindo] = useState<ToolInventory | null>(null);
   const [dependencias, setDependencias] = useState<Dependency[]>([]);
   const [carregandoDeps, setCarregandoDeps] = useState(false);
+  // `/tools/[id]/purge` só aceita admin (igual à unidade, no Inventário) —
+  // sem esconder o botão pra quem não é admin, o clique termina em 403 e
+  // parece que "excluir dá erro", o mesmo sintoma já corrigido lá.
+  const podeExcluir = useAuthStore((s) => s.user)?.role === UserRole.ADMIN;
 
   const abrirExclusao = useCallback(async (t: ToolInventory) => {
     setExcluindo(t);
@@ -219,14 +225,16 @@ export default function CatalogoPage() {
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => void abrirExclusao(t)}
-                            title="Excluir permanentemente"
-                          >
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                          </Button>
+                          {podeExcluir && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => void abrirExclusao(t)}
+                              title="Excluir permanentemente"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>

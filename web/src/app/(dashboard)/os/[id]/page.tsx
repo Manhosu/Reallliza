@@ -82,6 +82,8 @@ import type { PhotoCountResponse } from "@/lib/api";
 import type { StepTemplateGroup } from "@/lib/api/step-templates";
 import { useApi } from "@/hooks/use-api";
 import { useAuthStore } from "@/stores/auth-store";
+import { useExclusao } from "@/hooks/use-exclusao";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 import { toast } from "sonner";
 import { Lightbox } from "@/components/ui/lightbox";
 import type { LightboxImage } from "@/components/ui/lightbox";
@@ -1014,6 +1016,19 @@ export default function OsDetailPage() {
   const ocultarValores =
     isPartner || user?.role === UserRole.TECHNICIAN;
 
+  /**
+   * Excluir de verdade (com diagnóstico de dependências) — mesmo papel que
+   * já pode excluir pela listagem (`os/page.tsx`). Separado de propósito do
+   * botão "Cancelar OS" logo abaixo: aquele só muda o status, nunca chamou
+   * `DELETE /api/service-orders/[id]` — quem tentava excluir pelo detalhe
+   * (onde a maioria revisa uma OS específica) não tinha como, e o ícone sem
+   * rótulo parecia excluir sem excluir. Jéssica 24/08: "excluir dá erro".
+   */
+  const podeExcluirOs = ["admin", "manager", "gestor", "diretor"].includes(
+    String(user?.role ?? "")
+  );
+  const excl = useExclusao<ServiceOrder>("service_orders", (o) => o.title);
+
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -1427,9 +1442,24 @@ export default function OsDetailPage() {
               <Button variant="outline" size="icon" onClick={handleOpenEdit}>
                 <Edit className="h-4 w-4" />
               </Button>
-              <Button variant="outline" size="icon" onClick={() => setShowDeleteConfirmModal(true)}>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setShowDeleteConfirmModal(true)}
+                title="Cancelar OS"
+              >
                 <XCircle className="h-4 w-4 text-destructive" />
               </Button>
+              {podeExcluirOs && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => void excl.abrir(order)}
+                  title="Excluir permanentemente"
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              )}
             </>
           )}
         </div>
@@ -2364,6 +2394,19 @@ export default function OsDetailPage() {
           </div>
         </div>
       )}
+
+      <HardDeleteDialog
+        {...excl.props("ordem de serviço")}
+        entityHint={
+          excl.alvo ? `${excl.alvo.order_number} · ${excl.alvo.client_name}` : undefined
+        }
+        onConfirm={async () => {
+          if (!excl.alvo) return;
+          await serviceOrdersApi.delete(excl.alvo.id);
+          toast.success("OS excluída com sucesso");
+          router.push("/os");
+        }}
+      />
 
       {/* ============ Edit Modal ============ */}
       {showEditModal && (
