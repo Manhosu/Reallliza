@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { UserCheck, Check, X, Clock, Mail, Phone } from "lucide-react";
+import { UserCheck, Check, X, Clock, Mail, Phone, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { homologationApi } from "@/lib/api";
+import { apiClient } from "@/lib/api/client";
+import { useExclusao } from "@/hooks/use-exclusao";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 import type {
   HomologationRequest,
   HomologationStatus,
@@ -45,6 +48,10 @@ export default function HomologacaoPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [onlyPending, setOnlyPending] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
+  const excl = useExclusao<HomologationRequest>(
+    "homologation_requests",
+    (r) => r.profile?.full_name ?? "solicitação"
+  );
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -239,6 +246,15 @@ export default function HomologacaoPage() {
                           </Button>
                         </div>
                       )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void excl.abrir(r)}
+                        title="Excluir permanentemente"
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </CardContent>
                   </Card>
                 </motion.div>
@@ -247,6 +263,15 @@ export default function HomologacaoPage() {
           </AnimatePresence>
         </div>
       )}
+
+      <HardDeleteDialog
+        {...excl.props("solicitação de homologação")}
+        onConfirm={async () => {
+          if (!excl.alvo) return;
+          await apiClient.delete(`/homologation/${excl.alvo.id}/purge`);
+          load();
+        }}
+      />
     </div>
   );
 }

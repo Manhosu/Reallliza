@@ -33,6 +33,11 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { stepTemplatesApi } from "@/lib/api";
+import { apiClient } from "@/lib/api/client";
+import { useAuthStore } from "@/stores/auth-store";
+import { UserRole } from "@/lib/types";
+import { useExclusao } from "@/hooks/use-exclusao";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 import type {
   StepTemplateGroup,
   StepTemplateItemPayload,
@@ -585,6 +590,10 @@ export default function TemplatesExecucaoPage() {
   const [includeInactive, setIncludeInactive] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<StepTemplateGroup | null>(null);
+  // Só admin — hoje só existia "Desativar" (soft-delete); a Jéssica precisa
+  // remover template de teste de verdade, não só esconder.
+  const podeExcluir = useAuthStore((s) => s.user)?.role === UserRole.ADMIN;
+  const excl = useExclusao<StepTemplateGroup>("step_template_groups", (g) => g.name);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -836,6 +845,17 @@ export default function TemplatesExecucaoPage() {
                           <CheckCircle2 className="h-3.5 w-3.5" /> Reativar
                         </Button>
                       )}
+                      {podeExcluir && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void excl.abrir(g)}
+                          title="Excluir permanentemente"
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -852,6 +872,15 @@ export default function TemplatesExecucaoPage() {
         onSaved={() => {
           setShowForm(false);
           setEditing(null);
+          load();
+        }}
+      />
+
+      <HardDeleteDialog
+        {...excl.props("template de execução")}
+        onConfirm={async () => {
+          if (!excl.alvo) return;
+          await apiClient.delete(`/step-templates/${excl.alvo.id}/purge`);
           load();
         }}
       />

@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Building2, Check, X, Clock, Mail, Phone, Store, Factory, MapPin } from "lucide-react";
+import { Building2, Check, X, Clock, Mail, Phone, Store, Factory, MapPin, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { companySignupApi } from "@/lib/api";
+import { apiClient } from "@/lib/api/client";
+import { useExclusao } from "@/hooks/use-exclusao";
+import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 import type { CompanySignupRequest, CompanySignupStatus } from "@/lib/api/company-signup";
 
 const STATUS_INFO: Record<CompanySignupStatus, { label: string; cls: string }> = {
@@ -39,6 +42,7 @@ export default function CadastrosDeEmpresasPage() {
   const [processing, setProcessing] = useState<string | null>(null);
   const [reprovando, setReprovando] = useState<string | null>(null);
   const [motivo, setMotivo] = useState("");
+  const excl = useExclusao<CompanySignupRequest>("company_signup_requests", (r) => r.company_name);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -224,6 +228,15 @@ export default function CadastrosDeEmpresasPage() {
                             </Button>
                           </div>
                         )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void excl.abrir(r)}
+                          title="Excluir permanentemente"
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
 
                       {reprovando === r.id && (
@@ -264,6 +277,15 @@ export default function CadastrosDeEmpresasPage() {
           </AnimatePresence>
         </div>
       )}
+
+      <HardDeleteDialog
+        {...excl.props("cadastro de empresa")}
+        onConfirm={async () => {
+          if (!excl.alvo) return;
+          await apiClient.delete(`/company-signup/${excl.alvo.id}/purge`);
+          load();
+        }}
+      />
     </div>
   );
 }

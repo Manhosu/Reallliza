@@ -38,6 +38,7 @@ const CADASTROS_CONSULTAVEIS = new Set([
   "schedules", "warranties", "quality_evaluations",
   "service_proposals", "professional_ratings", "checklist_templates",
   "tool_requests", "tool_maintenance",
+  "company_signup_requests", "homologation_requests",
 ]);
 
 export async function GET(request: NextRequest) {
