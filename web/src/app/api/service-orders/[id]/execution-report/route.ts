@@ -324,24 +324,34 @@ export async function GET(
     const contentW = pageW - marginX * 2;
 
     // ---------- Header ----------
-    const headerH = 118;
+    // Larguras calculadas ANTES de desenhar o título — ele precisa saber
+    // onde o badge/caixa de verificação começam pra não ficar embaixo
+    // deles (pdfkit desenha por cima de quem veio antes, sem colisão).
+    const headerH = 140;
     doc.rect(0, 0, pageW, headerH).fill(BLACK);
+
+    const verBoxW = 210;
+    const verBoxX = pageW - marginX - verBoxW;
+    const badgeW = 108;
+    const badgeGap = 8;
+    const badgeX = verBoxX - badgeGap - badgeW;
+    const titleW = badgeX - marginX - 12;
 
     const logoPath = findLogoPath();
     const logoX = marginX;
     const logoY = 14;
     if (logoPath) {
       try {
-        doc.image(logoPath, logoX, logoY, { height: 22 });
+        doc.image(logoPath, logoX, logoY, { height: 20 });
       } catch {
         /* fallback abaixo */
       }
     }
     doc
-      .fontSize(14)
+      .fontSize(13)
       .font("Helvetica-Bold")
       .fillColor(GOLD)
-      .text("REALIZA", logoX, logoY + (logoPath ? 26 : 0), { continued: false });
+      .text("REALIZA", logoX, logoY + (logoPath ? 24 : 0), { continued: false });
     doc
       .fontSize(6)
       .font("Helvetica")
@@ -349,21 +359,17 @@ export async function GET(
       .text("Mais controle. Mais qualidade.", logoX, doc.y + 1);
 
     doc
-      .fontSize(15)
+      .fontSize(13)
       .font("Helvetica-Bold")
       .fillColor(WHITE)
-      .text("RELATÓRIO TÉCNICO DE EXECUÇÃO", logoX, 74, { width: 300 });
+      .text("RELATÓRIO TÉCNICO DE EXECUÇÃO", logoX, doc.y + 12, { width: titleW });
     doc
-      .fontSize(15)
+      .fontSize(13)
       .font("Helvetica-Bold")
       .fillColor(GOLD)
-      .text("E TERMO DE ", logoX, doc.y + 2, { continued: true, width: 300 })
-      .fillColor(GOLD)
-      .text("GARANTIA", { continued: false });
+      .text("E TERMO DE GARANTIA", logoX, doc.y + 2, { width: titleW });
 
     // Badge de garantia (canto superior)
-    const badgeW = 108;
-    const badgeX = pageW - marginX - badgeW - 220;
     doc.roundedRect(badgeX, 14, badgeW, 88, 6).fill(GOLD_DARK);
     doc
       .fontSize(7.5)
@@ -383,8 +389,6 @@ export async function GET(
       .text("MESES", badgeX, 82, { width: badgeW, align: "center" });
 
     // Caixa de verificação
-    const verBoxW = 210;
-    const verBoxX = pageW - marginX - verBoxW;
     doc.roundedRect(verBoxX, 14, verBoxW, 92, 4).fill("#1C1C1E");
     doc
       .fontSize(7)
