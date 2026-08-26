@@ -1410,6 +1410,37 @@ export default function OsDetailPage() {
             </Button>
           )}
 
+          {/* Termo de Garantia da Execução — pedido da Jessica 26/08, só faz
+              sentido pra OS já concluída (é o que o documento atesta). */}
+          {!isPartner && order.status === OsStatus.COMPLETED && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  const token = (await import("@/lib/api/client")).getAccessToken;
+                  const accessToken = await token();
+                  const res = await fetch(`/api/service-orders/${id}/execution-report`, {
+                    headers: { Authorization: `Bearer ${accessToken}` },
+                  });
+                  if (!res.ok) throw new Error("Erro ao gerar termo de garantia");
+                  const blob = await res.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `OS_${order.order_number || id}_termo_garantia.pdf`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch {
+                  toast.error("Erro ao gerar Termo de Garantia");
+                }
+              }}
+            >
+              <Download className="h-4 w-4" />
+              Termo de Garantia
+            </Button>
+          )}
+
           {/* Approve button - visible only when completed and user is admin */}
           {order.status === OsStatus.COMPLETED && user?.role === UserRole.ADMIN && (
             <Button
