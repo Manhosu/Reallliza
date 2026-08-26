@@ -189,7 +189,7 @@ export async function PATCH(
     const { data: atual } = await supabase
       .from("feed_campaigns")
       .select(
-        "id, status, name, sponsor_id, payment_status, approval_status, coverage_type, coverage_scope, coverage_value, duration_days"
+        "id, status, name, sponsor_id, payment_status, approval_status, coverage_type, coverage_scope, coverage_value, duration_days, total_price_cents"
       )
       .eq("id", id)
       .maybeSingle();
@@ -273,6 +273,22 @@ export async function PATCH(
       mudancas.total_price_cents = preco.total_cents;
       mudancas.pricing_rule_id = preco.pricing_rule_id;
       mudancas.budget_cents = preco.total_cents;
+
+      // Karol 26/08: mudou a duração depois de já ter gerado o PIX, e o
+      // copia-e-cola continuou cobrando o valor antigo — o preço recalculava
+      // certinho aqui, mas o PIX já cacheado (pix/route.ts) nunca era
+      // invalidado, só expirava sozinho depois de ~3 dias. Zera o cache
+      // sempre que o preço realmente muda, forçando gerar um PIX novo pro
+      // valor certo na próxima vez que a tela pedir.
+      if (preco.total_cents !== atual.total_price_cents) {
+        mudancas.pix_asaas_id = null;
+        mudancas.pix_checkout_url = null;
+        mudancas.pix_qr_code_base64 = null;
+        mudancas.pix_copia_cola = null;
+        mudancas.pix_expires_at = null;
+        mudancas.pix_generated_at = null;
+        mudancas.pix_generated_for_cents = null;
+      }
     }
 
     if (Object.keys(mudancas).length === 0) throw new AuthError(400, "Nada para alterar");

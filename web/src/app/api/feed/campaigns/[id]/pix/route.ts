@@ -37,7 +37,7 @@ export async function POST(
     const { data: campanha, error } = await supabase
       .from("feed_campaigns")
       .select(
-        "id, sponsor_id, name, total_price_cents, payment_status, pix_asaas_id, pix_checkout_url, pix_qr_code_base64, pix_copia_cola, pix_expires_at"
+        "id, sponsor_id, name, total_price_cents, payment_status, pix_asaas_id, pix_checkout_url, pix_qr_code_base64, pix_copia_cola, pix_expires_at, pix_generated_for_cents"
       )
       .eq("id", id)
       .maybeSingle();
@@ -125,10 +125,17 @@ export async function POST(
 
     // Reaproveita a cobrança já gerada enquanto ela ainda vale — evita abrir
     // uma cobrança nova na Asaas a cada vez que a pessoa recarrega a tela.
+    // Karol 26/08: mudou a duração da campanha DEPOIS do primeiro PIX já
+    // gerado, e o copia-e-cola continuou cobrando o valor antigo (o PATCH
+    // da campanha recalcula total_price_cents certinho, mas nunca invalida
+    // o PIX já cacheado — só o tempo fazia isso, e o PIX vale 3 dias). Além
+    // do PATCH agora limpar o cache (ver rota da campanha), essa comparação
+    // aqui é a segunda camada: só reaproveita se foi gerado pro preço atual.
     const jaTemPixValido =
       campanha.pix_asaas_id &&
       campanha.pix_expires_at &&
-      new Date(campanha.pix_expires_at).getTime() > Date.now();
+      new Date(campanha.pix_expires_at).getTime() > Date.now() &&
+      campanha.pix_generated_for_cents === campanha.total_price_cents;
 
     if (jaTemPixValido) {
       return jsonResponse({
@@ -211,6 +218,7 @@ export async function POST(
         pix_copia_cola: charge.copiaCola,
         pix_expires_at: charge.expiraEm,
         pix_generated_at: new Date().toISOString(),
+        pix_generated_for_cents: campanha.total_price_cents,
       })
       .eq("id", id);
 
