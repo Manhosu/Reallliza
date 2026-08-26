@@ -70,6 +70,7 @@ export enum NotificationType {
   OS_CANCELLED = "os_cancelled",
   SCHEDULE_REMINDER = "schedule_reminder",
   TOOL_CUSTODY = "tool_custody",
+  MESSAGE_RECEIVED = "message_received",
   SYSTEM = "system",
 }
 

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { canTechnicianAccessOs } from "@/lib/api-helpers/team-scope";
 
 /**
  * GET /api/service-orders/[id]/steps/report
@@ -28,7 +29,7 @@ export async function GET(
     const { data: order, error: orderErr } = await supabase
       .from("service_orders")
       .select(
-        "id, order_number, title, status, technician_id, partner_id, started_at, completed_at"
+        "id, order_number, title, status, technician_id, team_id, partner_id, started_at, completed_at"
       )
       .eq("id", id)
       .single();
@@ -47,7 +48,8 @@ export async function GET(
           .maybeSingle();
         partnerOwnId = pd?.id ?? null;
       }
-      const okAsTech = order.technician_id === user.id;
+      const okAsTech =
+        user.role === "technician" && (await canTechnicianAccessOs(supabase, user.id, order));
       const okAsPartner =
         !!partnerOwnId && order.partner_id === partnerOwnId;
       if (!okAsTech && !okAsPartner) {

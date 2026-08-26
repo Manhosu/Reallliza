@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { canTechnicianAccessOs } from "@/lib/api-helpers/team-scope";
 
 /**
  * POST /api/service-orders/[id]/steps/[stepId]/start
@@ -23,7 +24,7 @@ export async function POST(
 
     const { data: order } = await supabase
       .from("service_orders")
-      .select("id, technician_id, partner_id, status")
+      .select("id, technician_id, team_id, partner_id, status")
       .eq("id", id)
       .single();
 
@@ -39,7 +40,8 @@ export async function POST(
           .maybeSingle();
         partnerOwnId = pd?.id ?? null;
       }
-      const okAsTech = order.technician_id === user.id;
+      const okAsTech =
+        user.role === "technician" && (await canTechnicianAccessOs(supabase, user.id, order));
       const okAsPartner =
         !!partnerOwnId && order.partner_id === partnerOwnId;
       if (!okAsTech && !okAsPartner) {

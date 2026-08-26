@@ -5,6 +5,7 @@ import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { redactItemsForRole } from "@/lib/api-helpers/redact";
 import { isUserHomologado } from "@/lib/api-helpers/user-context";
+import { canTechnicianAccessOs } from "@/lib/api-helpers/team-scope";
 
 /**
  * GET /api/service-orders/[id]/items
@@ -24,7 +25,7 @@ export async function GET(
     // Garante que a OS existe e o usuario tem permissao para ler
     const { data: order, error: orderErr } = await supabase
       .from("service_orders")
-      .select("id, technician_id, partner_id")
+      .select("id, technician_id, team_id, partner_id")
       .eq("id", id)
       .single();
 
@@ -32,7 +33,7 @@ export async function GET(
       throw new AuthError(404, `Service order with ID ${id} not found`);
     }
 
-    if (user.role === "technician" && order.technician_id !== user.id) {
+    if (user.role === "technician" && !(await canTechnicianAccessOs(supabase, user.id, order))) {
       throw new AuthError(403, "You do not have permission to view items for this service order");
     }
 

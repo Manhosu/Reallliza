@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { canTechnicianAccessOs } from "@/lib/api-helpers/team-scope";
 
 const GPS_ARRIVAL_RADIUS_METERS = 300;
 
@@ -68,7 +69,7 @@ export async function PATCH(
     const { data: order, error: findError } = await supabase
       .from("service_orders")
       .select(
-        "id, status, order_number, technician_id, partner_id, arrived_at, geo_lat, geo_lng"
+        "id, status, order_number, technician_id, team_id, partner_id, arrived_at, geo_lat, geo_lng"
       )
       .eq("id", id)
       .single();
@@ -77,9 +78,11 @@ export async function PATCH(
       throw new AuthError(404, `Service order with ID ${id} not found`);
     }
 
-    // Permissao: tecnico OU parceiro que aceitou a OS (broadcast/direta).
-    // Antes so olhava technician_id pra role=technician — parceiro role
-    // aceitando broadcast ficava sem permissao.
+    // Permissao: tecnico (direto ou membro da equipe dona da OS) OU parceiro
+    // que aceitou a OS (broadcast/direta). Antes so' olhava technician_id
+    // pra role=technician — OS auto-atribuida a equipe (technician_id NULL,
+    // so' team_id) barrava qualquer membro do time tentando confirmar
+    // chegada (Jessica 26/08: "não tem a opção de confirmar a chegada").
     if (user.role === "technician" || user.role === "partner") {
       let partnerOwnId: string | null = null;
       if (user.role === "partner") {
@@ -90,7 +93,8 @@ export async function PATCH(
           .maybeSingle();
         partnerOwnId = pd?.id ?? null;
       }
-      const okAsTech = order.technician_id === user.id;
+      const okAsTech =
+        user.role === "technician" && (await canTechnicianAccessOs(supabase, user.id, order));
       const okAsPartner =
         !!partnerOwnId && (order as { partner_id?: string | null }).partner_id === partnerOwnId;
       if (!okAsTech && !okAsPartner) {

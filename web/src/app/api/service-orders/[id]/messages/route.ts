@@ -5,6 +5,7 @@ import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { dispatchTechMessageToGarantias } from "@/lib/api-helpers/dispatch-message";
 import { createNotification } from "@/lib/api-helpers/notifications";
+import { canTechnicianAccessOs, getTeamMemberIds } from "@/lib/api-helpers/team-scope";
 
 /**
  * Mapeia o role do usuário logado pro `sender_role` da mensagem.
@@ -18,7 +19,10 @@ function senderRoleFromUserRole(role: string): "TECNICO" | "OPERADOR" | "PARTNER
 
 /**
  * Resolve a OS + checa permissão.
- * Reusa o padrão de `/api/service-orders/[id]/route.ts` (linhas 39-55).
+ * Mesmo padrão de `/api/service-orders/[id]/route.ts` — inclui escopo de
+ * equipe (Jessica 26/08: chat dava 403 pro técnico membro de equipe numa OS
+ * auto-atribuída, mesmo bug já corrigido ali em 10/08 mas nunca propagado
+ * pra esta rota, que copiou a versão antiga do check).
  */
 async function loadAuthorizedOrder(
   request: NextRequest,
@@ -30,7 +34,7 @@ async function loadAuthorizedOrder(
   const { data: order, error } = await supabase
     .from("service_orders")
     .select(
-      "id, order_number, technician_id, partner_id, created_by, status, title, external_callback_url"
+      "id, order_number, technician_id, team_id, partner_id, created_by, status, title, external_callback_url"
     )
     .eq("id", orderId)
     .single();
@@ -39,7 +43,7 @@ async function loadAuthorizedOrder(
     throw new AuthError(404, "Service order not found");
   }
 
-  if (user.role === "technician" && order.technician_id !== user.id) {
+  if (user.role === "technician" && !(await canTechnicianAccessOs(supabase, user.id, order))) {
     throw new AuthError(403, "You do not have permission to view this service order");
   }
 
@@ -190,12 +194,22 @@ export async function POST(
 
     // Notifica o "outro lado" da conversa na Execução (com push + priority).
     // Awaitamos pra garantir o INSERT em `notifications` antes do return.
-    const recipientId =
-      user.id === order.technician_id
-        ? order.created_by // técnico mandou → operador/admin que criou recebe
-        : order.technician_id; // operador/parceiro mandou → técnico recebe
+    // OS auto-atribuída a equipe (technician_id NULL, só team_id) não tem um
+    // único "técnico" pra notificar — manda pra todo mundo do time (menos
+    // quem enviou), senão a mensagem do operador nunca chega em ninguém.
+    let recipientIds: string[];
+    if (senderRole === "TECNICO") {
+      recipientIds = order.created_by ? [order.created_by] : [];
+    } else if (order.technician_id) {
+      recipientIds = [order.technician_id];
+    } else if (order.team_id) {
+      recipientIds = await getTeamMemberIds(supabase, order.team_id);
+    } else {
+      recipientIds = [];
+    }
 
-    if (recipientId && recipientId !== user.id) {
+    for (const recipientId of new Set(recipientIds)) {
+      if (!recipientId || recipientId === user.id) continue;
       try {
         await createNotification(
           recipientId,

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare,
@@ -291,44 +292,48 @@ function ChatListItem({
 // ================================================================
 
 export default function ChatsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ChatsPageInner />
+    </Suspense>
+  );
+}
+
+function ChatsPageInner() {
+  const searchParams = useSearchParams();
+  // Notificação de mensagem manda pra cá com ?os=<id> — antes não tinha
+  // como chegar numa conversa específica, só na lista (Jessica 26/08).
+  const targetOsId = searchParams.get("os");
   const [chats, setChats] = useState<OsWithLastMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<OsWithLastMessage | null>(null);
+  const appliedTargetRef = useRef<string | null>(null);
 
   const loadChats = useCallback(async () => {
     try {
       const res = await messagesApi.listActiveChats({ limit: 50 });
-      const raw = res.data as unknown[];
-      // Normalise from backend shape { service_order_id, service_order: {...} }
-      const normalized: OsWithLastMessage[] = raw.map((item: unknown) => {
-        const r = item as {
-          service_order_id: string;
-          service_order: { id: string; order_number: number; title: string; status: string; technician?: { id: string; full_name: string } };
-        };
-        return {
-          id: r.service_order?.id ?? r.service_order_id,
-          order_number: r.service_order?.order_number ?? 0,
-          title: r.service_order?.title ?? "—",
-          status: r.service_order?.status ?? "open",
-          technician_id: r.service_order?.technician?.id ?? null,
-          technician_name: r.service_order?.technician?.full_name,
-        };
-      });
-      // Deduplicate
-      const seen = new Set<string>();
-      const deduped = normalized.filter((c) => {
-        if (seen.has(c.id)) return false;
-        seen.add(c.id);
-        return true;
-      });
+      // A rota já devolve o formato certo (OsWithLastMessage, achatado) —
+      // Jessica 26/08: a re-normalização aqui pressupunha um formato
+      // aninhado {service_order_id, service_order:{...}} que a API nunca
+      // devolveu, então toda conversa virava id=undefined e "Selecione uma
+      // conversa" quebrava com 404 ao tentar abrir.
+      const deduped: OsWithLastMessage[] = Array.isArray(res.data) ? res.data : [];
       setChats(deduped);
+      if (targetOsId && appliedTargetRef.current !== targetOsId) {
+        const target = deduped.find((c) => c.id === targetOsId);
+        if (target) {
+          appliedTargetRef.current = targetOsId;
+          setSelected(target);
+          return;
+        }
+      }
       if (!selected && deduped.length > 0) setSelected(deduped[0]);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, [selected]);
+  }, [selected, targetOsId]);
 
   useEffect(() => {
     loadChats();

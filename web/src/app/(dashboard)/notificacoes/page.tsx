@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
@@ -12,6 +13,7 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  MessageSquare,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,6 +39,7 @@ const NOTIFICATION_ICONS: Record<NotificationType, React.ReactNode> = {
   [NotificationType.OS_CANCELLED]: <AlertCircle className="h-5 w-5" />,
   [NotificationType.SCHEDULE_REMINDER]: <Calendar className="h-5 w-5" />,
   [NotificationType.TOOL_CUSTODY]: <Wrench className="h-5 w-5" />,
+  [NotificationType.MESSAGE_RECEIVED]: <MessageSquare className="h-5 w-5" />,
   [NotificationType.SYSTEM]: <Bell className="h-5 w-5" />,
 };
 
@@ -48,8 +51,21 @@ const NOTIFICATION_ICON_COLORS: Record<NotificationType, string> = {
   [NotificationType.OS_CANCELLED]: "bg-red-500/15 text-red-500",
   [NotificationType.SCHEDULE_REMINDER]: "bg-orange-500/15 text-orange-500",
   [NotificationType.TOOL_CUSTODY]: "bg-cyan-500/15 text-cyan-500",
+  [NotificationType.MESSAGE_RECEIVED]: "bg-indigo-500/15 text-indigo-500",
   [NotificationType.SYSTEM]: "bg-zinc-500/15 text-zinc-500",
 };
+
+/** Mesma regra do sino no layout — mensagem de chat abre a conversa, OS
+ * abre o detalhe, o resto cai na própria lista (comportamento de sempre). */
+function notificationHref(notification: Notification): string | null {
+  const osId =
+    typeof notification.data?.service_order_id === "string"
+      ? notification.data.service_order_id
+      : null;
+  if (!osId) return null;
+  if (notification.type === NotificationType.MESSAGE_RECEIVED) return `/chats?os=${osId}`;
+  return `/os/${osId}`;
+}
 
 // ============================================================
 // Skeleton
@@ -77,6 +93,7 @@ function NotificationsSkeleton() {
 // ============================================================
 
 export default function NotificacoesPage() {
+  const router = useRouter();
   const [markingAll, setMarkingAll] = useState(false);
 
   const fetcher = useCallback((page: number, limit: number) => {
@@ -200,6 +217,8 @@ export default function NotificacoesPage() {
                   )}
                   onClick={() => {
                     if (isUnread) handleMarkAsRead(notification.id);
+                    const href = notificationHref(notification);
+                    if (href) router.push(href);
                   }}
                 >
                   <div className="flex items-start gap-4 p-4">

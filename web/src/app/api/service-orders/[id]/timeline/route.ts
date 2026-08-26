@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { canTechnicianAccessOs } from "@/lib/api-helpers/team-scope";
 
 /**
  * GET /api/service-orders/[id]/timeline
@@ -21,7 +22,7 @@ export async function GET(
     // Verify order exists
     const { data: order, error: findError } = await supabase
       .from("service_orders")
-      .select("id, technician_id, partner_id")
+      .select("id, technician_id, team_id, partner_id")
       .eq("id", id)
       .single();
 
@@ -29,8 +30,9 @@ export async function GET(
       throw new AuthError(404, `Service order with ID ${id} not found`);
     }
 
-    // Role-based access: technicians can only see their own orders
-    if (user.role === "technician" && order.technician_id !== user.id) {
+    // Role-based access: technicians can see orders assigned to them or to
+    // their team (OS auto-atribuída a equipe fica com technician_id NULL).
+    if (user.role === "technician" && !(await canTechnicianAccessOs(supabase, user.id, order))) {
       throw new AuthError(403, "You do not have permission to view this timeline");
     }
 

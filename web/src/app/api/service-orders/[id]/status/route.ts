@@ -7,6 +7,7 @@ import { createNotification } from "@/lib/api-helpers/notifications";
 import { dispatchWebhook } from "@/lib/api-helpers/webhook-dispatcher";
 import { provisionSteps } from "../provision-steps/route";
 import { recalculateTechnicianScore } from "@/lib/evaluation/recalculate";
+import { canTechnicianAccessOs, getTeamMemberIds } from "@/lib/api-helpers/team-scope";
 
 /**
  * Valid status transitions state machine.
@@ -67,7 +68,7 @@ export async function PATCH(
     // Get current order
     const { data: order, error: findError } = await supabase
       .from("service_orders")
-      .select("id, status, order_number, title, started_at, technician_id, partner_id, external_callback_url, external_system, external_id, step_template_group_id")
+      .select("id, status, order_number, title, started_at, technician_id, team_id, partner_id, external_callback_url, external_system, external_id, step_template_group_id")
       .eq("id", id)
       .single();
 
@@ -97,7 +98,8 @@ export async function PATCH(
           .maybeSingle();
         partnerOwnId = pd?.id ?? null;
       }
-      const okAsTech = order.technician_id === user.id;
+      const okAsTech =
+        user.role === "technician" && (await canTechnicianAccessOs(supabase, user.id, order));
       const okAsPartner =
         !!partnerOwnId && order.partner_id === partnerOwnId;
       if (!okAsTech && !okAsPartner) {
@@ -287,11 +289,19 @@ export async function PATCH(
           ? "os_cancelled"
           : "os_status_changed";
 
-    // Notify technician about status change
-    if (order.technician_id && order.technician_id !== user.id) {
+    // Notify technician(s) about status change. OS auto-atribuída a equipe
+    // (technician_id NULL, só team_id) não tinha ninguém pra notificar aqui.
+    const statusRecipientIds = order.technician_id
+      ? [order.technician_id]
+      : order.team_id
+        ? await getTeamMemberIds(supabase, order.team_id)
+        : [];
+
+    for (const recipientId of new Set(statusRecipientIds)) {
+      if (!recipientId || recipientId === user.id) continue;
       try {
         await createNotification(
-          order.technician_id,
+          recipientId,
           `OS #${displayNumber} - Status alterado`,
           `Status alterado de ${currentStatus} para ${newStatus}`,
           statusType,

@@ -50,7 +50,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { UserRole, OsStatus, type Notification } from "@/lib/types";
+import { UserRole, OsStatus, NotificationType, type Notification } from "@/lib/types";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { notificationsApi, serviceOrdersApi } from "@/lib/api";
@@ -379,6 +379,22 @@ function getBreadcrumbLabel(segment: string): string {
   if (breadcrumbLabels[segment]) return breadcrumbLabels[segment];
   if (UUID_REGEX.test(segment)) return "Detalhes";
   return segment;
+}
+
+/**
+ * Pra onde clicar numa notificação leva. Antes, toda notificação (sino ou
+ * lista) caía sempre em `/notificacoes`, que também não linkava pra lugar
+ * nenhum — mensagem de chat avisava mas não tinha como abrir a conversa
+ * (Jessica 26/08).
+ */
+function notificationHref(notif: Notification): string {
+  const osId =
+    typeof notif.data?.service_order_id === "string"
+      ? notif.data.service_order_id
+      : null;
+  if (!osId) return "/notificacoes";
+  if (notif.type === NotificationType.MESSAGE_RECEIVED) return `/chats?os=${osId}`;
+  return `/os/${osId}`;
 }
 
 // ============================================================
@@ -945,7 +961,7 @@ export default function DashboardLayout({
                         notifications.map((notif) => (
                           <Link
                             key={notif.id}
-                            href="/notificacoes"
+                            href={notificationHref(notif)}
                             onClick={() => setShowNotifDropdown(false)}
                             className={cn(
                               "flex gap-3 border-b px-4 py-3 transition-colors last:border-b-0 hover:bg-accent/50",
