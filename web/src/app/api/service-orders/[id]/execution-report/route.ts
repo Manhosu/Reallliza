@@ -246,6 +246,29 @@ export async function GET(
       else if (p.type === "after") bucket.after.push(p);
     }
 
+    // pdfkit não busca URL remota em doc.image() — só path local, Buffer ou
+    // data-URI. Sem isso toda foto real (Supabase Storage) falharia
+    // silenciosamente e caía sempre no placeholder tracejado.
+    const imageBuffers = new Map<string, Buffer>();
+    const urlsToFetch = new Set<string>();
+    for (const bucket of photosByStep.values()) {
+      bucket.before.slice(0, 4).forEach((p) => urlsToFetch.add(p.url));
+      bucket.after.slice(0, 4).forEach((p) => urlsToFetch.add(p.url));
+    }
+    if (signaturePhoto) urlsToFetch.add(signaturePhoto.url);
+    await Promise.all(
+      Array.from(urlsToFetch).map(async (url) => {
+        try {
+          const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+          if (!res.ok) return;
+          const buf = Buffer.from(await res.arrayBuffer());
+          imageBuffers.set(url, buf);
+        } catch {
+          /* segue sem essa foto — a tela desenha o placeholder */
+        }
+      })
+    );
+
     const totalStepPhotos = photos.filter((p) => p.type === "before" || p.type === "after").length;
     const stepsCompleted = steps.filter((s) => s.status === "completed").length;
     const stepsTotal = steps.length;
@@ -590,8 +613,10 @@ export async function GET(
         const thumbY = rowY + 10;
         const thumbSize = 26;
         list.slice(0, 4).forEach((p, i) => {
+          const buf = imageBuffers.get(p.url);
           try {
-            doc.image(p.url, colX + i * (thumbSize + 3), thumbY, { width: thumbSize, height: thumbSize, fit: [thumbSize, thumbSize] });
+            if (!buf) throw new Error("no buffer");
+            doc.image(buf, colX + i * (thumbSize + 3), thumbY, { width: thumbSize, height: thumbSize, fit: [thumbSize, thumbSize] });
           } catch {
             doc.roundedRect(colX + i * (thumbSize + 3), thumbY, thumbSize, thumbSize, 2).lineWidth(0.5).stroke(ZINC_300);
           }
@@ -737,7 +762,7 @@ export async function GET(
     const sigGap = 16;
     const sigW = (contentW - sigGap) / 2;
 
-    function signatureBlock(x: number, title: string, name: string, role: string, doc_: string, dateStr: string, image: Buffer | string | null) {
+    function signatureBlock(x: number, title: string, name: string, role: string, doc_: string, dateStr: string, image: Buffer | null) {
       doc.fontSize(7).font("Helvetica-Bold").fillColor(ZINC_600).text(title, x, sigY);
       const boxY = sigY + 12;
       doc.roundedRect(x, boxY, sigW, 46, 3).lineWidth(0.7).stroke(ZINC_300);
@@ -781,7 +806,7 @@ export async function GET(
       "Cliente",
       safe(order.client_document, "-"),
       fmtDate(order.completed_at),
-      signaturePhoto?.url ?? null
+      signaturePhoto ? (imageBuffers.get(signaturePhoto.url) ?? null) : null
     );
     doc.y = Math.max(sig1End, sig2End) + 10;
 
