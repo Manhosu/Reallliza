@@ -329,35 +329,35 @@ export async function GET(
 
     const logoPath = findLogoPath();
     const logoX = marginX;
-    const logoY = 22;
+    const logoY = 14;
     if (logoPath) {
       try {
-        doc.image(logoPath, logoX, logoY, { height: 34 });
+        doc.image(logoPath, logoX, logoY, { height: 22 });
       } catch {
         /* fallback abaixo */
       }
     }
     doc
-      .fontSize(20)
+      .fontSize(14)
       .font("Helvetica-Bold")
       .fillColor(GOLD)
-      .text("REALIZA", logoX, logoY + (logoPath ? 40 : 0), { continued: false });
+      .text("REALIZA", logoX, logoY + (logoPath ? 26 : 0), { continued: false });
     doc
-      .fontSize(6.5)
+      .fontSize(6)
       .font("Helvetica")
       .fillColor(ZINC_400)
       .text("Mais controle. Mais qualidade.", logoX, doc.y + 1);
 
     doc
-      .fontSize(16)
+      .fontSize(15)
       .font("Helvetica-Bold")
       .fillColor(WHITE)
-      .text("RELATÓRIO TÉCNICO DE EXECUÇÃO", logoX, 68, { width: 300 });
+      .text("RELATÓRIO TÉCNICO DE EXECUÇÃO", logoX, 74, { width: 300 });
     doc
-      .fontSize(16)
+      .fontSize(15)
       .font("Helvetica-Bold")
       .fillColor(GOLD)
-      .text("E TERMO DE ", logoX, doc.y + 1, { continued: true, width: 300 })
+      .text("E TERMO DE ", logoX, doc.y + 2, { continued: true, width: 300 })
       .fillColor(GOLD)
       .text("GARANTIA", { continued: false });
 
@@ -437,7 +437,7 @@ export async function GET(
       const x = marginX + i * metaColW;
       doc.fontSize(7).font("Helvetica").fillColor(ZINC_500).text(m.label, x, metaY);
       if (m.label === "Status") {
-        doc.fontSize(9.5).font("Helvetica-Bold").fillColor(GREEN).text(`✓ ${m.value}`, x, metaY + 11);
+        doc.fontSize(9.5).font("Helvetica-Bold").fillColor(GREEN).text(m.value, x, metaY + 11);
       } else {
         doc.fontSize(9.5).font("Helvetica-Bold").fillColor(INK).text(m.value, x, metaY + 11);
       }
@@ -666,7 +666,7 @@ export async function GET(
       );
     doc.y += 10;
     conclusaoBullets.forEach((b) => {
-      doc.fontSize(7.3).font("Helvetica-Bold").fillColor(GREEN).text("✓  ", marginX, doc.y, { continued: true, width: contentW });
+      doc.fontSize(7.3).font("Helvetica-Bold").fillColor(GREEN).text("•  ", marginX, doc.y, { continued: true, width: contentW });
       doc.font("Helvetica").fillColor(ZINC_700).text(b, { width: contentW - 14 });
       doc.y += 3;
     });
