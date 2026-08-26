@@ -293,8 +293,13 @@ export async function convertQuoteToServiceOrder(
     }
   }
 
-  // 5.5. Jessica 27/07 D2+D3: se auto-assigned, dispara category automation
-  // ja com status='assigned' (checklist + steps criados sem tecnico individual).
+  // 5.5. Dispara category automation (checklist + etapas de execução por
+  // categoria) sempre que a conversão termina — não só quando cai
+  // 'assigned'. Jessica 26/08: ela precisava editar toda OS manualmente
+  // pra anexar o template de etapas porque isso só rodava no caminho de
+  // auto-atribuição; homologados e awaiting_assignment nunca disparavam.
+  // applyCategoryAutomation não depende de status/atribuição — só lê
+  // service_order_items (já populado acima) e é idempotente.
   // Re-le status pra respeitar eventual downgrade acima.
   const { data: latestOs } = await supabase
     .from("service_orders")
@@ -307,17 +312,15 @@ export async function convertQuoteToServiceOrder(
     (latestOs as { status?: string } | null)?.status ?? initialStatus;
   const finalTeamId = finalStatus === "assigned" ? autoAssignedTeamId : null;
 
-  if (finalStatus === "assigned") {
-    try {
-      const { applyCategoryAutomation } = await import(
-        "@/lib/service-orders/category-automation"
-      );
-      await applyCategoryAutomation(supabase, os.id);
-    } catch (err) {
-      console.warn(
-        `convertQuote: category automation on auto-assign failed: ${err instanceof Error ? err.message : err}`
-      );
-    }
+  try {
+    const { applyCategoryAutomation } = await import(
+      "@/lib/service-orders/category-automation"
+    );
+    await applyCategoryAutomation(supabase, os.id);
+  } catch (err) {
+    console.warn(
+      `convertQuote: category automation failed: ${err instanceof Error ? err.message : err}`
+    );
   }
 
   // 6. Notifica admins quando modalidade reallliza cai na fila de designacao

@@ -25,7 +25,12 @@ export interface CreateServiceCategoryPayload {
   is_active?: boolean;
 }
 
-export type UpdateServiceCategoryPayload = Partial<CreateServiceCategoryPayload>;
+export type UpdateServiceCategoryPayload = Partial<CreateServiceCategoryPayload> & {
+  specialty_id?: string | null;
+  checklist_template_id?: string | null;
+  step_template_group_id?: string | null;
+  required_course_ids?: string[];
+};
 
 export const serviceCategoriesApi = {
   list(params?: { include_inactive?: boolean }) {

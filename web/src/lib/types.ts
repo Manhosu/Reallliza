@@ -173,6 +173,9 @@ export interface ServiceOrder {
   is_rework: boolean | null;
   rework_specialty_id: string | null;
   rework_reason: string | null;
+  /** Anexos copiados do orçamento na conversão pra OS (lista de material / projeto). */
+  material_files: Array<{ url: string; name: string; storage_path?: string }> | null;
+  project_files: Array<{ url: string; name: string; storage_path?: string }> | null;
   created_at: string;
   updated_at: string;
 }

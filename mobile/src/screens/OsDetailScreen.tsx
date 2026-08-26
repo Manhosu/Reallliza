@@ -1100,6 +1100,50 @@ export function OsDetailScreen() {
         )}
       </View>
 
+      {/* Anexos do Orçamento — lista de material + projeto/planta baixa,
+          copiados do orçamento na conversão pra OS (Jessica 26/08: sumiam
+          no app do técnico porque essa tela só lia de /os-projects, uma
+          tabela diferente e sem relação com esses dois anexos). */}
+      {((order.material_files?.length ?? 0) > 0 || (order.project_files?.length ?? 0) > 0) && (
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderLeft}>
+              <Ionicons name="folder-open-outline" size={22} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Anexos do Orçamento</Text>
+            </View>
+          </View>
+          <View>
+            {[
+              ...(order.material_files ?? []).map((f) => ({ ...f, kind: 'Lista de material' })),
+              ...(order.project_files ?? []).map((f) => ({ ...f, kind: 'Projeto' })),
+            ].map((f, idx) => {
+              const isPdf = f.name?.toLowerCase().endsWith('.pdf');
+              return (
+                <TouchableOpacity
+                  key={`${f.url}-${idx}`}
+                  style={styles.projectRow}
+                  activeOpacity={0.7}
+                  onPress={() => Linking.openURL(f.url)}
+                >
+                  <Ionicons
+                    name={isPdf ? 'document-text' : 'image'}
+                    size={20}
+                    color={colors.primary}
+                  />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.projectName} numberOfLines={1}>
+                      {f.name ?? 'Arquivo'}
+                    </Text>
+                    <Text style={styles.projectMeta}>{f.kind}</Text>
+                  </View>
+                  <Ionicons name="open-outline" size={18} color={colors.textDark} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
       {/* Map Section */}
       <TouchableOpacity
         style={styles.sectionCard}

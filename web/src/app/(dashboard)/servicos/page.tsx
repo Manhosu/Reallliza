@@ -31,6 +31,8 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { serviceCategoriesApi, servicesApi } from "@/lib/api";
+import { stepTemplatesApi } from "@/lib/api/step-templates";
+import type { StepTemplateGroup } from "@/lib/api/step-templates";
 import type { Service, ServiceCategory } from "@/lib/api/services";
 import { HardDeleteDialog, type Dependency } from "@/components/admin/hard-delete-dialog";
 import { apiClient } from "@/lib/api/client";
@@ -394,6 +396,38 @@ function CategoriesPanel({ categories, onChanged }: CategoriesPanelProps) {
   const [editId, setEditId] = useState<string | null>(null);
   const [editNome, setEditNome] = useState("");
 
+  // Templates de etapas pra vincular por categoria — é esse vínculo que faz
+  // a OS já nascer com as etapas certas (Jessica 26/08: "não tem como ir
+  // automaticamente?" — a automação já existia no backend desde julho, só
+  // faltava esse seletor pra alimentá-la; sem ele o campo fica sempre nulo
+  // e ela precisa editar toda OS na mão).
+  const [templates, setTemplates] = useState<StepTemplateGroup[]>([]);
+  const [savingTemplateId, setSavingTemplateId] = useState<string | null>(null);
+
+  useEffect(() => {
+    stepTemplatesApi
+      .list({ include_inactive: false, include_drafts: false })
+      .then(setTemplates)
+      .catch(() => setTemplates([]));
+  }, []);
+
+  async function vincularTemplate(cat: ServiceCategory, stepTemplateGroupId: string) {
+    setSavingTemplateId(cat.id);
+    try {
+      await serviceCategoriesApi.update(cat.id, {
+        step_template_group_id: stepTemplateGroupId || null,
+      });
+      toast.success(
+        stepTemplateGroupId ? "Template vinculado" : "Vínculo removido"
+      );
+      onChanged();
+    } catch (err: unknown) {
+      toast.error(errMsg(err, "Erro ao vincular template"));
+    } finally {
+      setSavingTemplateId(null);
+    }
+  }
+
   async function criar() {
     if (!novoNome.trim()) return;
     setSaving(true);
@@ -539,6 +573,22 @@ function CategoriesPanel({ categories, onChanged }: CategoriesPanelProps) {
                   >
                     {c.name}
                   </button>
+                  <div className="w-44 shrink-0">
+                    <SelectNative
+                      className="h-8 text-xs"
+                      value={c.step_template_group_id ?? ""}
+                      disabled={savingTemplateId === c.id}
+                      onChange={(e) => vincularTemplate(c, e.target.value)}
+                      title="Template de etapas aplicado automaticamente às OS desta categoria"
+                    >
+                      <option value="">Sem template (manual)</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </SelectNative>
+                  </div>
                   <button
                     onClick={() => toggleAtivo(c)}
                     className={cn(
