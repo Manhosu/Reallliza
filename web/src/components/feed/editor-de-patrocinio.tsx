@@ -169,13 +169,22 @@ export function EditorDePatrocinio({
 
   // Gera o PIX assim que o bloco de pagamento aparece — a pessoa não deveria
   // precisar clicar em nada só para ver o QR Code da campanha que acabou de criar.
+  //
+  // Karol 27/08: mudava a duração, clicava Salvar (o preço no banco
+  // atualizava certinho, inclusive já limpando o PIX cacheado no servidor),
+  // mas a tela continuava mostrando o PIX antigo — porque esta trava só
+  // olhava campanha.id, e o id não muda quando o preço muda. Incluir
+  // total_price_cents na chave faz esta tela pedir um PIX novo de verdade
+  // toda vez que o valor salvo mudar, não só na primeira vez que a
+  // campanha aparece.
   useEffect(() => {
     if (!campanha || campanha.payment_status !== "pending") return;
-    if (pixJaPedidoPara.current === campanha.id) return;
-    pixJaPedidoPara.current = campanha.id;
+    const chave = `${campanha.id}:${campanha.total_price_cents}`;
+    if (pixJaPedidoPara.current === chave) return;
+    pixJaPedidoPara.current = chave;
     void gerarPix();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campanha?.id, campanha?.payment_status]);
+  }, [campanha?.id, campanha?.payment_status, campanha?.total_price_cents]);
 
   // Confirmação do PIX é automática (webhook da Asaas) — sem isso, a pessoa
   // só saberia que pagou recarregando a página manualmente.
@@ -334,6 +343,17 @@ export function EditorDePatrocinio({
               <span className="text-muted-foreground">Escolha a abrangência e a duração para ver o valor.</span>
             )}
           </div>
+
+          {/* Karol 27/08: ela mudava a duração, via este preview mudar, mas
+              achava que já valia pro PIX — sem isto não tinha como saber que
+              o QR Code/código ainda era o de antes de editar. */}
+          {campanha && preco && preco.total_cents !== campanha.total_price_cents && (
+            <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              Você mudou a abrangência ou a duração — clique em <strong>Salvar</strong> pra
+              atualizar o valor da cobrança e gerar um PIX novo.
+            </p>
+          )}
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
