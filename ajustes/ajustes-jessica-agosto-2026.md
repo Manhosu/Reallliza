@@ -333,3 +333,37 @@ Agenda (não 3 como uma versão anterior deste documento presumia):
 | `agenda-estado-desejado.png` | Mockup com abas Semana/Quinzena/Mês/Hoje, indicadores de pontos por dia, cards de agendamento coloridos por status, "Ver todos os agendamentos da semana" e "Próximos agendamentos" — **esta é a referência visual completa que a Jéssica aprovou**, o alvo de toda a Seção 3 |
 | `agenda-confirmacao-whatsapp-jessica.png` | Print do WhatsApp dela mesma, encaminhando as duas imagens acima juntas com a frase *"Queremos que fique assim, conforme a essa imagem"* — mantido como prova da aprovação, não traz informação visual nova |
 | `bloqueio-exclusao-ferramenta.png` | Modal "Excluir ferramenta" (registro "Trena - 5 mt") mostrando o bloqueio real: custódia registrada, 4 registros de histórico, 1 pedido vinculado — isto é o **comportamento correto que deve ser preservado** (ver Seção 7), não um bug a corrigir |
+
+---
+
+## 9. Repasse automático de pagamento (Asaas) — permissão de API pendente
+
+- [ ] **Liberar "operações de saque via API" na chave de produção da Asaas.**
+      O código dos dois repasses automáticos (prestador e taxa da
+      Reallliza) já está pronto e testado — ele chama a Asaas pra criar a
+      transferência PIX assim que o pagamento é confirmado. As duas
+      chamadas batem no mesmo erro (`insufficient_permission`): a chave de
+      API da conta Asaas da Reallliza não tem permissão pra iniciar
+      transferências (saques) via API. Enquanto isso não for liberado,
+      tudo fica certinho calculado e registrado no sistema — só a
+      transferência final ainda sai manual (o José faz o PIX na mão, pelo
+      próprio painel da Asaas).
+
+  **Como resolver**: quem administra a conta Asaas da Reallliza (José)
+  precisa abrir um chamado com o suporte da Asaas (chat do painel ou
+  suporte@asaas.com) pedindo a liberação de **"operações de saque via
+  API"** (também chamada de "Transferências via API") pra chave de API em
+  uso em produção. Por mexer com movimentação de dinheiro, a Asaas
+  costuma pedir confirmação de identidade/segurança antes de liberar —
+  não é algo que o Eduardo consiga destravar por código, é uma permissão
+  de conta que só o próprio dono resolve com o suporte deles. Depois de
+  liberada, não precisa de nenhuma mudança no sistema — a próxima
+  transferência automática já sai sozinha.
+
+> *"E lembrando o ponto pendente de antes: as duas transferências
+> (prestador e Reallliza) esbarram na mesma permissão que a Asaas ainda
+> não liberou pra chave de API de vocês ('operações de saque via API').
+> Enquanto isso não for resolvido com a Asaas, tudo fica registrado
+> certinho no sistema, só a transferência final ainda sai manual."*
+> — Jéssica, 27/08/2026, seguido de: *"qual a liberação que esta faltando
+> a Asaas? pode me informar como eu resolvo essa situação?"*
