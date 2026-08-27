@@ -21,6 +21,12 @@ import { createTransfer } from "@/lib/asaas/client";
  *   - Cria Transfer Asaas via PIX pro homologado (se ASAAS_API_KEY +
  *     profiles.pix_key/pix_key_type) — sem isso, fica marcado como liberado
  *     mas com aviso de transferencia manual necessaria
+ *   - José 27/08: cria uma SEGUNDA Transfer, pra taxa administrativa
+ *     (quote.platform_fee_amount), pra chave PIX da própria Reallliza
+ *     (company_settings.payout_pix_key) — antes essa parte só ficava
+ *     implícita no saldo da conta operacional da Asaas. As duas transfers
+ *     são independentes: uma pode ter sucesso e a outra cair pra manual
+ *     sem travar a outra.
  *   - Audit log
  *
  * Body opcional: { reason?: string }
@@ -45,7 +51,7 @@ export async function POST(
     const { data: quote, error: qErr } = await supabase
       .from("quotes")
       .select(
-        "id, modality, service_order_id, payout_amount, custody_held"
+        "id, modality, service_order_id, payout_amount, platform_fee_amount, custody_held"
       )
       .eq("id", id)
       .single();
@@ -175,6 +181,55 @@ export async function POST(
       }
     }
 
+    // Segunda transfer: taxa administrativa da Reallliza pra chave própria
+    // (independente da transfer do prestador acima — uma falhar não afeta a outra).
+    let platformTransferId: string | null = null;
+    let platformTransferError: string | null = null;
+    const platformFeeAmount = Number(quote.platform_fee_amount ?? 0);
+
+    if (platformFeeAmount > 0) {
+      const { data: settings } = await supabase
+        .from("company_settings")
+        .select("payout_pix_key, payout_pix_key_type")
+        .eq("is_singleton", true)
+        .maybeSingle();
+
+      const platformPixKey = (settings as { payout_pix_key?: string | null } | null)
+        ?.payout_pix_key;
+      const platformPixKeyType = (
+        settings as { payout_pix_key_type?: string | null } | null
+      )?.payout_pix_key_type;
+
+      if (platformPixKey && platformPixKeyType) {
+        try {
+          const transfer = await createTransfer({
+            value: platformFeeAmount,
+            pixAddressKey: platformPixKey,
+            pixAddressKeyType: platformPixKeyType as
+              | "CPF"
+              | "CNPJ"
+              | "EMAIL"
+              | "PHONE"
+              | "EVP",
+            externalReference: payment.id,
+            description: `Taxa administrativa OS #${quote.service_order_id?.slice(0, 8)}`,
+          });
+          if (transfer) {
+            platformTransferId = transfer.asaasTransferId;
+          } else {
+            platformTransferError =
+              "Asaas não configurado — taxa administrativa não transferida automaticamente.";
+          }
+        } catch (err) {
+          platformTransferError = err instanceof Error ? err.message : "transfer error";
+          console.error("Asaas platform-fee transfer error:", err);
+        }
+      } else {
+        platformTransferError =
+          "Chave PIX de recebimento da Reallliza não cadastrada (Configurações Globais) — taxa administrativa não transferida automaticamente.";
+      }
+    }
+
     // Marca como released
     const releasedAt = new Date().toISOString();
     await supabase
@@ -185,6 +240,7 @@ export async function POST(
         released_by: user.id,
         release_reason: reason,
         asaas_transfer_id: asaasTransferId,
+        platform_asaas_transfer_id: platformTransferId,
       })
       .eq("id", payment.id);
 
@@ -204,6 +260,9 @@ export async function POST(
         amount: quote.payout_amount,
         asaas_transfer_id: asaasTransferId,
         transfer_error: transferError,
+        platform_fee_amount: platformFeeAmount,
+        platform_asaas_transfer_id: platformTransferId,
+        platform_transfer_error: platformTransferError,
         reason,
       },
     });
@@ -213,6 +272,8 @@ export async function POST(
       payment_id: payment.id,
       asaas_transfer_id: asaasTransferId,
       transfer_warning: transferError,
+      platform_asaas_transfer_id: platformTransferId,
+      platform_transfer_warning: platformTransferError,
     });
   } catch (error) {
     return errorResponse(error);

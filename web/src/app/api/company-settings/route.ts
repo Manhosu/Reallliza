@@ -66,6 +66,19 @@ export async function PATCH(request: NextRequest) {
     if (body.max_service_hours_no_stay !== undefined)
       update.max_service_hours_no_stay = num(body.max_service_hours_no_stay, 10, 0, 240);
 
+    // José 27/08: chave PIX de recebimento da própria Reallliza — pra onde
+    // release-payout transfere a taxa administrativa, junto com o repasse
+    // do prestador, em vez dela ficar só implícita no saldo da Asaas.
+    const VALID_PIX_KEY_TYPES = ["CPF", "CNPJ", "EMAIL", "PHONE", "EVP"];
+    if (body.payout_pix_key !== undefined)
+      update.payout_pix_key = body.payout_pix_key ? String(body.payout_pix_key).trim().slice(0, 200) : null;
+    if (body.payout_pix_key_type !== undefined) {
+      update.payout_pix_key_type =
+        body.payout_pix_key_type && VALID_PIX_KEY_TYPES.includes(body.payout_pix_key_type)
+          ? body.payout_pix_key_type
+          : null;
+    }
+
     if (Object.keys(update).length === 0) {
       throw new AuthError(400, "Nada para atualizar");
     }

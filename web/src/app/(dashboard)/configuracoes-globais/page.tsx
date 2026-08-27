@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
@@ -37,7 +38,17 @@ interface CompanySettings {
   business_hour_end: string;
   coverage_radius_km: number;
   max_service_hours_no_stay: number;
+  payout_pix_key: string | null;
+  payout_pix_key_type: "CPF" | "CNPJ" | "EMAIL" | "PHONE" | "EVP" | null;
 }
+
+const PIX_KEY_TYPE_LABELS: Record<string, string> = {
+  CPF: "CPF",
+  CNPJ: "CNPJ",
+  EMAIL: "E-mail",
+  PHONE: "Telefone",
+  EVP: "Chave aleatória",
+};
 
 interface StayRate {
   state: string;
@@ -182,6 +193,8 @@ function CompanyTab() {
         business_hour_end: settings.business_hour_end,
         coverage_radius_km: settings.coverage_radius_km,
         max_service_hours_no_stay: settings.max_service_hours_no_stay,
+        payout_pix_key: settings.payout_pix_key,
+        payout_pix_key_type: settings.payout_pix_key_type,
       });
       setSettings(updated);
       toast.success("Configurações salvas");
@@ -318,6 +331,44 @@ function CompanyTab() {
             <p className="text-xs text-muted-foreground">
               Sobre repasse aos homologados
             </p>
+          </div>
+        </div>
+
+        {/* José 27/08: pra onde release-payout transfere a taxa administrativa
+            (platform_fee_amount) junto com o repasse do prestador, em vez de
+            ficar só implícita no saldo da conta operacional da Asaas. */}
+        <div className="space-y-1 rounded-lg border p-3">
+          <label className="text-sm font-medium">
+            Chave PIX de recebimento da Reallliza
+          </label>
+          <p className="text-xs text-muted-foreground">
+            É pra essa chave que a taxa administrativa é transferida
+            automaticamente quando um repasse é liberado — separado da conta
+            operacional da Asaas.
+          </p>
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <Input
+              value={settings.payout_pix_key ?? ""}
+              onChange={(e) =>
+                setSettings({ ...settings, payout_pix_key: e.target.value || null })
+              }
+              placeholder="CPF, CNPJ, e-mail, telefone..."
+            />
+            <SelectNative
+              value={settings.payout_pix_key_type ?? "CNPJ"}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  payout_pix_key_type: e.target.value as CompanySettings["payout_pix_key_type"],
+                })
+              }
+            >
+              {Object.entries(PIX_KEY_TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </SelectNative>
           </div>
         </div>
 

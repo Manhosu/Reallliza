@@ -22,11 +22,13 @@ import { logAudit } from "@/lib/api-helpers/audit";
  * Único gatilho de saque que este sistema tem hoje é `createTransfer()`
  * (release-payout) — nunca pagamos boleto, PIX QR Code ou recarga via API.
  * Por isso a regra é estrita: só aprova um TRANSFER cujo `id` já esteja
- * gravado em `payments.asaas_transfer_id` (setado por release-payout logo
- * após a Asaas confirmar a criação da transferência, bem antes dos ~5s
- * que a Asaas leva pra chamar este webhook) — qualquer outra coisa
- * (saque manual pelo painel, tipo de operação diferente, id desconhecido)
- * é recusada por padrão.
+ * gravado em `payments.asaas_transfer_id` (repasse do prestador) OU
+ * `payments.platform_asaas_transfer_id` (taxa administrativa da Reallliza,
+ * 27/08 — release-payout agora dispara as duas transfers, independentes) —
+ * ambas setadas por release-payout logo após a Asaas confirmar a criação
+ * da transferência, bem antes dos ~5s que a Asaas leva pra chamar este
+ * webhook. Qualquer outra coisa (saque manual pelo painel, tipo de
+ * operação diferente, id desconhecido) é recusada por padrão.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -66,16 +68,32 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getAdminClient();
-    const { data: payment } = await supabase
-      .from("payments")
-      .select("id, payout_amount, custody_status")
-      .eq("asaas_transfer_id", transferId)
-      .maybeSingle();
+
+    // Pode ser a transfer do prestador OU a da taxa administrativa — cada
+    // pagamento liberado gera até duas transfers independentes agora.
+    const [{ data: comoPrestador }, { data: comoTaxa }] = await Promise.all([
+      supabase
+        .from("payments")
+        .select("id, payout_amount, custody_status")
+        .eq("asaas_transfer_id", transferId)
+        .maybeSingle(),
+      supabase
+        .from("payments")
+        .select("id, platform_fee_amount, custody_status")
+        .eq("platform_asaas_transfer_id", transferId)
+        .maybeSingle(),
+    ]);
+
+    const payment = comoPrestador ?? comoTaxa;
+    const valorEsperado = comoPrestador
+      ? Number((comoPrestador as { payout_amount?: number }).payout_amount ?? 0)
+      : comoTaxa
+        ? Number((comoTaxa as { platform_fee_amount?: number }).platform_fee_amount ?? 0)
+        : 0;
 
     const valorConfere =
       !!payment &&
-      (transfer?.value === undefined ||
-        Math.abs(Number(payment.payout_amount ?? 0) - Number(transfer.value)) < 0.01);
+      (transfer?.value === undefined || Math.abs(valorEsperado - Number(transfer.value)) < 0.01);
 
     const approved = !!payment && payment.custody_status === "released" && valorConfere;
 
@@ -86,8 +104,9 @@ export async function POST(request: NextRequest) {
       entityId: transferId,
       newData: {
         payment_id: payment?.id ?? null,
+        origem: comoPrestador ? "prestador" : comoTaxa ? "taxa_reallliza" : null,
         transfer_value: transfer?.value ?? null,
-        payout_amount: payment?.payout_amount ?? null,
+        valor_esperado: valorEsperado,
         custody_status: payment?.custody_status ?? null,
       },
     });
