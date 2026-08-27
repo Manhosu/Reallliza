@@ -8,6 +8,14 @@ const publicRoutes = [
   "/auth/confirm",
   "/cadastro-profissional",
   "/cadastro-empresa",
+  // Paginas publicas de verificacao/preview (sem sessao) - QR do Termo de
+  // Garantia e o preview do botao Compartilhar do Feed. Sem isto, o
+  // middleware redireciona qualquer visitante sem login pra /login,
+  // quebrando o proposito das duas (27/08/2026 - achado ao validar o
+  // deep link do Feed em producao, mas atingia o /relatorio ja existente
+  // desde que ele foi criado).
+  "/relatorio",
+  "/feed/p",
 ];
 
 export async function middleware(request: NextRequest) {
@@ -48,8 +56,10 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - .well-known (arquivos de verificacao estatica, ex.: assetlinks.json
+     *   do App Link do Feed - precisam responder 200 puro, sem redirect)
      * - public folder files
      */
-    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp|json)$).*)",
   ],
 };
