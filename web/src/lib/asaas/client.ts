@@ -215,6 +215,28 @@ export async function createCardCharge(
   return { asaasId: charge.id, checkoutUrl: charge.invoiceUrl };
 }
 
+/**
+ * Consulta o status real de uma cobrança na Asaas — usado pela reconciliação
+ * periódica (`/api/quotes/reconcile-payments`) pra pegar pagamentos que a
+ * Asaas confirmou mas cujo webhook não chegou (fila de webhooks pausada,
+ * por exemplo — aconteceu de verdade em 27/08: 3 orçamentos pagos ficaram
+ * presos em "aguardando pagamento" porque a fila da Asaas parou de entregar
+ * depois de acumular falhas). Retorna null se não configurado ou não achado.
+ */
+export async function getChargeStatus(
+  asaasId: string
+): Promise<{ status: string } | null> {
+  const apiKey = process.env.ASAAS_API_KEY;
+  if (!apiKey) return null;
+
+  const res = await fetch(`${getBaseUrl()}/payments/${asaasId}`, {
+    headers: { access_token: apiKey },
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { status?: string };
+  return data.status ? { status: data.status } : null;
+}
+
 export interface CreateTransferInput {
   /** Valor em reais. */
   value: number;

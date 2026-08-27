@@ -1,11 +1,8 @@
 import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse } from "@/lib/api-helpers/response";
-import { logAudit } from "@/lib/api-helpers/audit";
-import { convertQuoteToServiceOrder } from "@/lib/quotes/convert-to-os";
-import { aprovarEPublicarCampanha } from "@/lib/feed/posts";
+import { confirmarPagamentoAsaas } from "@/lib/asaas/confirm-payment";
 
-const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001";
 const PAID_EVENTS = ["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"];
 
 /**
@@ -13,6 +10,11 @@ const PAID_EVENTS = ["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"];
  * Webhook do Asaas. Em PAYMENT_CONFIRMED/RECEIVED, confirma o pagamento
  * e converte o orçamento numa OS. Idempotente. Autenticado pelo header
  * `asaas-access-token` (= ASAAS_WEBHOOK_TOKEN).
+ *
+ * A lógica de confirmação mora em `confirmarPagamentoAsaas` (27/08) —
+ * compartilhada com a reconciliação periódica em
+ * `/api/quotes/reconcile-payments`, a rede de segurança pra quando a fila
+ * de webhooks da Asaas pausa e este endpoint para de ser chamado.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -36,186 +38,18 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getAdminClient();
+    const resultado = await confirmarPagamentoAsaas(supabase, externalReference);
 
-    const { data: payment } = await supabase
-      .from("payments")
-      .select("id, status, quote_id, amount, kind")
-      .eq("id", externalReference)
-      .maybeSingle();
-
-    if (!payment) {
-      // Não é orçamento — tenta campanha do Feed. A cobrança de campanha
-      // nunca cria linha em `payments` (ver POST /feed/campaigns/[id]/pix):
-      // o externalReference mandado pro Asaas é o próprio feed_campaigns.id.
-      const { data: campanha } = await supabase
-        .from("feed_campaigns")
-        .select("id, payment_status, total_price_cents")
-        .eq("id", externalReference)
-        .maybeSingle();
-
-      if (!campanha) {
-        return jsonResponse({ message: "Pagamento não encontrado" }, 404);
-      }
-      if (campanha.payment_status !== "pending") {
-        return jsonResponse({ success: true, deduplicated: true });
-      }
-
-      const agora = new Date().toISOString();
-      await supabase
-        .from("feed_campaigns")
-        .update({
-          payment_status: "paid",
-          paid_at: agora,
-          paid_amount_cents: campanha.total_price_cents,
-          // payment_confirmed_by fica NULL de propósito: distingue
-          // confirmação automática (aqui) de confirmação manual (o botão
-          // /pay grava quem clicou).
-        })
-        .eq("id", campanha.id);
-
-      logAudit({
-        userId: SYSTEM_USER_ID,
-        action: "feed_campaign.paid_webhook",
-        entityType: "feed_campaign",
-        entityId: campanha.id,
-        newData: { event },
-      });
-
-      // Pagamento confirmado já aprova e publica sozinho (Karol, 21/08).
-      const resultado = await aprovarEPublicarCampanha(supabase, campanha.id, SYSTEM_USER_ID);
-
-      return jsonResponse({
-        success: true,
-        feed_campaign_id: campanha.id,
-        publicacoes_publicadas: resultado.publicacoes_publicadas,
-        publicacoes_com_falha: resultado.publicacoes_com_falha,
-      });
-    }
-    if (payment.status === "confirmed") {
-      return jsonResponse({ success: true, deduplicated: true });
+    if (!resultado.ok) {
+      return jsonResponse({ message: resultado.motivo }, 404);
     }
 
-    const now = new Date().toISOString();
-    const paymentKind =
-      (payment as { kind?: string }).kind ?? "primary";
-
-    // Topup de proposta (Jessica 20/07): confirma o pagamento adicional
-    // e dispara refanout da proposta com o novo valor.
-    if (paymentKind === "proposal_topup") {
-      await supabase
-        .from("payments")
-        .update({ status: "confirmed", paid_at: now })
-        .eq("id", payment.id);
-
-      if (payment.quote_id) {
-        const { data: q } = await supabase
-          .from("quotes")
-          .select(
-            "quote_number, client_name, service_order_id, region_state, address_state, payout_amount, total_amount"
-          )
-          .eq("id", payment.quote_id)
-          .maybeSingle();
-        const qRow = q as {
-          quote_number?: string | number;
-          client_name?: string;
-          service_order_id?: string;
-          region_state?: string | null;
-          address_state?: string | null;
-          payout_amount?: number;
-          total_amount?: number;
-        } | null;
-        if (qRow?.service_order_id) {
-          const { refanoutHomologadoProposal } = await import(
-            "@/lib/quotes/fanout-homologados"
-          );
-          await refanoutHomologadoProposal(supabase, {
-            service_order_id: qRow.service_order_id,
-            target_state: (qRow.region_state ?? qRow.address_state) ?? null,
-            quote_number: qRow.quote_number ?? "",
-            client_name: qRow.client_name ?? "",
-            offered_amount: Number(qRow.payout_amount ?? qRow.total_amount ?? 0),
-          });
-        }
-      }
-
-      logAudit({
-        userId: SYSTEM_USER_ID,
-        action: "payment.topup_confirmed_refanout",
-        entityType: "payment",
-        entityId: payment.id,
-        newData: { event },
-      });
-      return jsonResponse({ success: true, topup: true });
-    }
-
-    // Carrega quote pra determinar modalidade (custodia vs direto)
-    let modality: "reallliza" | "homologados" | null = null;
-    let platformFeePct = 0;
-    let payoutAmount = 0;
-    let platformFeeAmount = 0;
-    if (payment.quote_id) {
-      const { data: q } = await supabase
-        .from("quotes")
-        .select("modality, platform_fee_pct, payout_amount, platform_fee_amount")
-        .eq("id", payment.quote_id)
-        .single();
-      if (q) {
-        modality = (q as { modality: typeof modality }).modality ?? null;
-        platformFeePct =
-          Number((q as { platform_fee_pct?: number }).platform_fee_pct) || 0;
-        payoutAmount =
-          Number((q as { payout_amount?: number }).payout_amount) || 0;
-        platformFeeAmount =
-          Number((q as { platform_fee_amount?: number }).platform_fee_amount) || 0;
-      }
-    }
-
-    // Custodia: modalidade homologados retem o dinheiro ate OS concluir
-    const custodyStatus: "held" | "not_applicable" =
-      modality === "homologados" ? "held" : "not_applicable";
-
-    await supabase
-      .from("payments")
-      .update({
-        status: "confirmed",
-        paid_at: now,
-        custody_status: custodyStatus,
-        platform_fee_amount: platformFeeAmount,
-        payout_amount: payoutAmount,
-      })
-      .eq("id", payment.id);
-
-    let serviceOrderId: string | undefined;
-    if (payment.quote_id) {
-      await supabase
-        .from("quotes")
-        .update({
-          status: "paid",
-          paid_at: now,
-          custody_held: custodyStatus === "held",
-        })
-        .eq("id", payment.quote_id);
-
-      const result = await convertQuoteToServiceOrder(
-        supabase,
-        payment.quote_id
-      );
-      if (result.ok) {
-        serviceOrderId = result.service_order_id;
-      } else {
-        console.error(`Asaas webhook: convert failed: ${result.error}`);
-      }
-    }
-
-    logAudit({
-      userId: SYSTEM_USER_ID,
-      action: "payment.confirmed_webhook",
-      entityType: "payment",
-      entityId: payment.id,
-      newData: { event, service_order_id: serviceOrderId },
+    return jsonResponse({
+      success: true,
+      deduplicated: resultado.jaConfirmado,
+      service_order_id: resultado.serviceOrderId,
+      feed_campaign_id: resultado.feedCampaignId,
     });
-
-    return jsonResponse({ success: true, service_order_id: serviceOrderId });
   } catch (error) {
     console.error(
       `Asaas webhook error: ${

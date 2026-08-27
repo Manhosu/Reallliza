@@ -11,6 +11,10 @@
     {
       "path": "/api/feed/cron/notifications",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/quotes/reconcile-payments",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
