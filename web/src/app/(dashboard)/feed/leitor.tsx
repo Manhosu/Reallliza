@@ -15,6 +15,7 @@ import type { FeedPost, FeedCta } from "@/lib/api/feed";
 import { EnqueteDoFeed, PedidoDoFeed } from "@/components/feed/enquete-e-pedido";
 import { ComentariosDoPost } from "@/components/feed/comentarios";
 import { rastreador } from "@/lib/feed/rastreador";
+import { normalizarUrlDeBotao } from "@/lib/feed/anexos";
 import { useAuthStore } from "@/stores/auth-store";
 
 /**
@@ -264,7 +265,12 @@ export function FeedLeitor() {
                             </button>
                           );
                         }
-                        const destino = c.target_url ?? c.target_route;
+                        // Karol 27/08: target_url sem esquema (ex.: "wa.me/551199999999",
+                        // "www.site.com.br") virava link relativo do próprio site em vez
+                        // de abrir o destino — normaliza antes de usar como href.
+                        const destino = c.target_url
+                          ? normalizarUrlDeBotao(c.target_url)
+                          : c.target_route;
                         if (!destino) return null;
                         return (
                           <a

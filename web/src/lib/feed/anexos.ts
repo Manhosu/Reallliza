@@ -37,6 +37,29 @@ export const BOTOES_QUE_GERAM_PEDIDO: Record<string, string> = {
   participar_treinamento: "treinamento",
 };
 
+/**
+ * Normaliza a URL de um botão de ação antes de gravar ou abrir.
+ *
+ * Karol 27/08: "o botão não direciona pro destino configurado". O editor
+ * (editor-de-anexos.tsx) sempre foi um `<Input placeholder="https://...">`
+ * de texto livre, sem validar nada — quem colava "wa.me/551199999999" ou
+ * "www.site.com.br" (bem natural, copiando de um link do WhatsApp ou de um
+ * cartão de visita) salvava sem erro. `Linking.openURL` no app e `<a href>`
+ * na web exigem um esquema (http/https/tel/mailto) pra funcionar; sem ele,
+ * o app falha silenciosamente e a web resolve como link relativo do
+ * próprio site — os dois "não fazem nada" ou vão pro lugar errado.
+ *
+ * Aplicada tanto ao salvar (pra dado novo já nascer certo) quanto ao abrir
+ * nos dois renderizadores (mobile e leitor web), pra também corrigir o que
+ * já estava salvo sem precisar de migração de dados.
+ */
+export function normalizarUrlDeBotao(url: string): string {
+  const v = url.trim();
+  if (!v) return v;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return v; // já tem esquema (http:, tel:, mailto:, whatsapp:, etc.)
+  return `https://${v}`;
+}
+
 export interface BotaoDeAcao {
   cta_type: string;
   label: string;
@@ -83,7 +106,7 @@ export async function sincronizarBotoes(
       cta_type: b.cta_type,
       label: b.label.trim(),
       style: b.style ?? "primary",
-      target_url: b.target_url?.trim() || null,
+      target_url: b.target_url?.trim() ? normalizarUrlDeBotao(b.target_url) : null,
       target_route: b.target_route?.trim() || null,
       target_media_id: b.target_media_id || null,
       coupon_code: b.coupon_code?.trim() || null,

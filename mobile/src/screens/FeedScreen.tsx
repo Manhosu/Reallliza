@@ -42,6 +42,19 @@ import { getOsTipo, type ServiceOrder, type PaginatedResponse } from '../lib/typ
  *    vivos esgotam o decodificador e travam aparelho de entrada.
  */
 
+/**
+ * Karol 27/08: mesma normalização de web/src/lib/feed/anexos.ts (sem
+ * pacote compartilhado entre mobile/web neste monorepo, replicada aqui
+ * como o resto do código já faz). Sem esquema (http/tel/mailto/...),
+ * `Linking.openURL` recusa a URL e o botão "não faz nada".
+ */
+function normalizarUrlDeBotao(url: string): string {
+  const v = url.trim();
+  if (!v) return v;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return v;
+  return `https://${v}`;
+}
+
 interface CtaFeed {
   id: string;
   position: number;
@@ -270,7 +283,7 @@ export function FeedScreen() {
     }
     if (cta.target_url) {
       feedTracker.registrar('link_open', post.id, { cta_id: cta.id });
-      Linking.openURL(cta.target_url).catch(() =>
+      Linking.openURL(normalizarUrlDeBotao(cta.target_url)).catch(() =>
         Alert.alert('Não foi possível abrir', 'O link parece inválido.')
       );
     }
