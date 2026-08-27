@@ -61,7 +61,16 @@ export async function registerForPushNotifications(): Promise<string | null> {
       });
       // Canal de eventos operacionais críticos: nova proposta, OS atribuída,
       // alterações urgentes, mensagem. Som customizado "Realliza".
-      await Notifications.setNotificationChannelAsync('realliza-urgent', {
+      //
+      // Jessica 27/08: "o som não funciona" — canal do Android é IMUTÁVEL
+      // por id depois de criado no aparelho. Este canal nasceu em 20/05 com
+      // um WAV placeholder de ~700ms de silêncio (o áudio de verdade só
+      // chegou em 30/07, no mesmo id) — em todo aparelho que já tinha o app
+      // instalado antes disso, setNotificationChannelAsync vira um no-op
+      // pro som: nenhuma atualização de app resolve, só desinstalar e
+      // reinstalar. Renomeado o id pra forçar um canal novo, criado do zero
+      // já com o som certo, em qualquer aparelho (novo ou antigo).
+      await Notifications.setNotificationChannelAsync('realliza-urgent-v2', {
         name: 'Reallliza — Eventos Urgentes',
         description:
           'Alertas com som identitario para propostas, OS atribuidas, mensagens e mudancas criticas.',
