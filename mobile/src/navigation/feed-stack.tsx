@@ -5,7 +5,8 @@ import { CommentsScreen } from '../screens/CommentsScreen';
 import { colors } from '../theme/colors';
 
 export type FeedStackParamList = {
-  FeedHome: undefined;
+  // postId: veio de um link compartilhado (deep link) — ver navigation/index.tsx.
+  FeedHome: { postId?: string } | undefined;
   Comments: { postId: string; postTitle: string };
 };
 

@@ -15,8 +15,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { apiClient } from '../lib/api';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { apiClient, BASE_URL } from '../lib/api';
 import { useAuthStore } from '../stores/auth-store';
 import { FeedEnquete, type EnqueteFeed } from '../components/FeedEnquete';
 import { FeedPedido, type TipoPedido } from '../components/FeedPedido';
@@ -112,6 +112,10 @@ function tempoRelativo(iso: string): string {
 
 export function FeedScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const postIdAlvo: string | undefined = route.params?.postId;
+  const alvoAplicadoRef = useRef<string | null>(null);
+  const listaRef = useRef<FlatList<PostFeed>>(null);
   const [posts, setPosts] = useState<PostFeed[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [temMais, setTemMais] = useState(true);
@@ -164,6 +168,37 @@ export function FeedScreen() {
     Promise.all([buscar(null, true), buscarPericias()]).finally(() => setCarregando(false));
     return () => feedTracker.parar();
   }, [buscar, buscarPericias]);
+
+  /**
+   * Post aberto por link compartilhado (Karol 27/08). O feed comum é
+   * paginado por data — o post de origem pode estar páginas atrás, ou nem
+   * na audiência do primeiro carregamento. Em vez de recriar toda a
+   * renderização do card numa tela nova, busca só ESSE post
+   * (GET /feed/:id, já respeita audiência/permissão) e finca no topo da
+   * mesma lista — reaproveita reação, comentário, CTA e compartilhar como
+   * já existem.
+   */
+  useEffect(() => {
+    if (!postIdAlvo || carregando || alvoAplicadoRef.current === postIdAlvo) return;
+    alvoAplicadoRef.current = postIdAlvo;
+
+    if (posts.some((p) => p.id === postIdAlvo)) {
+      listaRef.current?.scrollToOffset({ offset: 0, animated: true });
+      return;
+    }
+
+    apiClient
+      .get<PostFeed>(`/feed/${postIdAlvo}`)
+      .then((post) => {
+        setPosts((atual) =>
+          atual.some((p) => p.id === post.id) ? atual : [post, ...atual]
+        );
+        requestAnimationFrame(() => listaRef.current?.scrollToOffset({ offset: 0, animated: true }));
+      })
+      .catch(() => {
+        Alert.alert('Publicação não encontrada', 'Esse link não está mais disponível.');
+      });
+  }, [postIdAlvo, carregando, posts]);
 
   const atualizar = useCallback(async () => {
     setAtualizando(true);
@@ -236,9 +271,18 @@ export function FeedScreen() {
     }
   }
 
+  /**
+   * Karol 27/08: "hoje só manda a legenda" — antes compartilhava o texto
+   * inteiro do post sem nenhum link, então quem recebia não tinha como
+   * chegar na publicação, só ler o texto colado. Agora manda um link real
+   * (`/feed/p/:id`, App Link — ver navigation/index.tsx e app.json): quem
+   * já tem o app abre direto nela; quem não tem cai numa prévia pública
+   * com botão de baixar. É também a peça de aquisição que ela pediu.
+   */
   async function compartilhar(post: PostFeed) {
+    const link = `${BASE_URL.replace(/\/api\/?$/, '')}/feed/p/${post.id}`;
     try {
-      const r = await Share.share({ message: `${post.title}\n\n${post.content}` });
+      const r = await Share.share({ message: `${post.title}\n\n${link}`, url: link });
       // Só conta se o compartilhamento aconteceu de fato — abrir a folha e
       // desistir não é compartilhar.
       if (r.action === Share.sharedAction) {
@@ -507,6 +551,7 @@ export function FeedScreen() {
   return (
     <SafeAreaView style={estilos.tela} edges={['top']}>
       <FlatList
+        ref={listaRef}
         data={posts}
         keyExtractor={(p) => p.id}
         renderItem={renderPost}

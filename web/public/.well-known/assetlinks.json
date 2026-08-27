@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.reallliza.app",
+      "sha256_cert_fingerprints": [
+        "F1:9D:8A:BE:8E:90:97:11:75:E0:77:C5:D0:0E:AF:D5:6E:CC:2F:4D:0F:84:29:1A:96:ED:3E:8A:9F:07:10:29"
+      ]
+    }
+  }
+]

@@ -29,6 +29,26 @@ const DarkTheme = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const navigationContainerRef = createNavigationContainerRef<any>();
 
+/**
+ * Deep link do botão Compartilhar do Feed (Karol 27/08). O App Link
+ * (`intentFilters` em app.json + assetlinks.json hospedado no domínio) é
+ * quem decide SE o Android abre o app; isto aqui só decide PRA ONDE
+ * navegar depois de aberto — mapeia a mesma URL pública
+ * (`/feed/p/:postId`) pra a tela do Feed, com o post como parâmetro.
+ */
+const linking = {
+  prefixes: ['https://reallliza-web.vercel.app'],
+  config: {
+    screens: {
+      FeedTab: {
+        screens: {
+          FeedHome: 'feed/p/:postId',
+        },
+      },
+    },
+  },
+};
+
 interface ConsentStatus {
   has_accepted: boolean;
   consent: Record<string, unknown> | null;
@@ -116,7 +136,7 @@ export function RootNavigation({ navigationRef }: RootNavigationProps) {
 
   // Authenticated and terms accepted: show main app
   return (
-    <NavigationContainer ref={navigationContainerRef} theme={DarkTheme}>
+    <NavigationContainer ref={navigationContainerRef} theme={DarkTheme} linking={linking}>
       <MainTabs />
     </NavigationContainer>
   );
