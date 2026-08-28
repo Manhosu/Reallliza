@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OsStack } from './os-stack';
 import { ToolsStack } from './tools-stack';
 import { FeedStack } from './feed-stack';
+import { GarantiasStack } from './garantias-stack';
 import { LearningScreen } from '../screens/LearningScreen';
 import { AgendaScreen } from '../screens/AgendaScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
@@ -25,6 +26,8 @@ export type MainTabsParamList = {
   NotificationsTab: undefined;
   ProposalsTab: undefined;
   ToolsTab: undefined;
+  // warrantyId: veio de notificacao de garantia (ver push-notifications.ts)
+  GarantiasTab: { warrantyId?: string } | undefined;
   ProfileTab: undefined;
 };
 
@@ -33,6 +36,12 @@ const Tab = createBottomTabNavigator<MainTabsParamList>();
 export function MainTabs() {
   const profile = useAuthStore(state => state.profile);
   const isPartner = profile?.role === 'partner';
+  // Homologado = tecnico externo (Jessica 16/07, mesma regra do backend em
+  // /api/warranties) — so ele recebe e resolve garantia; a loja abre pela
+  // web (botao "Abrir Garantia" na OS).
+  const isHomologado =
+    profile?.role === 'technician' &&
+    (profile?.professional_type === 'external' || profile?.is_homologated === true);
   const insets = useSafeAreaInsets();
 
   // Bottom safe-area: garante espaço para botões de navegação do Android (3-button nav)
@@ -158,6 +167,19 @@ export function MainTabs() {
             tabBarLabel: 'Custódia',
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="hammer-outline" size={size} color={color} />
+            ),
+          }}
+        />
+      )}
+      {isHomologado && (
+        <Tab.Screen
+          name="GarantiasTab"
+          component={GarantiasStack}
+          options={{
+            headerShown: false,
+            title: 'Garantias',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="shield-checkmark-outline" size={size} color={color} />
             ),
           }}
         />

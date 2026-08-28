@@ -153,10 +153,12 @@ interface NotificationData {
     | 'tool_custody'
     | 'message'
     | 'proposal_available'
-    | 'proposal_accepted';
+    | 'proposal_accepted'
+    | 'warranty_opened';
   os_id?: string;
   service_order_id?: string;
   proposal_id?: string;
+  warranty_id?: string;
   [key: string]: unknown;
 }
 
@@ -212,6 +214,17 @@ export function setupNotificationListeners(
         case 'proposal_accepted':
           navigation.navigate('ProposalsTab', undefined);
           break;
+
+        case 'warranty_opened': {
+          const warrantyId = data.warranty_id;
+          if (warrantyId) {
+            navigation.navigate('GarantiasTab', undefined);
+            setTimeout(() => {
+              navigation.navigate('GarantiasList', { warrantyId });
+            }, 100);
+          }
+          break;
+        }
       }
     });
 
