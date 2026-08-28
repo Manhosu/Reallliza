@@ -12,6 +12,7 @@ export type NotificationType =
   | "tool_overdue"
   | "new_ticket"
   | "warranty_opened"
+  | "warranty_resolved"
   | "general";
 
 export type NotificationPriority = "low" | "normal" | "high" | "urgent";

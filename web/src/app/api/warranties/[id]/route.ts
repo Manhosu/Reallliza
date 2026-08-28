@@ -1,8 +1,37 @@
 import { NextRequest } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
-import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
+import { authenticateRequest, AuthError, type AuthUser } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+
+/**
+ * Admin sempre; homologado só se for o `assigned_technician_id` de uma
+ * garantia com `executor_type==='homologado'` (Jessica 16/07). Usada pelo
+ * PATCH e pela rota de upload de fotos de solução — mesma regra nos dois
+ * lugares, então mora aqui em vez de duplicada.
+ */
+export async function podeGerenciarGarantia(
+  supabase: SupabaseClient,
+  user: AuthUser,
+  warrantyId: string
+): Promise<boolean> {
+  if (user.role === "admin") return true;
+  if (user.role !== "technician") return false;
+  const { data: w } = await supabase
+    .from("warranties")
+    .select("assigned_technician_id, executor_type")
+    .eq("id", warrantyId)
+    .maybeSingle();
+  const wRow = w as
+    | { assigned_technician_id?: string | null; executor_type?: string | null }
+    | null;
+  return (
+    !!wRow &&
+    wRow.executor_type === "homologado" &&
+    wRow.assigned_technician_id === user.id
+  );
+}
 
 /**
  * GET /api/warranties/[id] — detalhe.
@@ -45,11 +74,26 @@ export async function GET(
   }
 }
 
+function sanitizeMedia(arr: unknown) {
+  if (!Array.isArray(arr)) return undefined;
+  return arr
+    .filter(
+      (m): m is { url: string } =>
+        !!m && typeof m === "object" && typeof (m as { url?: unknown }).url === "string"
+    )
+    .map((m) => ({
+      url: String((m as { url: string }).url),
+      thumbnail_url: (m as { thumbnail_url?: string }).thumbnail_url ?? null,
+      storage_path: (m as { storage_path?: string }).storage_path ?? null,
+    }));
+}
+
 /**
  * PATCH /api/warranties/[id]
  * Admin atualiza status / notas / converte em OS de assistencia.
  *
- * Body: { status?, resolution_notes?, assistance_service_order_id? }
+ * Body: { status?, resolution_notes?, assistance_service_order_id?,
+ *         resolution_photos?, resolution_videos? }
  */
 export async function PATCH(
   request: NextRequest,
@@ -57,35 +101,14 @@ export async function PATCH(
 ) {
   try {
     const user = await authenticateRequest(request);
+    const { id } = await params;
+    const supabase = getAdminClient();
+
     // Admin sempre; homologado apenas se for o assigned_technician_id (Jessica 16/07)
-    if (user.role !== "admin") {
-      if (user.role !== "technician") {
-        throw new AuthError(403, "Sem permissao");
-      }
-      const supabaseCheck = getAdminClient();
-      const { id: warrantyId } = await params;
-      const { data: w } = await supabaseCheck
-        .from("warranties")
-        .select("assigned_technician_id, executor_type")
-        .eq("id", warrantyId)
-        .maybeSingle();
-      const wRow = w as {
-        assigned_technician_id?: string | null;
-        executor_type?: string | null;
-      } | null;
-      if (
-        !wRow ||
-        wRow.executor_type !== "homologado" ||
-        wRow.assigned_technician_id !== user.id
-      ) {
-        throw new AuthError(
-          403,
-          "Sem permissao pra alterar esta garantia"
-        );
-      }
+    if (!(await podeGerenciarGarantia(supabase, user, id))) {
+      throw new AuthError(403, "Sem permissao pra alterar esta garantia");
     }
 
-    const { id } = await params;
     const body = await request.json();
 
     const update: Record<string, unknown> = {};
@@ -111,18 +134,25 @@ export async function PATCH(
     if (body.notes !== undefined) {
       update.notes = body.notes ? String(body.notes).slice(0, 1000) : null;
     }
+    // Fotos/videos de solucao (Jose 27/08) — o app mobile manda por
+    // POST /warranties/[id]/resolution-photos (multipart); isto aqui cobre
+    // o fluxo web, que sobe pro Storage no cliente e so manda a URL.
+    if (body.resolution_photos !== undefined) {
+      update.resolution_photos = sanitizeMedia(body.resolution_photos) ?? [];
+    }
+    if (body.resolution_videos !== undefined) {
+      update.resolution_videos = sanitizeMedia(body.resolution_videos) ?? [];
+    }
 
     if (Object.keys(update).length === 0) {
       throw new AuthError(400, "Nada para atualizar");
     }
 
-    const supabase = getAdminClient();
-
     const { data, error } = await supabase
       .from("warranties")
       .update(update)
       .eq("id", id)
-      .select()
+      .select("*, service_order:service_orders(order_number)")
       .single();
 
     if (error || !data) throw new Error("Falha ao atualizar garantia");
@@ -134,6 +164,29 @@ export async function PATCH(
       entityId: id,
       newData: update,
     });
+
+    // Avisa a loja quando a garantia e' concluida (Jose 27/08) — fecha o
+    // ciclo que ela pediu ("facilitar o acompanhamento pela loja").
+    const w = data as {
+      opened_by?: string | null;
+      service_order_id: string;
+      service_order?: { order_number?: number | null } | null;
+    };
+    if ((update.status === "resolved" || update.status === "rejected") && w.opened_by) {
+      const { createNotification } = await import("@/lib/api-helpers/notifications");
+      const titulo =
+        update.status === "resolved" ? "Garantia resolvida" : "Garantia recusada";
+      createNotification(
+        w.opened_by,
+        titulo,
+        `A garantia da OS #${w.service_order?.order_number ?? ""} foi ${
+          update.status === "resolved" ? "resolvida" : "recusada"
+        }. Confira os detalhes.`,
+        "warranty_resolved",
+        { warranty_id: id, service_order_id: w.service_order_id },
+        { priority: "high" }
+      ).catch(() => {});
+    }
 
     return jsonResponse(data);
   } catch (error) {

@@ -178,7 +178,10 @@ const allNavItems = [
     label: "Chats",
     href: "/chats",
     icon: MessageSquare,
-    roles: [UserRole.ADMIN],
+    // Loja tambem: precisa falar com o homologado sobre a OS (Jose 27/08).
+    // O backend (messages/messages-chats) ja autoriza partner ha tempos —
+    // so faltava o menu.
+    roles: [UserRole.ADMIN, UserRole.PARTNER],
   },
   {
     label: "Agenda",
@@ -388,6 +391,12 @@ function getBreadcrumbLabel(segment: string): string {
  * (Jessica 26/08).
  */
 function notificationHref(notif: Notification): string {
+  if (
+    notif.type === NotificationType.WARRANTY_OPENED ||
+    notif.type === NotificationType.WARRANTY_RESOLVED
+  ) {
+    return "/garantias";
+  }
   const osId =
     typeof notif.data?.service_order_id === "string"
       ? notif.data.service_order_id

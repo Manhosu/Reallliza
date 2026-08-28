@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import PDFDocument from "pdfkit";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
-import { authenticateRequest, checkRole } from "@/lib/api-helpers/auth";
+import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { errorResponse } from "@/lib/api-helpers/response";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -62,9 +62,14 @@ export async function GET(
 ) {
   try {
     const user = await authenticateRequest(request);
-    // Loja nao pode baixar relatorio da OS (Jessica 10/07 — PDF financeiro
-    // e' pra admin/tecnico; loja tem PDF do orcamento pra enviar ao cliente).
-    checkRole(user, ["admin", "gestor", "diretor", "supervisor", "operador", "technician", "manager"]);
+    // Loja baixa tambem agora (Jose 27/08), mas em modo sem valores — a
+    // recusa de 10/07 era pro PDF financeiro inteiro; o dado sensivel e'
+    // omitido mais abaixo (tabela de itens, totais, parcelas), nao mais o
+    // acesso ao documento.
+    const modoLoja = user.role === "partner";
+    if (!modoLoja) {
+      checkRole(user, ["admin", "gestor", "diretor", "supervisor", "operador", "technician", "manager"]);
+    }
     const { id } = await params;
 
     const supabase = getAdminClient();
@@ -83,6 +88,18 @@ export async function GET(
 
     if (orderError || !order) {
       return new Response("Service order not found", { status: 404 });
+    }
+
+    if (modoLoja) {
+      const { data: p } = await supabase
+        .from("partners")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const partnerId = (p as { id?: string } | null)?.id;
+      if (!partnerId || partnerId !== order.partner_id) {
+        throw new AuthError(403, "Você não tem permissão para ver este relatório");
+      }
     }
 
     const { data: items } = await supabase
@@ -279,9 +296,13 @@ export async function GET(
     doc.text("Identif.", colX.ident + 2, tableTop + 4, { width: colW.ident - 4 });
     doc.text("Descricao", colX.desc + 2, tableTop + 4, { width: colW.desc - 4 });
     doc.text("Un.", colX.unit + 2, tableTop + 4, { width: colW.unit - 4 });
-    doc.text("Valor", colX.value + 2, tableTop + 4, { width: colW.value - 4, align: "right" });
+    if (!modoLoja) {
+      doc.text("Valor", colX.value + 2, tableTop + 4, { width: colW.value - 4, align: "right" });
+    }
     doc.text("Qtde", colX.qtde + 2, tableTop + 4, { width: colW.qtde - 4, align: "right" });
-    doc.text("Total", colX.total + 2, tableTop + 4, { width: colW.total - 4, align: "right" });
+    if (!modoLoja) {
+      doc.text("Total", colX.total + 2, tableTop + 4, { width: colW.total - 4, align: "right" });
+    }
 
     let rowY = tableTop + 16;
     doc.font("Helvetica").fontSize(8);
@@ -303,9 +324,13 @@ export async function GET(
         doc.text(it.identification || "-", colX.ident + 2, rowY + 2, { width: colW.ident - 4 });
         doc.text(it.description || "-", colX.desc + 2, rowY + 2, { width: colW.desc - 4 });
         doc.text(it.unit || "-", colX.unit + 2, rowY + 2, { width: colW.unit - 4 });
-        doc.text(fmtBRL(it.unit_value), colX.value + 2, rowY + 2, { width: colW.value - 4, align: "right" });
+        if (!modoLoja) {
+          doc.text(fmtBRL(it.unit_value), colX.value + 2, rowY + 2, { width: colW.value - 4, align: "right" });
+        }
         doc.text(String(it.quantity), colX.qtde + 2, rowY + 2, { width: colW.qtde - 4, align: "right" });
-        doc.text(fmtBRL(total), colX.total + 2, rowY + 2, { width: colW.total - 4, align: "right" });
+        if (!modoLoja) {
+          doc.text(fmtBRL(total), colX.total + 2, rowY + 2, { width: colW.total - 4, align: "right" });
+        }
         rowY += 14;
         // Separador
         doc.strokeColor("#EEEEEE").lineWidth(0.5).moveTo(leftX, rowY).lineTo(rightX, rowY).stroke();
@@ -315,52 +340,56 @@ export async function GET(
     doc.y = rowY + 6;
 
     // ============================================
-    // TOTAIS
+    // TOTAIS — omitido pra loja (PDF financeiro, ver nota de 10/07 acima)
     // ============================================
-    const acrescimo = Number(order.acrescimo || 0);
-    const desconto = Number(order.desconto || 0);
-    const valeTroca = Number(order.vale_troca || 0);
-    const totalLiquido = subtotal + acrescimo - desconto - valeTroca;
-
     const totalsLeftLabel = leftX;
     doc.fontSize(9).font("Helvetica").fillColor("#444444");
     doc.text(`Total de Itens: ${itemList.length}`, totalsLeftLabel, doc.y);
 
-    const totalsX = 360;
-    const totalsW = rightX - totalsX;
-    let totalsY = doc.y - 12;
+    if (!modoLoja) {
+      const acrescimo = Number(order.acrescimo || 0);
+      const desconto = Number(order.desconto || 0);
+      const valeTroca = Number(order.vale_troca || 0);
+      const totalLiquido = subtotal + acrescimo - desconto - valeTroca;
 
-    const drawTotalRow = (
-      label: string,
-      value: string,
-      bold: boolean = false,
-      highlight: boolean = false
-    ) => {
-      if (highlight) {
-        doc.rect(totalsX, totalsY, totalsW, 16).fillColor("#FFF7CC").fill();
-      }
-      doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(bold ? 10 : 9);
-      doc.fillColor(bold ? "#000000" : "#444444");
-      doc.text(label, totalsX + 4, totalsY + 3, { width: totalsW * 0.5 });
-      doc.text(value, totalsX + 4 + totalsW * 0.5, totalsY + 3, {
-        width: totalsW * 0.5 - 4,
-        align: "right",
-      });
-      totalsY += 14;
-    };
+      const totalsX = 360;
+      const totalsW = rightX - totalsX;
+      let totalsY = doc.y - 12;
 
-    drawTotalRow("Total Produtos/Servicos", fmtBRL(subtotal));
-    drawTotalRow("Acrescimo", fmtBRL(acrescimo));
-    drawTotalRow("Desconto", fmtBRL(desconto));
-    drawTotalRow("Vale Troca", fmtBRL(valeTroca));
-    drawTotalRow("Total Liquido", fmtBRL(totalLiquido), true, true);
+      const drawTotalRow = (
+        label: string,
+        value: string,
+        bold: boolean = false,
+        highlight: boolean = false
+      ) => {
+        if (highlight) {
+          doc.rect(totalsX, totalsY, totalsW, 16).fillColor("#FFF7CC").fill();
+        }
+        doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(bold ? 10 : 9);
+        doc.fillColor(bold ? "#000000" : "#444444");
+        doc.text(label, totalsX + 4, totalsY + 3, { width: totalsW * 0.5 });
+        doc.text(value, totalsX + 4 + totalsW * 0.5, totalsY + 3, {
+          width: totalsW * 0.5 - 4,
+          align: "right",
+        });
+        totalsY += 14;
+      };
 
-    doc.y = Math.max(doc.y, totalsY) + 10;
+      drawTotalRow("Total Produtos/Servicos", fmtBRL(subtotal));
+      drawTotalRow("Acrescimo", fmtBRL(acrescimo));
+      drawTotalRow("Desconto", fmtBRL(desconto));
+      drawTotalRow("Vale Troca", fmtBRL(valeTroca));
+      drawTotalRow("Total Liquido", fmtBRL(totalLiquido), true, true);
+
+      doc.y = Math.max(doc.y, totalsY) + 10;
+    } else {
+      doc.moveDown(1);
+    }
 
     // ============================================
-    // PARCELAS
+    // PARCELAS — omitido pra loja (dado financeiro)
     // ============================================
-    const pmts = payments || [];
+    const pmts = modoLoja ? [] : payments || [];
     if (pmts.length > 0) {
       if (doc.y > 700) {
         doc.addPage();

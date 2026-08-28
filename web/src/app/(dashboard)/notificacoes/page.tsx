@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MessageSquare,
+  ShieldCheck,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,8 @@ const NOTIFICATION_ICONS: Record<NotificationType, React.ReactNode> = {
   [NotificationType.SCHEDULE_REMINDER]: <Calendar className="h-5 w-5" />,
   [NotificationType.TOOL_CUSTODY]: <Wrench className="h-5 w-5" />,
   [NotificationType.MESSAGE_RECEIVED]: <MessageSquare className="h-5 w-5" />,
+  [NotificationType.WARRANTY_OPENED]: <ShieldCheck className="h-5 w-5" />,
+  [NotificationType.WARRANTY_RESOLVED]: <ShieldCheck className="h-5 w-5" />,
   [NotificationType.SYSTEM]: <Bell className="h-5 w-5" />,
 };
 
@@ -52,12 +55,20 @@ const NOTIFICATION_ICON_COLORS: Record<NotificationType, string> = {
   [NotificationType.SCHEDULE_REMINDER]: "bg-orange-500/15 text-orange-500",
   [NotificationType.TOOL_CUSTODY]: "bg-cyan-500/15 text-cyan-500",
   [NotificationType.MESSAGE_RECEIVED]: "bg-indigo-500/15 text-indigo-500",
+  [NotificationType.WARRANTY_OPENED]: "bg-amber-500/15 text-amber-600",
+  [NotificationType.WARRANTY_RESOLVED]: "bg-emerald-500/15 text-emerald-600",
   [NotificationType.SYSTEM]: "bg-zinc-500/15 text-zinc-500",
 };
 
 /** Mesma regra do sino no layout — mensagem de chat abre a conversa, OS
  * abre o detalhe, o resto cai na própria lista (comportamento de sempre). */
 function notificationHref(notification: Notification): string | null {
+  if (
+    notification.type === NotificationType.WARRANTY_OPENED ||
+    notification.type === NotificationType.WARRANTY_RESOLVED
+  ) {
+    return "/garantias";
+  }
   const osId =
     typeof notification.data?.service_order_id === "string"
       ? notification.data.service_order_id

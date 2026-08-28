@@ -49,6 +49,10 @@ interface Warranty {
   videos: WarrantyMedia[];
   notes: string | null;
   resolution_notes: string | null;
+  resolution_photos: WarrantyMedia[];
+  resolution_videos: WarrantyMedia[];
+  executor_type: "reallliza" | "homologado" | null;
+  assigned_technician_id: string | null;
   opened_at: string;
   resolved_at: string | null;
   // Preenchido quando o admin converte a garantia em OS de assistência. O GET
@@ -62,6 +66,13 @@ interface Warranty {
     completed_at: string | null;
   } | null;
 }
+
+const STATUS_OPTIONS: Warranty["status"][] = [
+  "open",
+  "in_progress",
+  "resolved",
+  "rejected",
+];
 
 interface QuoteWithOs extends Quote {
   service_order_status?: string | null;
@@ -148,6 +159,12 @@ export default function GarantiasPageWrapper() {
 function GarantiasPageInner() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === UserRole.ADMIN;
+  const isPartner = user?.role === UserRole.PARTNER;
+  // Homologado (technician com professional_type='external' ou
+  // is_homologated) so gerencia as garantias atribuidas a ele — a API
+  // ja aplica essa regra no PATCH; aqui e' so pra decidir se mostra
+  // o botao "Gerenciar".
+  const podeGerenciar = isAdmin || user?.role === UserRole.TECHNICIAN;
 
   const excl = useExclusao<Warranty>("warranties", nomeDaGarantia);
   /**
@@ -179,6 +196,10 @@ function GarantiasPageInner() {
     "all" | Warranty["status"]
   >(initialStatusFilter as "all" | Warranty["status"]);
 
+  // Deep-link do botao "Abrir Garantia" na OS (Jose 27/08):
+  // /garantias?abrir=<osId> pre-seleciona a OS e ja abre o modal.
+  const osParaAbrir = searchParams.get("abrir");
+
   const [warranties, setWarranties] = useState<Warranty[]>([]);
   const [completedOs, setCompletedOs] = useState<QuoteWithOs[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -192,6 +213,17 @@ function GarantiasPageInner() {
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Dialog "Gerenciar" (admin ou homologado atribuido) — Jose 27/08.
+  const [manageTarget, setManageTarget] = useState<Warranty | null>(null);
+  const [manageStatus, setManageStatus] = useState<Warranty["status"]>("open");
+  const [manageResolutionNotes, setManageResolutionNotes] = useState("");
+  const [manageAssistanceOsId, setManageAssistanceOsId] = useState("");
+  const [manageResolutionPhotos, setManageResolutionPhotos] = useState<WarrantyMedia[]>([]);
+  const [manageResolutionVideos, setManageResolutionVideos] = useState<WarrantyMedia[]>([]);
+  const [manageUploading, setManageUploading] = useState(false);
+  const [manageSaving, setManageSaving] = useState(false);
+  const [manageError, setManageError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -225,6 +257,13 @@ function GarantiasPageInner() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!osParaAbrir) return;
+    setSelectedOsId(osParaAbrir);
+    setShowModal(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const resetForm = useCallback(() => {
     setSelectedOsId("");
@@ -260,10 +299,15 @@ function GarantiasPageInner() {
     };
   }
 
-  async function handleFiles(files: FileList | null, kind: "photo" | "video") {
+  /** Generico: usado pelo upload de evidencia (loja) e de solucao (Gerenciar). */
+  async function uploadFilesInto(
+    files: FileList | null,
+    kind: "photo" | "video",
+    onAdd: (m: WarrantyMedia) => void,
+    setBusy: (v: boolean) => void
+  ) {
     if (!files || files.length === 0) return;
-    setError(null);
-    setUploading(true);
+    setBusy(true);
     try {
       const arr = Array.from(files);
       for (const f of arr) {
@@ -275,14 +319,21 @@ function GarantiasPageInner() {
           continue;
         }
         const m = await handleUpload(f, kind);
-        if (m) {
-          if (kind === "photo") setPhotos((p) => [...p, m]);
-          else setVideos((p) => [...p, m]);
-        }
+        if (m) onAdd(m);
       }
     } finally {
-      setUploading(false);
+      setBusy(false);
     }
+  }
+
+  async function handleFiles(files: FileList | null, kind: "photo" | "video") {
+    setError(null);
+    await uploadFilesInto(
+      files,
+      kind,
+      (m) => (kind === "photo" ? setPhotos((p) => [...p, m]) : setVideos((p) => [...p, m])),
+      setUploading
+    );
   }
 
   async function handleSubmit() {
@@ -319,6 +370,62 @@ function GarantiasPageInner() {
     }
   }
 
+  function abrirGerenciar(w: Warranty) {
+    setManageTarget(w);
+    setManageStatus(w.status);
+    setManageResolutionNotes(w.resolution_notes ?? "");
+    setManageAssistanceOsId(w.assistance_service_order_id ?? "");
+    setManageResolutionPhotos(w.resolution_photos ?? []);
+    setManageResolutionVideos(w.resolution_videos ?? []);
+    setManageError(null);
+  }
+
+  function handleManageFiles(files: FileList | null, kind: "photo" | "video") {
+    setManageError(null);
+    uploadFilesInto(
+      files,
+      kind,
+      (m) =>
+        kind === "photo"
+          ? setManageResolutionPhotos((p) => [...p, m])
+          : setManageResolutionVideos((p) => [...p, m]),
+      setManageUploading
+    );
+  }
+
+  async function salvarGerenciamento() {
+    if (!manageTarget) return;
+    if (
+      (manageStatus === "resolved" || manageStatus === "rejected") &&
+      !manageResolutionNotes.trim()
+    ) {
+      setManageError("Descreva a solução (ou o motivo da recusa) antes de finalizar.");
+      return;
+    }
+    setManageSaving(true);
+    setManageError(null);
+    try {
+      await apiClient.patch(`/warranties/${manageTarget.id}`, {
+        status: manageStatus,
+        resolution_notes: manageResolutionNotes.trim() || null,
+        assistance_service_order_id: manageAssistanceOsId.trim() || null,
+        resolution_photos: manageResolutionPhotos,
+        resolution_videos: manageResolutionVideos,
+      });
+      toast.success("Garantia atualizada");
+      setManageTarget(null);
+      load();
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? (err as { message: string }).message
+          : "Erro ao atualizar garantia";
+      setManageError(msg);
+    } finally {
+      setManageSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <motion.div
@@ -337,7 +444,10 @@ function GarantiasPageInner() {
               : "Abra e acompanhe garantias vinculadas a OSs concluídas."}
           </p>
         </div>
-        {!isAdmin && (
+        {/* So loja abre garantia — POST /api/warranties recusa technician
+            (homologado só recebe e resolve). Antes era `!isAdmin`, que
+            também mostrava pra technician e sempre dava 403 ao enviar. */}
+        {isPartner && (
           <Button onClick={() => setShowModal(true)}>
             <Plus className="h-4 w-4" />
             Nova garantia
@@ -428,6 +538,11 @@ function GarantiasPageInner() {
                       homologado também abrem esta tela, e para eles o botão só
                       renderia um 403.
                     */}
+                    {podeGerenciar && (
+                      <Button size="sm" variant="outline" onClick={() => abrirGerenciar(w)}>
+                        Gerenciar
+                      </Button>
+                    )}
                     {isAdmin && (
                       <Button
                         size="sm"
@@ -483,6 +598,39 @@ function GarantiasPageInner() {
                         Resposta da Reallliza
                       </p>
                       <p className="mt-1 text-sm">{w.resolution_notes}</p>
+                      {((w.resolution_photos?.length ?? 0) > 0 ||
+                        (w.resolution_videos?.length ?? 0) > 0) && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {(w.resolution_photos ?? []).map((p, i) => (
+                            <a
+                              key={`rp-${i}`}
+                              href={p.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block h-16 w-16 overflow-hidden rounded-lg border border-border"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={p.thumbnail_url || p.url}
+                                alt="Foto da solução"
+                                className="h-full w-full object-cover"
+                              />
+                            </a>
+                          ))}
+                          {(w.resolution_videos ?? []).map((v, i) => (
+                            <a
+                              key={`rv-${i}`}
+                              href={v.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-black/50 text-white"
+                              title="Vídeo da solução"
+                            >
+                              <Video className="h-5 w-5" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -645,6 +793,169 @@ function GarantiasPageInner() {
             disabled={uploading}
           >
             Abrir garantia
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Dialog "Gerenciar" — admin sempre; homologado so nas suas
+          atribuidas (a API confere de novo no PATCH, isto aqui e' so a UI). */}
+      <Dialog open={!!manageTarget} onClose={() => setManageTarget(null)}>
+        <DialogHeader>
+          <DialogTitle>
+            Gerenciar garantia
+            {manageTarget?.service_order && (
+              <span className="ml-1 font-normal text-muted-foreground">
+                — OS #{manageTarget.service_order.order_number ?? "—"}
+              </span>
+            )}
+          </DialogTitle>
+        </DialogHeader>
+        <DialogContent className="space-y-3">
+          {manageTarget && (
+            <>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Problema relatado pela loja
+                </p>
+                <p className="mt-1 text-sm">{manageTarget.description}</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Status</label>
+                <SelectNative
+                  value={manageStatus}
+                  onChange={(e) => setManageStatus(e.target.value as Warranty["status"])}
+                >
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {STATUS_CONFIG[s].label}
+                    </option>
+                  ))}
+                </SelectNative>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium">
+                  Solução / motivo da recusa
+                  {(manageStatus === "resolved" || manageStatus === "rejected") && " *"}
+                </label>
+                <textarea
+                  value={manageResolutionNotes}
+                  onChange={(e) => setManageResolutionNotes(e.target.value)}
+                  rows={4}
+                  maxLength={2000}
+                  placeholder="O que foi feito pra resolver, ou por que a garantia foi recusada..."
+                  className="flex w-full rounded-xl border border-input bg-background px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium">
+                  OS de assistência (opcional)
+                </label>
+                <Input
+                  value={manageAssistanceOsId}
+                  onChange={(e) => setManageAssistanceOsId(e.target.value)}
+                  placeholder="Cole o id da OS já criada para o reparo, se houver"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Fotos e vídeos da solução</p>
+                <div className="flex flex-wrap gap-2">
+                  {manageResolutionPhotos.map((p, i) => (
+                    <div
+                      key={`mp-${i}`}
+                      className="relative h-16 w-16 overflow-hidden rounded-lg border border-border"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={p.thumbnail_url || p.url}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setManageResolutionPhotos((arr) => arr.filter((_, idx) => idx !== i))
+                        }
+                        className="absolute top-0.5 right-0.5 rounded-full bg-black/60 p-0.5 text-white"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  {manageResolutionVideos.map((v, i) => (
+                    <div
+                      key={`mv-${i}`}
+                      className="relative flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-black/50 text-white"
+                    >
+                      <Video className="h-5 w-5" />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setManageResolutionVideos((arr) => arr.filter((_, idx) => idx !== i))
+                        }
+                        className="absolute top-0.5 right-0.5 rounded-full bg-black/60 p-0.5 text-white"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-lg border border-dashed border-input bg-background hover:bg-muted">
+                    <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      disabled={manageUploading}
+                      onChange={(e) => {
+                        handleManageFiles(e.target.files, "photo");
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                  <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-lg border border-dashed border-input bg-background hover:bg-muted">
+                    <Video className="h-5 w-5 text-muted-foreground" />
+                    <input
+                      type="file"
+                      accept="video/*"
+                      multiple
+                      className="hidden"
+                      disabled={manageUploading}
+                      onChange={(e) => {
+                        handleManageFiles(e.target.files, "video");
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
+                {manageUploading && (
+                  <p className="text-xs text-muted-foreground">Enviando...</p>
+                )}
+              </div>
+
+              {manageError && (
+                <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {manageError}
+                </div>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setManageTarget(null)}>
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            onClick={salvarGerenciamento}
+            isLoading={manageSaving}
+            disabled={manageUploading}
+          >
+            Salvar
           </Button>
         </DialogFooter>
       </Dialog>

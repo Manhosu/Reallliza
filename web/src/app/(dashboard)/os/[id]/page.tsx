@@ -37,6 +37,8 @@ import {
   Download,
   Package,
   CreditCard,
+  MessageCircle,
+  ShieldCheck,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1343,6 +1345,20 @@ export default function OsDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Conversar com o homologado — Jose 27/08. Backend ja autoriza
+              partner em /messages ha tempos; so faltava um caminho pra
+              chegar la a partir da OS. */}
+          {isPartner && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push(`/chats?os=${id}`)}
+            >
+              <MessageCircle className="h-4 w-4" />
+              Conversar
+            </Button>
+          )}
+
           {/* Change Status - visible to all roles */}
           {nextStatuses.length > 0 && !isPartner && (
             <div className="relative">
@@ -1380,39 +1396,41 @@ export default function OsDetailPage() {
             </div>
           )}
 
-          {/* Download PDF Report — oculto pra loja (Jessica 10/07) */}
-          {!isPartner && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                try {
-                  const token = (await import("@/lib/api/client")).getAccessToken;
-                  const accessToken = await token();
-                  const res = await fetch(`/api/service-orders/${id}/report`, {
-                    headers: { Authorization: `Bearer ${accessToken}` },
-                  });
-                  if (!res.ok) throw new Error("Erro ao gerar relatorio");
-                  const blob = await res.blob();
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `OS_${order.order_number || id}_relatorio.pdf`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                } catch {
-                  toast.error("Erro ao gerar relatorio PDF");
-                }
-              }}
-            >
-              <Download className="h-4 w-4" />
-              Relatorio PDF
-            </Button>
-          )}
+          {/* Download PDF Report — loja tambem baixa agora (Jose 27/08), mas
+              o servidor tira precos/pagamentos quando quem pede e' partner
+              (decisao de 10/07 continua valendo pro PDF financeiro; so
+              deixou de bloquear o botao inteiro). */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              try {
+                const token = (await import("@/lib/api/client")).getAccessToken;
+                const accessToken = await token();
+                const res = await fetch(`/api/service-orders/${id}/report`, {
+                  headers: { Authorization: `Bearer ${accessToken}` },
+                });
+                if (!res.ok) throw new Error("Erro ao gerar relatorio");
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `OS_${order.order_number || id}_relatorio.pdf`;
+                a.click();
+                URL.revokeObjectURL(url);
+              } catch {
+                toast.error("Erro ao gerar relatorio PDF");
+              }
+            }}
+          >
+            <Download className="h-4 w-4" />
+            Relatorio PDF
+          </Button>
 
-          {/* Termo de Garantia da Execução — pedido da Jessica 26/08, só faz
-              sentido pra OS já concluída (é o que o documento atesta). */}
-          {!isPartner && order.status === OsStatus.COMPLETED && (
+          {/* Termo de Garantia da Execução — pedido da Jessica 26/08, liberado
+              pra loja tambem em 27/08 (documento so tecnico, sem valores).
+              So faz sentido pra OS ja concluida (e' o que o documento atesta). */}
+          {order.status === OsStatus.COMPLETED && (
             <Button
               variant="outline"
               size="sm"
@@ -1440,6 +1458,29 @@ export default function OsDetailPage() {
               Termo de Garantia
             </Button>
           )}
+
+          {/* Abrir Garantia — Jose 27/08. Ela chamou de "Gerar Retrabalho" na
+              conversa, mas o fluxo que descreveu (loja relata problema →
+              homologado ve motivo/fotos → aceita → resolve) e' o sistema de
+              Garantia que ja existe (/garantias), nao o recurso admin de
+              mesmo nome (que cria OS nova e penaliza tecnico). Mesma regra
+              de status do POST /api/warranties. */}
+          {isPartner &&
+            // "approved" nao existe no enum OsStatus do front (so no
+            // check do banco/POST /api/warranties) — comparado como string
+            // pra bater exatamente com a mesma regra do backend.
+            (["completed", "approved", "invoiced"] as string[]).includes(
+              order.status
+            ) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/garantias?abrir=${id}`)}
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Abrir Garantia
+              </Button>
+            )}
 
           {/* Approve button - visible only when completed and user is admin */}
           {order.status === OsStatus.COMPLETED && user?.role === UserRole.ADMIN && (

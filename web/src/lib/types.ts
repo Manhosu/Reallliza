@@ -71,6 +71,8 @@ export enum NotificationType {
   SCHEDULE_REMINDER = "schedule_reminder",
   TOOL_CUSTODY = "tool_custody",
   MESSAGE_RECEIVED = "message_received",
+  WARRANTY_OPENED = "warranty_opened",
+  WARRANTY_RESOLVED = "warranty_resolved",
   SYSTEM = "system",
 }
 
