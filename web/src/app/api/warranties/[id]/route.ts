@@ -152,7 +152,7 @@ export async function PATCH(
       .from("warranties")
       .update(update)
       .eq("id", id)
-      .select("*, service_order:service_orders(order_number)")
+      .select("*, service_order:service_orders!warranties_service_order_id_fkey(order_number)")
       .single();
 
     if (error || !data) throw new Error("Falha ao atualizar garantia");
