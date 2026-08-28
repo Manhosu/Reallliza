@@ -200,9 +200,12 @@ export async function POST(request: NextRequest) {
     });
 
     // Notifica o homologado dono da execucao (Jessica 16/07)
+    // Awaited (27/08) — sem isso a Vercel pode matar a Lambda no `return`
+    // antes do fire-and-forget terminar; achado ao ver a notificacao
+    // simetrica do PATCH (warranty_resolved) falhar silenciosamente.
     if (executorType === "homologado" && assignedTechnicianId) {
       const { createNotification } = await import("@/lib/api-helpers/notifications");
-      createNotification(
+      await createNotification(
         assignedTechnicianId,
         "Nova garantia aberta",
         `A loja abriu uma solicitação de garantia sobre a OS #${osFull.order_number ?? ""}. Verifique detalhes e responda.`,

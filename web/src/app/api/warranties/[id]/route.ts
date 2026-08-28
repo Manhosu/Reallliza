@@ -176,7 +176,10 @@ export async function PATCH(
       const { createNotification } = await import("@/lib/api-helpers/notifications");
       const titulo =
         update.status === "resolved" ? "Garantia resolvida" : "Garantia recusada";
-      createNotification(
+      // Awaited: sem isso a Vercel pode encerrar a Lambda no `return` antes
+      // do fire-and-forget terminar (mesmo aviso já documentado em
+      // createNotification() sobre o push do Expo).
+      await createNotification(
         w.opened_by,
         titulo,
         `A garantia da OS #${w.service_order?.order_number ?? ""} foi ${
