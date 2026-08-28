@@ -48,7 +48,7 @@ export async function GET(
     const { data, error } = await supabase
       .from("warranties")
       .select(
-        "*, service_order:service_orders(id, order_number, title, client_name, completed_at, technician_id), opened_by_user:profiles!warranties_opened_by_fkey(full_name)"
+        "*, service_order:service_orders!warranties_service_order_id_fkey(id, order_number, title, client_name, completed_at, technician_id), opened_by_user:profiles!warranties_opened_by_fkey(full_name)"
       )
       .eq("id", id)
       .single();
