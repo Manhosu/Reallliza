@@ -24,10 +24,11 @@ import {
 } from "@/components/feed/editor-de-anexos";
 import { EditorDePatrocinio, type CoberturaEditada } from "@/components/feed/editor-de-patrocinio";
 import { EditorDoPatrocinador } from "@/components/feed/editor-do-patrocinador";
+import { PainelInsights } from "@/components/feed/painel-insights";
 import { medirArquivo } from "@/lib/feed/medir-arquivo";
 import { feedApi } from "@/lib/api";
 import { feedGestaoApi } from "@/lib/api/feed";
-import type { FeedPost, FeedMeta, FeedMedia, FeedInsights, Campanha } from "@/lib/api/feed";
+import type { FeedPost, FeedMeta, FeedMedia, Campanha } from "@/lib/api/feed";
 import { useAuthStore } from "@/stores/auth-store";
 import { UserRole } from "@/lib/types";
 import { FeedLeitor } from "./leitor";
@@ -697,120 +698,6 @@ function Editor({ aberto, post, meta, onFechar, onSalvo }: EditorProps) {
 }
 
 // ============================================================
-// Painel de desempenho
-// ============================================================
-
-function PainelInsights({ post, onFechar }: { post: FeedPost; onFechar: () => void }) {
-  const [dados, setDados] = useState<FeedInsights | null>(null);
-  const [carregando, setCarregando] = useState(true);
-
-  useEffect(() => {
-    feedApi
-      .insights(post.id)
-      .then(setDados)
-      .catch(() => toast.error("Não foi possível carregar o desempenho"))
-      .finally(() => setCarregando(false));
-  }, [post.id]);
-
-  const t = dados?.totais;
-
-  return (
-    <Dialog open onClose={onFechar} size="lg">
-      <DialogHeader>
-        <DialogTitle>Desempenho — {post.title}</DialogTitle>
-      </DialogHeader>
-      <DialogContent className="space-y-5 pt-4">
-        {carregando ? (
-          <div className="h-32 animate-pulse rounded-xl bg-muted" />
-        ) : !t ? (
-          <p className="text-sm text-muted-foreground">Sem dados ainda.</p>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-4">
-              {[
-                ["Impressões", t.impressoes],
-                ["Alcance único", t.alcance_unico],
-                ["Visualizações", t.visualizacoes],
-                ["Cliques", t.cliques],
-                ["Reações", t.reacoes],
-                ["Comentários", t.comentarios],
-                ["Compartilhamentos", t.compartilhamentos],
-                ["Salvamentos", t.salvamentos],
-              ].map(([rotulo, valor]) => (
-                <div key={String(rotulo)} className="bg-background p-3">
-                  <p className="text-xl font-semibold tabular-nums">{valor as number}</p>
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{rotulo}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl border p-3">
-                <p className="text-lg font-semibold tabular-nums">{t.ctr_impressao}%</p>
-                <p className="text-[11px] text-muted-foreground">
-                  Taxa de clique <span className="block">sobre impressões</span>
-                </p>
-              </div>
-              <div className="rounded-xl border p-3">
-                <p className="text-lg font-semibold tabular-nums">{t.ctr_alcance}%</p>
-                <p className="text-[11px] text-muted-foreground">
-                  Taxa de clique <span className="block">sobre alcance</span>
-                </p>
-              </div>
-              <div className="rounded-xl border p-3">
-                <p className="text-lg font-semibold tabular-nums">{t.taxa_engajamento}%</p>
-                <p className="text-[11px] text-muted-foreground">
-                  Engajamento <span className="block">sobre alcance</span>
-                </p>
-              </div>
-            </div>
-
-            {t.video.inicios > 0 && (
-              <div className="space-y-2 rounded-xl border p-3">
-                <p className="text-sm font-medium">Vídeo</p>
-                <div className="grid grid-cols-4 gap-2 text-center">
-                  {([["25%", t.video.q25], ["50%", t.video.q50], ["75%", t.video.q75], ["100%", t.video.completos]] as const).map(
-                    ([r, v]) => (
-                      <div key={r}>
-                        <p className="text-base font-semibold tabular-nums">
-                          {t.video.inicios > 0 ? Math.round((v / t.video.inicios) * 100) : 0}%
-                        </p>
-                        <p className="text-[11px] text-muted-foreground">assistiu {r}</p>
-                      </div>
-                    )
-                  )}
-                </div>
-              </div>
-            )}
-
-            {Object.entries(dados.recortes).map(([tipo, linhas]) => (
-              <div key={tipo} className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {tipo === "uf" ? "Por estado" : tipo === "level" ? "Por nível" : tipo === "role" ? "Por perfil" : "Por plataforma"}
-                </p>
-                <div className="space-y-1">
-                  {linhas.slice(0, 6).map((l) => (
-                    <div key={l.valor} className="flex items-center justify-between text-sm">
-                      <span>{l.valor}</span>
-                      <span className="tabular-nums text-muted-foreground">
-                        {l.impressoes} impressões · {l.cliques} cliques
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </>
-        )}
-      </DialogContent>
-      <DialogFooter className="border-t">
-        <Button variant="outline" onClick={onFechar}>Fechar</Button>
-      </DialogFooter>
-    </Dialog>
-  );
-}
-
-// ============================================================
 // Tela
 // ============================================================
 
@@ -1125,7 +1012,13 @@ function FeedAdmin() {
         onFechar={() => setEditorPatrocinadoAberto(false)}
         onSalvo={carregar}
       />
-      {insightsDe && <PainelInsights post={insightsDe} onFechar={() => setInsightsDe(null)} />}
+      {insightsDe && (
+        <PainelInsights
+          postId={insightsDe.id}
+          title={insightsDe.title}
+          onFechar={() => setInsightsDe(null)}
+        />
+      )}
     </div>
   );
 }

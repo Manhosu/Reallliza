@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, Megaphone, Pencil, Trash2, AlertTriangle,
   Eye, MousePointerClick, Users, Target, TrendingUp, Video,
-  Heart, MessageCircle, Share2, Bookmark,
+  Heart, MessageCircle, Share2, Bookmark, BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -26,6 +26,7 @@ import { feedApi } from "@/lib/api";
 import { feedGestaoApi } from "@/lib/api/feed";
 import type { Campanha, FeedPost, PainelFeed } from "@/lib/api/feed";
 import { EditorDoPatrocinador } from "@/components/feed/editor-do-patrocinador";
+import { PainelInsights } from "@/components/feed/painel-insights";
 
 const JANELAS = [
   { dias: 7, rotulo: "7 dias" },
@@ -62,6 +63,10 @@ export default function PortalDoPatrocinador() {
   const [erro, setErro] = useState<string | null>(null);
   const [editorAberto, setEditorAberto] = useState(false);
   const [postEmEdicao, setPostEmEdicao] = useState<FeedPost | null>(null);
+  // Karol 28/08: "apertar na publicação e aparecer os resultados só dessa
+  // publicação" — post.id já vem embutido em cada campanha (feedGestaoApi.
+  // campanhas()), então abrir isto é só um clique, sem busca nova.
+  const [verDesempenhoDe, setVerDesempenhoDe] = useState<{ id: string; title: string } | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -290,24 +295,34 @@ export default function PortalDoPatrocinador() {
                       <p className="mt-1 text-xs text-destructive">Motivo da reprovação: {c.rejection_reason}</p>
                     )}
                   </div>
-                  {post && podeEditar && (
-                    <div className="flex gap-2">
+                  <div className="flex gap-2">
+                    {post?.status === "published" && (
                       <button
-                        onClick={() => void abrirEdicao(post.id)}
+                        onClick={() => setVerDesempenhoDe({ id: post.id, title: post.title })}
                         className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
                       >
-                        <Pencil className="h-3.5 w-3.5" /> Editar
+                        <BarChart3 className="h-3.5 w-3.5" /> Ver desempenho
                       </button>
-                      {c.payment_status === "pending" && (
+                    )}
+                    {post && podeEditar && (
+                      <>
                         <button
-                          onClick={() => void excluirRascunho(post.id)}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-destructive/40 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10"
+                          onClick={() => void abrirEdicao(post.id)}
+                          className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
                         >
-                          <Trash2 className="h-3.5 w-3.5" /> Excluir
+                          <Pencil className="h-3.5 w-3.5" /> Editar
                         </button>
-                      )}
-                    </div>
-                  )}
+                        {c.payment_status === "pending" && (
+                          <button
+                            onClick={() => void excluirRascunho(post.id)}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-destructive/40 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Excluir
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             );
@@ -321,6 +336,14 @@ export default function PortalDoPatrocinador() {
         onFechar={() => setEditorAberto(false)}
         onSalvo={() => void carregar()}
       />
+
+      {verDesempenhoDe && (
+        <PainelInsights
+          postId={verDesempenhoDe.id}
+          title={verDesempenhoDe.title}
+          onFechar={() => setVerDesempenhoDe(null)}
+        />
+      )}
     </div>
   );
 }

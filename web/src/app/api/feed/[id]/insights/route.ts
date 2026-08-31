@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
-import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
+import { authenticateRequest, AuthError } from "@/lib/api-helpers/auth";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { resolverSponsorOpcional, postPertenceAoSponsor } from "@/lib/feed/sponsor-auth";
 
 /**
  * GET /api/feed/[id]/insights
@@ -18,9 +19,23 @@ export async function GET(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
     const { id } = await params;
     const supabase = getAdminClient();
+
+    // Karol 28/08: patrocinador/loja vê o desempenho da PRÓPRIA publicação,
+    // no Portal do Patrocinador — mesma checagem de posse já usada em
+    // GET /api/feed/[id] (feed/leitor não precisa disso: lá tudo que
+    // aparece já passou por audiência).
+    if (user.role !== "admin") {
+      const sponsorVinculado =
+        user.role === "sponsor" || user.role === "partner"
+          ? await resolverSponsorOpcional(supabase, user.id)
+          : null;
+      const dono = sponsorVinculado
+        ? await postPertenceAoSponsor(supabase, id, sponsorVinculado)
+        : false;
+      if (!dono) throw new AuthError(403, "Sem permissão para ver este desempenho");
+    }
 
     const { data: post } = await supabase
       .from("feed_posts")
