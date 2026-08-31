@@ -20,11 +20,16 @@ export async function GET(request: NextRequest) {
         ? "https://api.asaas.com/v3"
         : "https://sandbox.asaas.com/api/v3";
 
-    const res = await fetch(`${baseUrl}/myAccount`, {
-      headers: { access_token: apiKey },
+    const [contaRes, walletRes] = await Promise.all([
+      fetch(`${baseUrl}/myAccount`, { headers: { access_token: apiKey } }),
+      fetch(`${baseUrl}/myAccount/walletId`, { headers: { access_token: apiKey } }),
+    ]);
+    const conta = await contaRes.json();
+    const wallet = await walletRes.json().catch(() => null);
+    return jsonResponse({
+      conta: { status: contaRes.status, data: conta },
+      wallet: { status: walletRes.status, data: wallet },
     });
-    const data = await res.json();
-    return jsonResponse({ status: res.status, data });
   } catch (error) {
     return errorResponse(error);
   }
