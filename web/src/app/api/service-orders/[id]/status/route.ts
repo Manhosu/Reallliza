@@ -44,7 +44,11 @@ export async function PATCH(
 ) {
   try {
     const user = await authenticateRequest(request);
-    // Jessica 10/07: loja e' read-only na OS — nao muda status
+    // Jessica 10/07: loja e' read-only na OS — nao muda status. Mas o
+    // parceiro que aceita a OS via broadcast EXECUTA o servico, e precisa
+    // avancar o proprio status (Jessica 31/08: sem isso nem admin/loja
+    // conseguia levar a OS a "Concluida" pra ela testar garantia). A
+    // checagem logo abaixo distingue os dois: so' quem executa passa.
     checkRole(user, [
       "admin",
       "manager",
@@ -53,6 +57,7 @@ export async function PATCH(
       "supervisor",
       "operador",
       "technician",
+      "partner",
     ]);
     const { id } = await params;
 
@@ -87,24 +92,15 @@ export async function PATCH(
       );
     }
 
-    // Permissao de operador (tecnico ou parceiro que aceitou):
+    // Permissao de quem EXECUTA a OS (tecnico ou parceiro que aceitou via
+    // broadcast) — nao de quem so' a contratou. canTechnicianAccessOs so'
+    // confere IDs (technician_id/equipe), nao exige role="technician", entao
+    // ja cobre o parceiro-executor sem precisar de um segundo caminho pra
+    // "parceiro-cliente" (esse continua de fora, de proposito — loja e'
+    // read-only na OS, comentario de 10/07 acima).
     if (user.role === "technician" || user.role === "partner") {
-      let partnerOwnId: string | null = null;
-      if (user.role === "partner") {
-        const { data: pd } = await supabase
-          .from("partners")
-          .select("id")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        partnerOwnId = pd?.id ?? null;
-      }
-      // canTechnicianAccessOs so' confere IDs, nao exige role="technician" —
-      // parceiro que aceitou a OS via broadcast vira technician_id dela
-      // (Jessica 31/08).
       const okAsTech = await canTechnicianAccessOs(supabase, user.id, order);
-      const okAsPartner =
-        !!partnerOwnId && order.partner_id === partnerOwnId;
-      if (!okAsTech && !okAsPartner) {
+      if (!okAsTech) {
         throw new AuthError(403, "You do not have permission to change status of this service order");
       }
     }

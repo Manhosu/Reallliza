@@ -1083,6 +1083,14 @@ export default function OsDetailPage() {
     [id]
   );
 
+  /**
+   * Parceiro que aceitou a OS via broadcast e virou technician_id dela —
+   * diferente da loja (partner_id, so' contratou). Ele executa o serviço,
+   * então precisa do botão de mudar status; a loja continua sem (Jessica
+   * 31/08).
+   */
+  const isExecutingPartner = isPartner && order?.technician_id === user?.id;
+
   // Fetch timeline
   const {
     data: history,
@@ -1359,8 +1367,9 @@ export default function OsDetailPage() {
             </Button>
           )}
 
-          {/* Change Status - visible to all roles */}
-          {nextStatuses.length > 0 && !isPartner && (
+          {/* Change Status — visible to admin/tecnico e ao parceiro que
+              executa a OS (nao a' loja que so' contratou, Jessica 31/08). */}
+          {nextStatuses.length > 0 && (!isPartner || isExecutingPartner) && (
             <div className="relative">
               <Button
                 variant="outline"
