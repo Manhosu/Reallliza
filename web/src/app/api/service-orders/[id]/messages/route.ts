@@ -7,6 +7,8 @@ import { dispatchTechMessageToGarantias } from "@/lib/api-helpers/dispatch-messa
 import { createNotification } from "@/lib/api-helpers/notifications";
 import { canTechnicianAccessOs, getTeamMemberIds } from "@/lib/api-helpers/team-scope";
 
+type Channel = "interno" | "loja";
+
 /**
  * Mapeia o role do usuário logado pro `sender_role` da mensagem.
  * Mantém os mesmos rótulos que o Garantias usa em `ticket_messages.remetente_tipo`.
@@ -18,11 +20,18 @@ function senderRoleFromUserRole(role: string): "TECNICO" | "OPERADOR" | "PARTNER
 }
 
 /**
- * Resolve a OS + checa permissão.
- * Mesmo padrão de `/api/service-orders/[id]/route.ts` — inclui escopo de
- * equipe (Jessica 26/08: chat dava 403 pro técnico membro de equipe numa OS
- * auto-atribuída, mesmo bug já corrigido ali em 10/08 mas nunca propagado
- * pra esta rota, que copiou a versão antiga do check).
+ * Resolve a OS + checa permissão + classifica quem é quem em relação a ela.
+ *
+ * Jessica 31/08: o botão "Conversar" da loja abria o MESMO chat que a
+ * Reallliza usa com o técnico — sem separação, a loja veria qualquer coisa
+ * que a equipe interna discutisse ali. Ela confirmou: a Reallliza continua
+ * vendo tudo (supervisão), a loja só vê a própria conversa com o
+ * homologado. Daqui pra baixo, cada mensagem pertence a um `channel`:
+ * 'interno' (Reallliza↔executor) ou 'loja' (loja↔executor).
+ *
+ * `isExecutor` cobre técnico OU parceiro que aceitou a OS via broadcast —
+ * canTechnicianAccessOs só confere IDs, não exige role="technician"
+ * (mesmo ajuste feito nas outras rotas de OS em 31/08).
  */
 async function loadAuthorizedOrder(
   request: NextRequest,
@@ -43,33 +52,36 @@ async function loadAuthorizedOrder(
     throw new AuthError(404, "Service order not found");
   }
 
-  if (user.role === "technician" && !(await canTechnicianAccessOs(supabase, user.id, order))) {
-    throw new AuthError(403, "You do not have permission to view this service order");
-  }
+  const isExecutor = await canTechnicianAccessOs(supabase, user.id, order);
 
+  let isLojaClient = false;
   if (user.role === "partner") {
     const { data: partnerData } = await supabase
       .from("partners")
       .select("id")
       .eq("user_id", user.id)
-      .single();
-    // Parceiro que aceitou a OS via broadcast vira technician_id dela — sem
-    // isso, o chat dele com a própria OS dava "You do not have permission"
-    // (Jessica 31/08: homologado sem conseguir falar na OS dele).
-    const okAsPartner = !!partnerData && order.partner_id === partnerData.id;
-    const okAsTech = order.technician_id === user.id;
-    if (!okAsPartner && !okAsTech) {
-      throw new AuthError(403, "You do not have permission to view this service order");
-    }
+      .maybeSingle();
+    isLojaClient = !!partnerData && order.partner_id === partnerData.id;
   }
 
-  return { user, supabase, order };
+  const isStaff = user.role !== "technician" && user.role !== "partner";
+
+  if (!isExecutor && !isLojaClient && !isStaff) {
+    throw new AuthError(403, "You do not have permission to view this service order");
+  }
+
+  return { user, supabase, order, isExecutor, isLojaClient, isStaff };
 }
 
 /**
- * GET /api/service-orders/[id]/messages
+ * GET /api/service-orders/[id]/messages?channel=interno|loja
  *
  * Lista as mensagens da OS, mais antigas primeiro.
+ * - Loja: sempre só o canal 'loja', ignora qualquer `channel` pedido —
+ *   nunca é o cliente quem decide o que ele pode ver.
+ * - Staff/executor: filtra pelo `channel` pedido; sem parâmetro, devolve os
+ *   dois (supervisão da Reallliza precisa enxergar tudo de uma vez).
+ *
  * Ao mesmo tempo marca como lidas as mensagens que o usuário ainda não viu
  * (todas exceto as próprias). Idempotente — só atualiza onde `read_at IS NULL`.
  */
@@ -79,33 +91,49 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const { user, supabase, order } = await loadAuthorizedOrder(request, id);
+    const { user, supabase, order, isLojaClient } = await loadAuthorizedOrder(request, id);
 
-    const { data, error } = await supabase
+    const channelParam = request.nextUrl.searchParams.get("channel");
+
+    let query = supabase
       .from("os_messages")
       .select(
-        "id, service_order_id, sender_user_id, sender_role, sender_name, content, attachment_url, attachment_type, external_message_id, read_at, created_at"
+        "id, service_order_id, sender_user_id, sender_role, sender_name, content, attachment_url, attachment_type, external_message_id, read_at, created_at, channel"
       )
-      .eq("service_order_id", order.id)
-      .order("created_at", { ascending: true });
+      .eq("service_order_id", order.id);
+
+    if (isLojaClient) {
+      query = query.eq("channel", "loja");
+    } else if (channelParam === "interno" || channelParam === "loja") {
+      query = query.eq("channel", channelParam);
+    }
+
+    const { data, error } = await query.order("created_at", { ascending: true });
 
     if (error) {
       console.error(`Failed to load os_messages: ${error.message}`);
       throw new Error("Failed to load messages");
     }
 
-    // Marca como lidas as mensagens dos outros (fire-and-forget).
-    supabase
+    // Marca como lidas as mensagens dos outros (fire-and-forget). So' do
+    // mesmo escopo de canal que a leitura, senao marcar "lido" numa consulta
+    // filtrada apagaria o nao-lido de um canal que a pessoa nem abriu.
+    let marcarLidas = supabase
       .from("os_messages")
       .update({ read_at: new Date().toISOString() })
       .eq("service_order_id", order.id)
       .is("read_at", null)
-      .neq("sender_user_id", user.id)
-      .then(({ error: markErr }) => {
-        if (markErr) {
-          console.warn(`Mark-as-read failed: ${markErr.message}`);
-        }
-      });
+      .neq("sender_user_id", user.id);
+    if (isLojaClient) {
+      marcarLidas = marcarLidas.eq("channel", "loja");
+    } else if (channelParam === "interno" || channelParam === "loja") {
+      marcarLidas = marcarLidas.eq("channel", channelParam);
+    }
+    marcarLidas.then(({ error: markErr }) => {
+      if (markErr) {
+        console.warn(`Mark-as-read failed: ${markErr.message}`);
+      }
+    });
 
     return jsonResponse(data || []);
   } catch (error) {
@@ -116,11 +144,11 @@ export async function GET(
 /**
  * POST /api/service-orders/[id]/messages
  *
- * Body: { content: string, attachment_url?: string, attachment_type?: string }
+ * Body: { content: string, attachment_url?: string, attachment_type?: string, channel?: 'interno'|'loja' }
  *
  * Insere a mensagem em `os_messages`, dispara webhook reverso pra Garantias
  * (sempre — o callback dedupa do outro lado) e gera notificação pro
- * "outro lado" da conversa na Execução.
+ * "outro lado" da conversa NAQUELE canal.
  */
 export async function POST(
   request: NextRequest,
@@ -128,18 +156,27 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { user, supabase, order } = await loadAuthorizedOrder(request, id);
+    const { user, supabase, order, isExecutor, isLojaClient } = await loadAuthorizedOrder(request, id);
 
     const body = (await request.json()) as {
       content?: string;
       attachment_url?: string;
       attachment_type?: string;
+      channel?: string;
     };
 
     const content = (body.content || "").trim();
     if (!content) {
       throw new AuthError(400, "content is required");
     }
+
+    // A loja so' fala no proprio canal, nunca decide entrar no interno —
+    // igual na leitura, o pedido do cliente nunca e' a fonte da verdade.
+    const channel: Channel = isLojaClient
+      ? "loja"
+      : body.channel === "loja"
+        ? "loja"
+        : "interno";
 
     const senderRole = senderRoleFromUserRole(user.role);
 
@@ -154,9 +191,10 @@ export async function POST(
         attachment_url: body.attachment_url || null,
         attachment_type: body.attachment_type || null,
         external_message_id: null,
+        channel,
       })
       .select(
-        "id, service_order_id, sender_user_id, sender_role, sender_name, content, attachment_url, attachment_type, external_message_id, read_at, created_at"
+        "id, service_order_id, sender_user_id, sender_role, sender_name, content, attachment_url, attachment_type, external_message_id, read_at, created_at, channel"
       )
       .single();
 
@@ -173,6 +211,7 @@ export async function POST(
       newData: {
         service_order_id: order.id,
         sender_role: senderRole,
+        channel,
       },
     });
 
@@ -197,20 +236,33 @@ export async function POST(
       }
     }
 
-    // Notifica o "outro lado" da conversa na Execução (com push + priority).
-    // Awaitamos pra garantir o INSERT em `notifications` antes do return.
-    // OS auto-atribuída a equipe (technician_id NULL, só team_id) não tem um
-    // único "técnico" pra notificar — manda pra todo mundo do time (menos
-    // quem enviou), senão a mensagem do operador nunca chega em ninguém.
-    let recipientIds: string[];
-    if (senderRole === "TECNICO") {
-      recipientIds = order.created_by ? [order.created_by] : [];
-    } else if (order.technician_id) {
-      recipientIds = [order.technician_id];
-    } else if (order.team_id) {
-      recipientIds = await getTeamMemberIds(supabase, order.team_id);
+    // Notifica o "outro lado" DAQUELE canal (com push + priority). Awaitamos
+    // pra garantir o INSERT em `notifications` antes do return.
+    let recipientIds: string[] = [];
+    if (channel === "loja") {
+      if (isLojaClient) {
+        // Loja mandou -> avisa o executor.
+        if (order.technician_id) recipientIds = [order.technician_id];
+      } else if (isExecutor && order.partner_id) {
+        // Executor mandou -> avisa quem é o usuário da loja dona da OS.
+        const { data: partnerRow } = await supabase
+          .from("partners")
+          .select("user_id")
+          .eq("id", order.partner_id)
+          .maybeSingle();
+        if (partnerRow?.user_id) recipientIds = [partnerRow.user_id];
+      }
     } else {
-      recipientIds = [];
+      // Canal interno — mesma lógica de sempre: executor fala com quem
+      // criou a OS; staff fala com o executor (direto ou via equipe, pra OS
+      // auto-atribuída sem um único "técnico").
+      if (isExecutor) {
+        recipientIds = order.created_by ? [order.created_by] : [];
+      } else if (order.technician_id) {
+        recipientIds = [order.technician_id];
+      } else if (order.team_id) {
+        recipientIds = await getTeamMemberIds(supabase, order.team_id);
+      }
     }
 
     for (const recipientId of new Set(recipientIds)) {
@@ -225,6 +277,7 @@ export async function POST(
             service_order_id: order.id,
             message_id: msg.id,
             sender_role: senderRole,
+            channel,
           },
           { priority: "high" }
         );

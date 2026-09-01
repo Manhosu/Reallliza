@@ -183,6 +183,14 @@ function ChatPanel({ os, onClose }: { os: OsWithLastMessage; onClose?: () => voi
                       : "bg-muted rounded-tl-sm",
                   )}
                 >
+                  {/* Canal — só existe no supervisor (admin/staff), que vê os
+                      dois juntos. Sem isso, "interno" e "loja" ficam
+                      indistinguíveis na mesma tela (Jessica 31/08). */}
+                  {msg.channel === "loja" && (
+                    <span className="mb-1 inline-block rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                      Loja
+                    </span>
+                  )}
                   {!isOperator && (
                     <p className="text-[10px] font-semibold opacity-60 mb-0.5">
                       {senderLabel(msg.sender_role, msg.sender_name)}

@@ -62,16 +62,42 @@ export function ChatScreen() {
   const [isSending, setIsSending] = useState(false);
   const listRef = useRef<FlatList<OsMessage>>(null);
 
+  /**
+   * Canal — Jessica 31/08: a loja precisa falar só com o homologado, sem
+   * ver a conversa interna com a Reallliza. Quem executa a OS (técnico ou
+   * parceiro que aceitou via broadcast) fala nos dois; por isso a aba só
+   * aparece pra ele, e só quando a OS tem uma loja de verdade (partner_id).
+   * Loja/staff nunca veem essa aba: o backend já decide o canal certo
+   * pra eles sozinho.
+   */
+  const [osInfo, setOsInfo] = useState<{
+    partner_id: string | null;
+    technician_id: string | null;
+  } | null>(null);
+  const [canal, setCanal] = useState<'interno' | 'loja'>('interno');
+  const souExecutorComLoja =
+    !!osInfo?.partner_id && osInfo.technician_id === myUserId;
+
+  useEffect(() => {
+    apiClient
+      .get<{ partner_id: string | null; technician_id: string | null }>(
+        `/service-orders/${serviceOrderId}`,
+      )
+      .then(setOsInfo)
+      .catch(() => {});
+  }, [serviceOrderId]);
+
   const fetchMessages = useCallback(async () => {
     try {
       const data = await apiClient.get<OsMessage[]>(
         `/service-orders/${serviceOrderId}/messages`,
+        { channel: canal },
       );
       setMessages(data);
     } catch (error) {
       console.error('Error fetching messages:', error);
     }
-  }, [serviceOrderId]);
+  }, [serviceOrderId, canal]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -93,6 +119,7 @@ export function ChatScreen() {
       setIsSending(true);
       await apiClient.post(`/service-orders/${serviceOrderId}/messages`, {
         content: trimmed,
+        channel: canal,
       });
       setInput('');
       await fetchMessages();
@@ -153,6 +180,27 @@ export function ChatScreen() {
           Platform.OS === 'ios' ? 90 : (StatusBar.currentHeight ?? 24) + 20
         }
       >
+        {souExecutorComLoja && (
+          <View style={styles.tabRow}>
+            <TouchableOpacity
+              style={[styles.tab, canal === 'interno' && styles.tabActive]}
+              onPress={() => setCanal('interno')}
+            >
+              <Text style={[styles.tabText, canal === 'interno' && styles.tabTextActive]}>
+                Reallliza
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, canal === 'loja' && styles.tabActive]}
+              onPress={() => setCanal('loja')}
+            >
+              <Text style={[styles.tabText, canal === 'loja' && styles.tabTextActive]}>
+                Loja
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {isLoading ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -206,6 +254,33 @@ export function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
+  tabRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tabActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  tabText: {
+    ...typography.captionBold,
+    color: colors.textMuted,
+  },
+  tabTextActive: {
+    color: colors.black,
+  },
   center: {
     flex: 1,
     justifyContent: 'center',

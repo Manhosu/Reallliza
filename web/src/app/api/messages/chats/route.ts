@@ -16,6 +16,12 @@ import { getUserTeamIds, buildTeamScopeFilter } from "@/lib/api-helpers/team-sco
  *
  * O escopo por papel repete o das demais rotas de OS: admin vê tudo, técnico
  * vê o que é dele ou da equipe dele, loja vê o que é da loja.
+ *
+ * Jessica 31/08: canais — cada OS tem um chat 'interno' (Reallliza↔executor)
+ * e um 'loja' (loja↔executor). Um mesmo usuário partner pode ser CLIENTE
+ * numa OS (partner_id, só vê 'loja') e EXECUTOR em outra (technician_id, vê
+ * as duas) — por isso o filtro de canal é decidido por linha, não pro
+ * usuário inteiro.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -32,7 +38,9 @@ export async function GET(request: NextRequest) {
     // 1. As OS que o usuário pode ver.
     let escopo = supabase
       .from("service_orders")
-      .select("id, order_number, title, status, technician_id");
+      .select("id, order_number, title, status, technician_id, partner_id");
+
+    let meuPartnerId: string | null = null;
 
     if (user.role === "technician") {
       const teamIds = await getUserTeamIds(supabase, user.id);
@@ -52,7 +60,10 @@ export async function GET(request: NextRequest) {
           meta: { total: 0, page, total_pages: 0 },
         });
       }
-      escopo = escopo.eq("partner_id", parceiro.id);
+      meuPartnerId = parceiro.id;
+      // Cliente (partner_id) OU executor que aceitou via broadcast
+      // (technician_id) — as duas relações contam pra aparecer na lista.
+      escopo = escopo.or(`partner_id.eq.${parceiro.id},technician_id.eq.${user.id}`);
     }
 
     const { data: ordens, error: errOrdens } = await escopo;
@@ -61,11 +72,28 @@ export async function GET(request: NextRequest) {
       throw new Error("Falha ao carregar as conversas");
     }
 
+    type OrdemResumo = {
+      id: string;
+      order_number: number;
+      title: string;
+      status: string;
+      technician_id: string | null;
+      partner_id: string | null;
+    };
     const ordensPorId = new Map(
-      ((ordens ?? []) as Array<{ id: string }>).map((o) => [o.id, o])
+      ((ordens ?? []) as OrdemResumo[]).map((o) => [o.id, o])
     );
     if (ordensPorId.size === 0) {
       return jsonResponse({ data: [], meta: { total: 0, page, total_pages: 0 } });
+    }
+
+    // Por OS: se o usuário só é o cliente (loja) dela, o que ele pode ver
+    // fica travado no canal 'loja'. Se é o executor (ou staff), vê os dois.
+    const canalTravadoPorOs = new Map<string, "loja" | null>();
+    for (const os of ordensPorId.values()) {
+      const souCliente = !!meuPartnerId && os.partner_id === meuPartnerId;
+      const souExecutor = os.technician_id === user.id;
+      canalTravadoPorOs.set(os.id, souCliente && !souExecutor ? "loja" : null);
     }
 
     // 2. Mensagens dessas OS, da mais recente pra mais antiga. Uma consulta
@@ -73,7 +101,7 @@ export async function GET(request: NextRequest) {
     const { data: mensagens, error: errMsg } = await supabase
       .from("os_messages")
       .select(
-        "id, service_order_id, sender_user_id, sender_role, sender_name, content, attachment_url, attachment_type, external_message_id, read_at, created_at"
+        "id, service_order_id, sender_user_id, sender_role, sender_name, content, attachment_url, attachment_type, external_message_id, read_at, created_at, channel"
       )
       .in("service_order_id", Array.from(ordensPorId.keys()))
       .order("created_at", { ascending: false });
@@ -84,11 +112,14 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. Primeira mensagem de cada OS é a última no tempo; conta as não lidas
-    //    que não são do próprio usuário.
+    //    que não são do próprio usuário. Pula mensagem de canal que essa OS
+    //    não deixa esse usuário ver (loja olhando 'interno').
     const ultima = new Map<string, Record<string, unknown>>();
     const naoLidas = new Map<string, number>();
     for (const m of (mensagens ?? []) as Array<Record<string, unknown>>) {
       const osId = String(m.service_order_id);
+      const travado = canalTravadoPorOs.get(osId);
+      if (travado && m.channel !== travado) continue;
       if (!ultima.has(osId)) ultima.set(osId, m);
       if (!m.read_at && m.sender_user_id !== user.id) {
         naoLidas.set(osId, (naoLidas.get(osId) ?? 0) + 1);
@@ -116,15 +147,13 @@ export async function GET(request: NextRequest) {
 
     const conversas = Array.from(ultima.entries())
       .map(([osId, msg]) => {
-        const os = ordensPorId.get(osId) as {
-          id: string;
-          order_number: number;
-          title: string;
-          status: string;
-          technician_id: string | null;
-        };
+        const os = ordensPorId.get(osId) as OrdemResumo;
         return {
-          ...os,
+          id: os.id,
+          order_number: os.order_number,
+          title: os.title,
+          status: os.status,
+          technician_id: os.technician_id,
           technician_name: os.technician_id
             ? nomePorTecnico.get(os.technician_id)
             : undefined,

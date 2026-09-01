@@ -11,6 +11,8 @@ export interface OsMessage {
   attachment_type: string | null;
   external_message_id: string | null;
   created_at: string;
+  /** 'interno' (Reallliza↔executor) ou 'loja' (loja↔executor). */
+  channel?: "interno" | "loja";
 }
 
 export interface OsWithLastMessage {
@@ -25,11 +27,19 @@ export interface OsWithLastMessage {
 }
 
 export const messagesApi = {
-  listByOrder: (serviceOrderId: string) =>
-    apiClient.get<OsMessage[]>(`/service-orders/${serviceOrderId}/messages`),
+  // Sem `channel`: staff/admin vê os dois canais juntos (supervisão); loja
+  // sempre recebe só o dela, mesmo se pedir 'interno' — decisão do backend.
+  listByOrder: (serviceOrderId: string, channel?: "interno" | "loja") =>
+    apiClient.get<OsMessage[]>(
+      `/service-orders/${serviceOrderId}/messages`,
+      channel ? { channel } : undefined
+    ),
 
-  send: (serviceOrderId: string, content: string) =>
-    apiClient.post<OsMessage>(`/service-orders/${serviceOrderId}/messages`, { content }),
+  send: (serviceOrderId: string, content: string, channel?: "interno" | "loja") =>
+    apiClient.post<OsMessage>(`/service-orders/${serviceOrderId}/messages`, {
+      content,
+      channel,
+    }),
 
   listActiveChats: (params?: { page?: number; limit?: number }) =>
     apiClient.get<{ data: OsWithLastMessage[]; meta: { total: number; page: number; total_pages: number } }>(
