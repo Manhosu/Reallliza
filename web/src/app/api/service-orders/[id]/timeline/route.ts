@@ -36,7 +36,8 @@ export async function GET(
       throw new AuthError(403, "You do not have permission to view this timeline");
     }
 
-    // Partners can only see their own partner's orders
+    // Partners can only see their own partner's orders — ou a OS que
+    // aceitaram via broadcast, onde viram technician_id (Jessica 31/08).
     if (user.role === "partner") {
       const { data: partnerData } = await supabase
         .from("partners")
@@ -44,7 +45,9 @@ export async function GET(
         .eq("user_id", user.id)
         .single();
 
-      if (!partnerData || order.partner_id !== partnerData.id) {
+      const okAsPartner = !!partnerData && order.partner_id === partnerData.id;
+      const okAsTech = order.technician_id === user.id;
+      if (!okAsPartner && !okAsTech) {
         throw new AuthError(403, "You do not have permission to view this timeline");
       }
     }

@@ -93,8 +93,11 @@ export async function PATCH(
           .maybeSingle();
         partnerOwnId = pd?.id ?? null;
       }
-      const okAsTech =
-        user.role === "technician" && (await canTechnicianAccessOs(supabase, user.id, order));
+      // canTechnicianAccessOs so' confere IDs (technician_id/equipe), nao
+      // exige role="technician" — parceiro que aceitou a OS via broadcast
+      // vira technician_id dela e precisa passar aqui tambem (Jessica 31/08:
+      // "nao foi possivel registrar chegada" pro homologado dono da OS).
+      const okAsTech = await canTechnicianAccessOs(supabase, user.id, order);
       const okAsPartner =
         !!partnerOwnId && (order as { partner_id?: string | null }).partner_id === partnerOwnId;
       if (!okAsTech && !okAsPartner) {

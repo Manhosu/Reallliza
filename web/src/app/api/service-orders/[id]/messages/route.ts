@@ -53,7 +53,12 @@ async function loadAuthorizedOrder(
       .select("id")
       .eq("user_id", user.id)
       .single();
-    if (!partnerData || order.partner_id !== partnerData.id) {
+    // Parceiro que aceitou a OS via broadcast vira technician_id dela — sem
+    // isso, o chat dele com a própria OS dava "You do not have permission"
+    // (Jessica 31/08: homologado sem conseguir falar na OS dele).
+    const okAsPartner = !!partnerData && order.partner_id === partnerData.id;
+    const okAsTech = order.technician_id === user.id;
+    if (!okAsPartner && !okAsTech) {
       throw new AuthError(403, "You do not have permission to view this service order");
     }
   }

@@ -44,7 +44,11 @@ export async function GET(
         .eq("user_id", user.id)
         .single();
 
-      if (!partnerData || order.partner_id !== partnerData.id) {
+      // Parceiro que aceitou a OS via broadcast vira technician_id dela —
+      // sem isso, ele nunca via os próprios itens (Jessica 31/08).
+      const okAsPartner = !!partnerData && order.partner_id === partnerData.id;
+      const okAsTech = order.technician_id === user.id;
+      if (!okAsPartner && !okAsTech) {
         throw new AuthError(403, "You do not have permission to view items for this service order");
       }
     }

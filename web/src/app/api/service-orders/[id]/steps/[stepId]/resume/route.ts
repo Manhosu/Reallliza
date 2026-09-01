@@ -44,8 +44,10 @@ export async function POST(
           .maybeSingle();
         partnerOwnId = pd?.id ?? null;
       }
-      const okAsTech =
-        user.role === "technician" && (await canTechnicianAccessOs(supabase, user.id, order));
+      // canTechnicianAccessOs so' confere IDs, nao exige role="technician" —
+      // parceiro que aceitou a OS via broadcast vira technician_id dela
+      // (Jessica 31/08).
+      const okAsTech = await canTechnicianAccessOs(supabase, user.id, order);
       const okAsPartner =
         !!partnerOwnId && order.partner_id === partnerOwnId;
       if (!okAsTech && !okAsPartner) {
