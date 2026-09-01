@@ -54,9 +54,9 @@ function formatDateLabel(dateStr: string) {
 }
 
 function senderLabel(role: string, name: string) {
-  if (role === "technician") return name;
-  if (role === "operator" || role === "admin") return `${name} (operador)`;
-  return name;
+  if (role === "OPERADOR") return `${name} (operador)`;
+  if (role === "PARTNER") return `${name} (loja)`;
+  return name; // TECNICO
 }
 
 // ================================================================
@@ -169,7 +169,12 @@ function ChatPanel({ os, onClose }: { os: OsWithLastMessage; onClose?: () => voi
           </div>
         ) : (
           messages.map((msg) => {
-            const isOperator = msg.sender_role !== "technician";
+            // Bug 31/08: comparava com "technician" (minúsculo), mas o
+            // backend grava "TECNICO"/"OPERADOR"/"PARTNER" — a comparação
+            // nunca batia, então toda mensagem virava "operador" e caía do
+            // mesmo lado, com a mesma cor (relatado pela Jessica). Alinhar
+            // pelo valor real que o banco grava.
+            const isOperator = msg.sender_role !== "TECNICO";
             return (
               <div
                 key={msg.id}
@@ -191,11 +196,9 @@ function ChatPanel({ os, onClose }: { os: OsWithLastMessage; onClose?: () => voi
                       Loja
                     </span>
                   )}
-                  {!isOperator && (
-                    <p className="text-[10px] font-semibold opacity-60 mb-0.5">
-                      {senderLabel(msg.sender_role, msg.sender_name)}
-                    </p>
-                  )}
+                  <p className="text-[10px] font-semibold opacity-60 mb-0.5">
+                    {senderLabel(msg.sender_role, msg.sender_name)}
+                  </p>
                   <p className="leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
                   <p className={cn("text-[10px] mt-1 text-right opacity-60")}>
                     {formatTime(msg.created_at)}
@@ -273,7 +276,7 @@ function ChatListItem({
           <p className="text-xs text-foreground font-medium truncate">{os.title}</p>
           {os.last_message && (
             <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-              {os.last_message.sender_role !== "technician" ? "Você: " : ""}
+              {os.last_message.sender_role !== "TECNICO" ? "Você: " : ""}
               {os.last_message.content}
             </p>
           )}
