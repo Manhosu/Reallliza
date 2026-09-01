@@ -16,8 +16,11 @@ export async function POST(
 ) {
   try {
     const user = await authenticateRequest(request);
-    // Jessica 10/07: loja e' read-only na OS
-    checkRole(user, ["admin", "manager", "gestor", "diretor", "supervisor", "operador", "technician"]);
+    // Jessica 10/07: loja e' read-only na OS — mas o parceiro que aceita a
+    // OS via broadcast executa o servico e precisa iniciar/pausar/concluir
+    // as proprias etapas (Jessica 31/08). A checagem de posse logo abaixo
+    // ja distingue os dois casos.
+    checkRole(user, ["admin", "manager", "gestor", "diretor", "supervisor", "operador", "technician", "partner"]);
     const { id, stepId } = await params;
 
     const supabase = getAdminClient();

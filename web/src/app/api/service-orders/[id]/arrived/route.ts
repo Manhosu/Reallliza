@@ -40,7 +40,10 @@ export async function PATCH(
 ) {
   try {
     const user = await authenticateRequest(request);
-    // Jessica 10/07: apenas equipe interna registra chegada
+    // Jessica 10/07: apenas equipe interna registra chegada — mas parceiro
+    // que aceita a OS via broadcast também executa o serviço e precisa
+    // confirmar a própria chegada (Jessica 31/08: barrado aqui antes mesmo
+    // de chegar na checagem de posse logo abaixo, que já previa esse caso).
     checkRole(user, [
       "admin",
       "manager",
@@ -49,6 +52,7 @@ export async function PATCH(
       "supervisor",
       "operador",
       "technician",
+      "partner",
     ]);
     const { id } = await params;
 
