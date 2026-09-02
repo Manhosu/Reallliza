@@ -129,8 +129,8 @@ export async function GET(request: NextRequest) {
     // 4. Nome do técnico, pra tela não fazer uma busca por linha.
     const tecnicoIds = Array.from(
       new Set(
-        Array.from(ultima.keys())
-          .map((id) => (ordensPorId.get(id) as { technician_id?: string | null })?.technician_id)
+        Array.from(ordensPorId.values())
+          .map((os) => os.technician_id)
           .filter((v): v is string => !!v)
       )
     );
@@ -145,9 +145,18 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const conversas = Array.from(ultima.entries())
-      .map(([osId, msg]) => {
-        const os = ordensPorId.get(osId) as OrdemResumo;
+    // Jessica 01/09: uma OS dentro do escopo do usuario mas sem NENHUMA
+    // mensagem no canal que ele pode ver (loja travada em 'loja', sem
+    // nenhuma mensagem ainda tagueada assim) sumia da lista inteira --
+    // antes so' entrava aqui quem ja' tinha `ultima`. Isso impedia a loja
+    // de sequer ENXERGAR a OS pra poder iniciar a conversa (ou uma OS cujo
+    // historico ficou preso no canal errado por antecipar a mudanca de
+    // canal). A lista agora parte de TODAS as OS do escopo; quem nao tem
+    // mensagem qualificada aparece sem `last_message`, pro usuario poder
+    // abrir e mandar a primeira.
+    const conversas = Array.from(ordensPorId.values())
+      .map((os) => {
+        const msg = ultima.get(os.id);
         return {
           id: os.id,
           order_number: os.order_number,
@@ -158,14 +167,17 @@ export async function GET(request: NextRequest) {
             ? nomePorTecnico.get(os.technician_id)
             : undefined,
           last_message: msg,
-          unread_count: naoLidas.get(osId) ?? 0,
+          unread_count: naoLidas.get(os.id) ?? 0,
         };
       })
-      .sort((a, b) =>
-        String((b.last_message as { created_at: string }).created_at).localeCompare(
-          String((a.last_message as { created_at: string }).created_at)
-        )
-      );
+      .sort((a, b) => {
+        const da = (a.last_message as { created_at?: string } | undefined)?.created_at;
+        const db = (b.last_message as { created_at?: string } | undefined)?.created_at;
+        if (da && db) return db.localeCompare(da);
+        if (da) return -1;
+        if (db) return 1;
+        return 0;
+      });
 
     const total = conversas.length;
     const inicio = (page - 1) * limit;
