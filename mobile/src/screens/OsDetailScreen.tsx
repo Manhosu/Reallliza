@@ -79,6 +79,18 @@ export function OsDetailScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { id } = route.params;
 
+  // Jessica 01/09: tocar na notificacao de mensagem nao levava a lugar
+  // nenhum ("no sininho mostra que teve mensagem, mas nao consigo entrar
+  // dentro dela") — o parametro `openChat` ja existia no roteamento de
+  // push (push-notifications.ts) mas nunca era lido aqui. Le uma vez ao
+  // abrir a tela vinda de uma notificacao de mensagem.
+  useEffect(() => {
+    if (route.params?.openChat) {
+      navigation.navigate('Chat', { serviceOrderId: id });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.params?.openChat]);
+
   type OsItem = {
     id: string;
     kind: 'S' | 'P';

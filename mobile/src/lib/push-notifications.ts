@@ -149,9 +149,11 @@ interface NotificationData {
   type?:
     | 'os_assigned'
     | 'os_status_changed'
+    | 'os_completed'
+    | 'os_cancelled'
     | 'schedule_reminder'
     | 'tool_custody'
-    | 'message'
+    | 'message_received'
     | 'proposal_available'
     | 'proposal_accepted'
     | 'warranty_opened';
@@ -179,7 +181,9 @@ export function setupNotificationListeners(
 
       switch (data.type) {
         case 'os_assigned':
-        case 'os_status_changed': {
+        case 'os_status_changed':
+        case 'os_completed':
+        case 'os_cancelled': {
           const osId = data.os_id || data.service_order_id;
           if (osId) {
             navigation.navigate('OSTab', undefined);
@@ -199,7 +203,7 @@ export function setupNotificationListeners(
           navigation.navigate('ToolsTab', undefined);
           break;
 
-        case 'message': {
+        case 'message_received': {
           const osId = data.os_id || data.service_order_id;
           if (osId) {
             navigation.navigate('OSTab', undefined);

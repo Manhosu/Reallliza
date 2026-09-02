@@ -16,7 +16,7 @@ import { colors } from '../theme/colors';
 
 export type OsStackParamList = {
   Home: undefined;
-  OsDetail: { id: string };
+  OsDetail: { id: string; openChat?: boolean };
   Steps: { serviceOrderId: string };
   StepDetail: { serviceOrderId: string; stepId: string };
   Chat: { serviceOrderId: string };

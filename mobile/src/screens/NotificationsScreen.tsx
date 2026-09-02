@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { format, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -70,6 +71,7 @@ function formatNotificationDate(dateStr: string): string {
 // ============================================================
 
 export function NotificationsScreen() {
+  const navigation = useNavigation<any>();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -148,6 +150,50 @@ export function NotificationsScreen() {
 
   const unreadCount = notifications.filter(n => !n.read_at).length;
 
+  // Jessica 01/09: tocar numa notificacao so' marcava como lida e nao
+  // levava a lugar nenhum ("no sininho mostra que teve mensagem, mas nao
+  // consigo entrar dentro dela"). Mesma tabela de destinos que ja existia
+  // (so' pra push, nunca chamada aqui) em push-notifications.ts.
+  const openNotification = (item: Notification) => {
+    const data = (item.data ?? {}) as Record<string, unknown>;
+    const osId = data.service_order_id as string | undefined;
+
+    switch (item.type) {
+      case 'message_received':
+        if (osId) {
+          navigation.navigate('OSTab');
+          setTimeout(() => navigation.navigate('OsDetail', { id: osId, openChat: true }), 100);
+        }
+        break;
+      case 'os_assigned':
+      case 'os_status_changed':
+      case 'os_completed':
+      case 'os_cancelled':
+        if (osId) {
+          navigation.navigate('OSTab');
+          setTimeout(() => navigation.navigate('OsDetail', { id: osId }), 100);
+        }
+        break;
+      case 'warranty_opened':
+      case 'warranty_resolved': {
+        const warrantyId = data.warranty_id as string | undefined;
+        if (warrantyId) {
+          navigation.navigate('GarantiasTab');
+          setTimeout(() => navigation.navigate('GarantiasList', { warrantyId }), 100);
+        }
+        break;
+      }
+      case 'proposal_available':
+        navigation.navigate('ProposalsTab');
+        break;
+      case 'schedule_reminder':
+        navigation.navigate('AgendaTab');
+        break;
+      default:
+        break;
+    }
+  };
+
   const renderNotification = ({ item }: { item: Notification }) => {
     const isUnread = !item.read_at;
     const iconName = NOTIFICATION_ICONS[item.type] || 'notifications-outline';
@@ -165,6 +211,7 @@ export function NotificationsScreen() {
         ]}
         onPress={() => {
           if (isUnread) markAsRead(item.id);
+          openNotification(item);
         }}
         activeOpacity={isUnread ? 0.7 : 1}
       >

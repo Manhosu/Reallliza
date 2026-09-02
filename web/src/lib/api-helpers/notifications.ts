@@ -74,7 +74,7 @@ export async function createNotification(
   // terminar (Vercel mata Promises pendentes no return). Custa ~100-200ms
   // mas é o que segura a notificação chegando ao mobile.
   try {
-    await sendPushNotification(userId, title, message, priority, data);
+    await sendPushNotification(userId, title, message, type, priority, data);
   } catch (err) {
     console.error(
       `Failed to send push: ${err instanceof Error ? err.message : String(err)}`
@@ -88,6 +88,7 @@ async function sendPushNotification(
   userId: string,
   title: string,
   message: string,
+  type: NotificationType,
   priority: NotificationPriority,
   data?: Record<string, unknown>
 ) {
@@ -109,7 +110,11 @@ async function sendPushNotification(
     to: device.token,
     title,
     body: message,
-    data: { ...(data || {}), priority },
+    // `type` faltava aqui — o app nunca sabia que tipo de notificacao
+    // chegou, entao o roteamento ao tocar numa notificacao na bandeja
+    // (app fechado/em segundo plano) nunca disparava (push-notifications.ts
+    // le exatamente `data.type`).
+    data: { ...(data || {}), type, priority },
     sound,
     channelId,
     priority: expoPriority,

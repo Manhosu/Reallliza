@@ -57,14 +57,27 @@ export enum ToolCondition {
   DAMAGED = 'damaged',
 }
 
+// Precisa acompanhar `NotificationType` do backend
+// (web/src/lib/api-helpers/notifications.ts) — ficou incompleto por um
+// tempo (faltava message_received/warranty_*/proposal_available/general),
+// o que so' nao quebrava porque os usos anteriores comparavam contra
+// Record<string, ...> em vez do enum.
 export enum NotificationType {
   OS_CREATED = 'os_created',
   OS_ASSIGNED = 'os_assigned',
   OS_STATUS_CHANGED = 'os_status_changed',
   OS_COMPLETED = 'os_completed',
   OS_CANCELLED = 'os_cancelled',
+  OS_REWORK = 'os_rework',
+  MESSAGE_RECEIVED = 'message_received',
   SCHEDULE_REMINDER = 'schedule_reminder',
   TOOL_CUSTODY = 'tool_custody',
+  TOOL_OVERDUE = 'tool_overdue',
+  NEW_TICKET = 'new_ticket',
+  PROPOSAL_AVAILABLE = 'proposal_available',
+  WARRANTY_OPENED = 'warranty_opened',
+  WARRANTY_RESOLVED = 'warranty_resolved',
+  GENERAL = 'general',
   SYSTEM = 'system',
 }
 

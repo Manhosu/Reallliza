@@ -172,11 +172,38 @@ export async function POST(
 
     // A loja so' fala no proprio canal, nunca decide entrar no interno —
     // igual na leitura, o pedido do cliente nunca e' a fonte da verdade.
-    const channel: Channel = isLojaClient
-      ? "loja"
-      : body.channel === "loja"
-        ? "loja"
-        : "interno";
+    //
+    // Jessica 01/09: "a loja não recebe a mensagem do homologado". Causa:
+    // o app do homologado so' ganha o seletor de canal numa build nova
+    // (ainda nao instalada em nenhum aparelho); a versao atual nunca manda
+    // `channel` no body, e a linha antiga tratava "nao mandou" igual a
+    // "mandou interno" — toda resposta dele ia pro canal que a loja nao
+    // pode ver, silenciosamente, sem nenhum erro pra ninguem perceber.
+    // Enquanto a build nova nao chega em todo mundo, um homologado sem o
+    // seletor responde no MESMO canal da ultima mensagem daquela OS — é o
+    // que uma pessoa faria manualmente ao responder uma conversa. So' um
+    // client novo manda 'interno'/'loja' explicito (mesmo quando o valor
+    // corresponde ao default da aba) e esse valor e' sempre respeitado.
+    const explicitChannel =
+      body.channel === "loja" || body.channel === "interno" ? body.channel : undefined;
+
+    let channel: Channel;
+    if (isLojaClient) {
+      channel = "loja";
+    } else if (explicitChannel) {
+      channel = explicitChannel;
+    } else if (isExecutor) {
+      const { data: lastMsg } = await supabase
+        .from("os_messages")
+        .select("channel")
+        .eq("service_order_id", order.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      channel = (lastMsg?.channel as Channel | undefined) ?? "interno";
+    } else {
+      channel = "interno";
+    }
 
     const senderRole = senderRoleFromUserRole(user.role);
 
