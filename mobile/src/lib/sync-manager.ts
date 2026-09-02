@@ -1,4 +1,5 @@
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
+import { AppState, AppStateStatus } from 'react-native';
 import { create } from 'zustand';
 import { offlineStorage, OfflineAction } from './offline-storage';
 import { apiClient, ApiError, getAccessToken, BASE_URL } from './api';
@@ -63,6 +64,7 @@ const getBackoffDelay = (retryCount: number): number =>
 
 class SyncManager {
   private unsubscribe: (() => void) | null = null;
+  private unsubscribeAppState: (() => void) | null = null;
   private initialized = false;
   private retryCount = 0;
 
@@ -98,6 +100,28 @@ class SyncManager {
         this.syncAll();
       }
     });
+
+    // Jessica 01/09: foto ficava "pendente" por mais de um dia. Causa: o
+    // app so' tenta sincronizar no cold start ou quando o NetInfo detecta a
+    // TRANSICAO offline->online. Se o app fica aberto em segundo plano
+    // durante a noite e a rede volta nesse meio tempo, o listener acima
+    // nunca ve' a transicao (o app nao estava rodando pra observar), e o
+    // item enfileirado fica esquecido ate' o proximo cold start. Reconferir
+    // a rede toda vez que o app volta pro primeiro plano cobre esse buraco.
+    const subscription = AppState.addEventListener(
+      'change',
+      (appState: AppStateStatus) => {
+        if (appState !== 'active') return;
+        NetInfo.fetch().then((netState) => {
+          const nowOnline = !!(
+            netState.isConnected && netState.isInternetReachable !== false
+          );
+          useSyncStore.getState().setOnline(nowOnline);
+          if (nowOnline) this.syncAll();
+        });
+      },
+    );
+    this.unsubscribeAppState = () => subscription.remove();
   }
 
   /** Destroy listener */
@@ -105,6 +129,10 @@ class SyncManager {
     if (this.unsubscribe) {
       this.unsubscribe();
       this.unsubscribe = null;
+    }
+    if (this.unsubscribeAppState) {
+      this.unsubscribeAppState();
+      this.unsubscribeAppState = null;
     }
     this.initialized = false;
   }

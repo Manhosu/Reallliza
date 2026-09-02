@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 import { offlineStorage } from './offline-storage';
-import { useSyncStore } from './sync-manager';
+import { useSyncStore, syncManager } from './sync-manager';
 
 // ============================================================
 // Base URL Configuration
@@ -301,5 +301,16 @@ export async function queueOfflineAction(params: {
     fileType: params.fileType,
   });
   await useSyncStore.getState().refreshPendingCount();
+
+  // Item enfileirado por causa de uma falha pontual no upload direto (nao
+  // por estar realmente offline) fica parado ate' o proximo cold start ou
+  // ate' o NetInfo ver uma transicao offline->online — que pode nao vir,
+  // se o app nunca chegou a registrar "offline". Se o app ja se considera
+  // online agora, tenta sincronizar na hora em vez de esperar por um
+  // evento que talvez nunca aconteca.
+  if (isDeviceOnline()) {
+    syncManager.syncAll().catch(() => {});
+  }
+
   return action.id;
 }

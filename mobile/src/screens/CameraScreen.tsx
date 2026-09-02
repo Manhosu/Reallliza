@@ -16,7 +16,7 @@ import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { apiClient, isDeviceOnline, queueOfflineAction } from '../lib/api';
+import { apiClient, ApiError, isDeviceOnline, queueOfflineAction } from '../lib/api';
 import { useSyncStore } from '../lib/sync-manager';
 import {
   Photo,
@@ -238,6 +238,17 @@ export function CameraScreen() {
       Alert.alert('Sucesso', 'Foto enviada com sucesso.');
     } catch (error) {
       console.error('Error uploading photo:', error);
+
+      // O servidor respondeu e recusou (ApiError: 400/401/413/500...) — nao
+      // e' um problema de rede, e enfileirar isso so' faz a mesma falha se
+      // repetir a cada retry, sem o usuario nunca saber. So' vale a pena
+      // enfileirar quando o request nem chegou a ter resposta (falha de
+      // rede de verdade).
+      if (error instanceof ApiError) {
+        Alert.alert('Erro ao enviar foto', error.message || 'Nao foi possivel enviar a foto.');
+        return;
+      }
+
       // Fallback: queue for later upload on network error
       try {
         const filename = capturedUri.split('/').pop() || 'photo.jpg';
