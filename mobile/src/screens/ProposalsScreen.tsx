@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { apiClient } from '../lib/api';
+import { apiClient, ApiError } from '../lib/api';
 import { PaginatedResponse } from '../lib/types';
 import { EmptyState } from '../components/EmptyState';
 import { colors } from '../theme/colors';
@@ -162,7 +162,15 @@ export function ProposalsScreen() {
               );
             } catch (error) {
               console.error('Error responding to proposal:', error);
-              Alert.alert('Erro', `Nao foi possivel ${label} a proposta.`);
+              // Jessica 04/09: mensagem generica fazia parecer bug do app
+              // quando na real e' porque outro homologado ja' aceitou —
+              // o backend ja' manda o motivo certo, so' precisava aparecer.
+              const msg =
+                error instanceof ApiError
+                  ? error.message
+                  : `Nao foi possivel ${label} a proposta.`;
+              Alert.alert('Erro', msg);
+              await fetchProposals(1, true);
             } finally {
               setRespondingId(null);
             }

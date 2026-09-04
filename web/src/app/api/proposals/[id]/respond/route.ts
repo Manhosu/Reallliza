@@ -87,13 +87,40 @@ export async function POST(
     }
 
     if (proposal.status !== "pending") {
-      throw new AuthError(
-        400,
-        `Cannot respond to a proposal with status '${proposal.status}'. Only pending proposals can be responded to.`
-      );
+      // Jessica 04/09: mensagem generica em ingles fazia o homologado achar
+      // que era bug do app, e continuar tentando. Pro caso mais comum
+      // (chegou tarde num broadcast que outro ja aceitou), diz isso direto.
+      const msg =
+        isBroadcast && proposal.status === "accepted"
+          ? "Esta proposta já foi aceita por outro homologado e não está mais disponível."
+          : `Esta proposta não está mais disponível (status: ${proposal.status}).`;
+      throw new AuthError(400, msg);
     }
 
     const now = new Date().toISOString();
+
+    // Jessica 04/09: uma proposta broadcast vai pra VÁRIOS homologados —
+    // "rejeitar" era tratado igual a uma proposta direta (1 pra 1) e
+    // sobrescrevia a MESMA linha compartilhada pra status='rejected'. Um
+    // único homologado recusando matava a proposta pra todo mundo: os
+    // outros paravam de conseguir aceitar (o lock de aceite exige
+    // status='pending'), e a loja não conseguia mais editar o valor (o
+    // /edit-proposal também exige 'pending'). Recusa em broadcast é uma
+    // resposta pessoal, não pode encerrar a oportunidade dos demais — a
+    // linha compartilhada só muda de status quando ALGUÉM aceita.
+    if (isBroadcast && action === "reject") {
+      logAudit({
+        userId: user.id,
+        action: "proposal.rejected.broadcast_personal",
+        entityType: "proposal",
+        entityId: id,
+        newData: { response_message: response_message || null },
+        ipAddress: request.headers.get("x-forwarded-for"),
+        userAgent: request.headers.get("user-agent"),
+      });
+      return jsonResponse(proposal);
+    }
+
     const newStatus = action === "accept" ? "accepted" : "rejected";
 
     const updateData: Record<string, unknown> = {

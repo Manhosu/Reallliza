@@ -69,7 +69,7 @@ export async function POST(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin", "technician"]);
+    checkRole(user, ["admin", "technician", "partner"]);
 
     const { id: serviceOrderId } = await params;
     const formData = await request.formData();

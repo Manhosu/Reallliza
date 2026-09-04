@@ -83,15 +83,25 @@ export async function POST(
       );
     }
 
-    const { data: proposal } = await supabase
+    // Jessica 04/09: selecionava a coluna "offered_amount", que nunca
+    // existiu nessa tabela (o campo real e' "proposed_value" — mesmo nome
+    // usado no INSERT em fanout-homologados.ts). A query inteira falhava
+    // por referenciar coluna inexistente, e como o erro nunca era checado
+    // aqui, `proposal` virava undefined e caia sempre no 404 "nenhuma
+    // proposta encontrada" — mesmo quando a proposta existia certinho.
+    const { data: proposal, error: proposalErr } = await supabase
       .from("service_proposals")
-      .select("id, status, accepted_by, offered_amount")
+      .select("id, status, accepted_by, proposed_value")
       .eq("service_order_id", quote.service_order_id)
       .is("partner_id", null)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
+    if (proposalErr) {
+      console.error(`edit-proposal: falha ao buscar proposta: ${proposalErr.message}`);
+      throw new Error("Falha ao buscar a proposta atual.");
+    }
     if (!proposal) {
       throw new AuthError(404, "Nenhuma proposta encontrada pra editar.");
     }
@@ -99,7 +109,7 @@ export async function POST(
       id: string;
       status: string;
       accepted_by: string | null;
-      offered_amount: number | null;
+      proposed_value: number | null;
     };
     if (p.accepted_by) {
       throw new AuthError(
@@ -114,7 +124,7 @@ export async function POST(
       );
     }
 
-    const currentAmount = Number(p.offered_amount ?? quote.payout_amount ?? 0);
+    const currentAmount = Number(p.proposed_value ?? quote.payout_amount ?? 0);
     if (newAmount < currentAmount) {
       throw new AuthError(
         400,
