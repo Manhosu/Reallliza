@@ -17,7 +17,12 @@ export async function podeGerenciarGarantia(
   warrantyId: string
 ): Promise<boolean> {
   if (user.role === "admin") return true;
-  if (user.role !== "technician") return false;
+  // Jessica 02/09: homologado que aceitou a OS via broadcast e' role='partner',
+  // nao 'technician' -- o filtro `executor_type==='homologado'` +
+  // `assigned_technician_id===user.id` abaixo ja' garante que so' o dono da
+  // execucao passa, entao restringir por role aqui so' bloqueava quem devia
+  // poder gerenciar.
+  if (user.role !== "technician" && user.role !== "partner") return false;
   const { data: w } = await supabase
     .from("warranties")
     .select("assigned_technician_id, executor_type")
@@ -55,16 +60,20 @@ export async function GET(
 
     if (error || !data) throw new AuthError(404, "Garantia nao encontrada");
 
-    // Loja so ve as proprias
+    // Loja so ve as proprias -- ou, se for o homologado dono da execucao
+    // (partner que aceitou via broadcast), a que foi atribuida a ele.
     if (user.role === "partner") {
-      const { data: p } = await supabase
-        .from("partners")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      const partnerId = (p as { id?: string } | null)?.id;
-      if (partnerId !== (data as { partner_id: string }).partner_id) {
-        throw new AuthError(403, "Sem permissao");
+      const warranty = data as { partner_id: string; assigned_technician_id?: string | null };
+      if (warranty.assigned_technician_id !== user.id) {
+        const { data: p } = await supabase
+          .from("partners")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        const partnerId = (p as { id?: string } | null)?.id;
+        if (partnerId !== warranty.partner_id) {
+          throw new AuthError(403, "Sem permissao");
+        }
       }
     }
 

@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { isHomologadoProfile } from "@/lib/api-helpers/team-scope";
 
 /**
  * GET /api/warranties
@@ -21,26 +22,29 @@ export async function GET(request: NextRequest) {
       .order("opened_at", { ascending: false });
 
     if (user.role === "partner") {
+      // Jessica 02/09: um parceiro pode ser CLIENTE (abriu a garantia,
+      // partner_id) e/ou EXECUTOR (aceitou a OS via broadcast,
+      // assigned_technician_id) -- as duas relacoes contam. Antes, esse
+      // branch so' considerava "cliente", entao um homologado role=partner
+      // nunca via as garantias atribuidas a ele (a checagem de homologado
+      // logo abaixo exigia role='technician', que ele nunca tem).
       const { data: p } = await supabase
         .from("partners")
         .select("id")
         .eq("user_id", user.id)
         .maybeSingle();
       const partnerId = (p as { id?: string } | null)?.id;
-      if (!partnerId) throw new AuthError(404, "Parceiro nao encontrado");
-      query = query.eq("partner_id", partnerId);
+      const orParts = [`assigned_technician_id.eq.${user.id}`];
+      if (partnerId) orParts.push(`partner_id.eq.${partnerId}`);
+      query = query.or(orParts.join(","));
     } else if (user.role === "technician") {
       // Homologado (Jessica 16/07) — ve garantias das proprias OSs
       const { data: prof } = await supabase
         .from("profiles")
-        .select("professional_type, is_homologated")
+        .select("role, professional_type, is_homologated")
         .eq("id", user.id)
         .maybeSingle();
-      const isHomologado =
-        (prof as { professional_type?: string; is_homologated?: boolean } | null)
-          ?.professional_type === "external" ||
-        (prof as { is_homologated?: boolean } | null)?.is_homologated === true;
-      if (isHomologado) {
+      if (isHomologadoProfile(prof)) {
         query = query.eq("assigned_technician_id", user.id);
       } else {
         throw new AuthError(403, "Sem permissao");
@@ -151,16 +155,10 @@ export async function POST(request: NextRequest) {
     if (osFull.technician_id) {
       const { data: tech } = await supabase
         .from("profiles")
-        .select("professional_type, is_homologated")
+        .select("role, professional_type, is_homologated")
         .eq("id", osFull.technician_id)
         .maybeSingle();
-      const t = tech as {
-        professional_type?: string | null;
-        is_homologated?: boolean | null;
-      } | null;
-      const isHomologado =
-        t?.professional_type === "external" || t?.is_homologated === true;
-      executorType = isHomologado ? "homologado" : "reallliza";
+      executorType = isHomologadoProfile(tech) ? "homologado" : "reallliza";
       assignedTechnicianId = osFull.technician_id;
     }
 

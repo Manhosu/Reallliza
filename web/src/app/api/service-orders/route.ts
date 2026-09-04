@@ -5,7 +5,7 @@ import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { createNotification } from "@/lib/api-helpers/notifications";
 import { createScheduleFromOs } from "@/lib/api-helpers/schedules";
-import { getUserTeamIds, buildTeamScopeFilter } from "@/lib/api-helpers/team-scope";
+import { getUserTeamIds, buildTeamScopeFilter, getHomologadoIds } from "@/lib/api-helpers/team-scope";
 import { redactOsListForRole } from "@/lib/api-helpers/redact";
 
 /**
@@ -84,9 +84,9 @@ export async function GET(request: NextRequest) {
 
     // Executor filter (Jessica 17/07)
     // Reusa a regra ja existente em warranties: professional_type='external'
-    // OR is_homologated=true => homologado; caso contrario => reallliza (interno).
-    // OS sem technician_id (pending/awaiting_assignment) sao consideradas
-    // Reallliza por padrao — sao designadas pra equipe interna.
+    // OR is_homologated=true OR role='partner' => homologado; caso contrario
+    // => reallliza (interno). OS sem technician_id (pending/awaiting_assignment)
+    // sao consideradas Reallliza por padrao — sao designadas pra equipe interna.
     const executorType =
       executorTypeParam &&
       ["reallliza", "homologado", "all"].includes(executorTypeParam)
@@ -96,13 +96,7 @@ export async function GET(request: NextRequest) {
           : "all";
 
     if (executorType !== "all") {
-      const { data: homologadosProfiles } = await supabase
-        .from("profiles")
-        .select("id")
-        .or("professional_type.eq.external,is_homologated.eq.true");
-      const homologadoIds = ((homologadosProfiles as { id: string }[]) || []).map(
-        (p) => p.id
-      );
+      const homologadoIds = await getHomologadoIds(supabase);
 
       if (executorType === "homologado") {
         if (homologadoIds.length === 0) {

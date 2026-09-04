@@ -6,6 +6,7 @@ import {
   AuthError,
 } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { getHomologadoIds } from "@/lib/api-helpers/team-scope";
 
 /**
  * Resolves the partner table ID for a user with the partner role.
@@ -97,11 +98,7 @@ export async function GET(request: NextRequest) {
       | { openOs: number; inProgressOs: number; completedOs: number; overdueOs: number }
       | null = null;
     if (user.role === "admin" || user.role === "manager") {
-      const { data: homs } = await supabase
-        .from("profiles")
-        .select("id")
-        .or("professional_type.eq.external,is_homologated.eq.true");
-      const homIds = ((homs as { id: string }[]) || []).map((p) => p.id);
+      const homIds = await getHomologadoIds(supabase);
       if (homIds.length > 0) {
         const inHomFilter = (q: any) => q.in("technician_id", homIds);
         const [oH, iH, cH, ovH] = await Promise.all([

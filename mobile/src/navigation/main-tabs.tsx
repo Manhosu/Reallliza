@@ -36,12 +36,17 @@ const Tab = createBottomTabNavigator<MainTabsParamList>();
 export function MainTabs() {
   const profile = useAuthStore(state => state.profile);
   const isPartner = profile?.role === 'partner';
-  // Homologado = tecnico externo (Jessica 16/07, mesma regra do backend em
-  // /api/warranties) — so ele recebe e resolve garantia; a loja abre pela
-  // web (botao "Abrir Garantia" na OS).
+  // Homologado = tecnico externo, OU parceiro que aceitou OS via broadcast
+  // (role='partner' virando technician_id — mesma regra do backend em
+  // /api/warranties, corrigida em 02/09 pra cobrir esse caso: um homologado
+  // que entrou pelo fluxo de parceiro nunca tinha role='technician', entao
+  // essa aba nunca aparecia pra ele). Loja pura (que so' abre garantia,
+  // nunca executa) tambem e' role='partner' e passa aqui, mas so' ve a
+  // lista vazia -- o GET ja' filtra por assigned_technician_id no backend.
   const isHomologado =
-    profile?.role === 'technician' &&
-    (profile?.professional_type === 'external' || profile?.is_homologated === true);
+    profile?.role === 'partner' ||
+    (profile?.role === 'technician' &&
+      (profile?.professional_type === 'external' || profile?.is_homologated === true));
   const insets = useSafeAreaInsets();
 
   // Bottom safe-area: garante espaço para botões de navegação do Android (3-button nav)

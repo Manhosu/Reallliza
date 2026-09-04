@@ -78,6 +78,49 @@ export async function canTechnicianAccessOs(
   return !!data;
 }
 
+/**
+ * IDs de todo profile que conta como "homologado" (executor externo) pra
+ * fins de separar OS/garantias/estatisticas Reallliza vs Homologados.
+ *
+ * Jessica 02/09: essa regra so' checava `professional_type='external'` OU
+ * `is_homologated=true` -- campos que só a homologação de TÉCNICO preenche.
+ * Um parceiro (role='partner') que aceita OS via broadcast vira
+ * `technician_id` da OS (mesmo padrão usado em toda rota de execução), mas
+ * nunca passa por essa homologação — ficava classificado como "Reallliza"
+ * por eliminação, mesmo sendo claramente um executor externo. Repetido em
+ * 4 lugares (service-orders, warranties x2, dashboard/stats) antes desta
+ * função existir; um deles ficar sem o `role.eq.partner` já quebrou a
+ * classificação uma vez.
+ */
+export async function getHomologadoIds(
+  supabase: SupabaseClient
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .or("professional_type.eq.external,is_homologated.eq.true,role.eq.partner");
+
+  if (error) {
+    console.error(`getHomologadoIds: ${error.message}`);
+    return [];
+  }
+  return ((data ?? []) as Array<{ id: string }>).map((r) => r.id);
+}
+
+/** Mesma regra de `getHomologadoIds`, aplicada a um profile já carregado. */
+export function isHomologadoProfile(profile: {
+  role?: string | null;
+  professional_type?: string | null;
+  is_homologated?: boolean | null;
+} | null): boolean {
+  if (!profile) return false;
+  return (
+    profile.role === "partner" ||
+    profile.professional_type === "external" ||
+    profile.is_homologated === true
+  );
+}
+
 /** IDs dos membros de uma equipe — usado pro fanout de notificacao. */
 export async function getTeamMemberIds(
   supabase: SupabaseClient,
