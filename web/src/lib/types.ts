@@ -265,6 +265,8 @@ export interface ToolCustody {
   created_at: string;
 }
 
+export type NotificationPriority = "low" | "normal" | "high" | "urgent";
+
 export interface Notification {
   id: string;
   user_id: string;
@@ -272,6 +274,9 @@ export interface Notification {
   title: string;
   message: string;
   data: Record<string, unknown> | null;
+  // A coluna sempre existiu e sempre veio na resposta da API — so nunca
+  // tinha sido tipada nem usada aqui (Marco 4/5, item 3).
+  priority: NotificationPriority;
   read_at: string | null;
   created_at: string;
 }

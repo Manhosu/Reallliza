@@ -8,6 +8,8 @@ import type { Notification, PaginatedResponse } from "@/lib/types";
 export interface ListNotificationsParams {
   page?: number;
   limit?: number;
+  unread_only?: boolean;
+  priority_only?: boolean;
 }
 
 export interface UnreadCountResponse {

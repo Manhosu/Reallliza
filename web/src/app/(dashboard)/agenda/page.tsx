@@ -11,6 +11,7 @@ import {
   CalendarDays,
   Grid3X3,
   User,
+  Users,
   Plus,
   X,
   ClipboardList,
@@ -44,6 +45,7 @@ import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScheduleStatus, OsStatus, UserRole, type Schedule, type ServiceOrder, type Profile } from "@/lib/types";
 import { schedulesApi, serviceOrdersApi, usersApi } from "@/lib/api";
+import type { OccupancyResource } from "@/lib/teams/occupancy";
 import { apiClient } from "@/lib/api/client";
 import { useApi } from "@/hooks/use-api";
 import { useExclusao } from "@/hooks/use-exclusao";
@@ -55,7 +57,7 @@ import { toast } from "sonner";
 // Types & Config
 // ============================================================
 
-type ViewMode = "week" | "month" | "list";
+type ViewMode = "week" | "month" | "list" | "disponibilidade";
 
 const SCHEDULE_STATUS_LABELS: Record<ScheduleStatus, string> = {
   [ScheduleStatus.SCHEDULED]: "Agendado",
@@ -308,6 +310,13 @@ export default function AgendaPage() {
   // concluiria que a agenda quebrou — foi essa a queixa da Jessica na OS.
   const user = useAuthStore((s) => s.user);
   const podeExcluir = user?.role === UserRole.ADMIN;
+  // Mapa de disponibilidade (Marco 4/5, item 4) — ferramenta de quem
+  // distribui trabalho, não a agenda pessoal do técnico.
+  const isAdmin = user?.role === UserRole.ADMIN;
+  const [occupancy, setOccupancy] = useState<{
+    resources: OccupancyResource[];
+  } | null>(null);
+  const [loadingOccupancy, setLoadingOccupancy] = useState(false);
 
   const excl = useExclusao<Schedule>("schedules", nomeDoAgendamento);
 
@@ -394,11 +403,37 @@ export default function AgendaPage() {
     [dateFrom, dateTo]
   );
 
+  // Mapa de disponibilidade: 14 dias a partir da semana atual — so' busca
+  // quando a aba esta ativa, pra nao gastar a consulta (mais pesada, varias
+  // tabelas) em toda troca de visao.
+  useEffect(() => {
+    if (viewMode !== "disponibilidade") return;
+    let cancelado = false;
+    setLoadingOccupancy(true);
+    apiClient
+      .get<{ resources: OccupancyResource[] }>("/calendar/occupancy", {
+        from: format(weekStart, "yyyy-MM-dd"),
+        days: 14,
+      })
+      .then((data) => {
+        if (!cancelado) setOccupancy(data);
+      })
+      .catch(() => {
+        if (!cancelado) setOccupancy(null);
+      })
+      .finally(() => {
+        if (!cancelado) setLoadingOccupancy(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [viewMode, weekStart]);
+
   const schedules: Schedule[] = schedulesResponse?.data ?? [];
 
   // Navigation
   const navigate = (direction: "prev" | "next") => {
-    if (viewMode === "week" || viewMode === "list") {
+    if (viewMode === "week" || viewMode === "list" || viewMode === "disponibilidade") {
       setCurrentDate(
         direction === "prev"
           ? subWeeks(currentDate, 1)
@@ -431,7 +466,7 @@ export default function AgendaPage() {
 
   // Format header date range
   const headerDateRange =
-    viewMode === "week" || viewMode === "list"
+    viewMode === "week" || viewMode === "list" || viewMode === "disponibilidade"
       ? `${format(weekStart, "dd MMM", { locale: ptBR })} - ${format(
           weekEnd,
           "dd MMM yyyy",
@@ -531,6 +566,15 @@ export default function AgendaPage() {
     { value: "week", label: "Semana", icon: <CalendarDays className="h-4 w-4" /> },
     { value: "month", label: "Mês", icon: <Grid3X3 className="h-4 w-4" /> },
     { value: "list", label: "Lista", icon: <List className="h-4 w-4" /> },
+    ...(isAdmin
+      ? [
+          {
+            value: "disponibilidade" as ViewMode,
+            label: "Disponibilidade",
+            icon: <Users className="h-4 w-4" />,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -1049,6 +1093,111 @@ export default function AgendaPage() {
                 );
               })
             )}
+          </motion.div>
+        )}
+
+        {/* ======================= MAPA DE DISPONIBILIDADE ======================= */}
+        {viewMode === "disponibilidade" && (
+          <motion.div
+            key="disponibilidade"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Card>
+              <CardContent className="p-0">
+                {loadingOccupancy ? (
+                  <div className="space-y-2 p-4">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <Skeleton key={i} className="h-10 w-full" />
+                    ))}
+                  </div>
+                ) : !occupancy || occupancy.resources.length === 0 ? (
+                  <EmptyState
+                    icon={<Users className="h-6 w-6" />}
+                    title="Nenhuma equipe ou técnico cadastrado"
+                    description="Cadastre equipes ou técnicos para ver o mapa de disponibilidade."
+                  />
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="sticky left-0 z-10 bg-card px-4 py-2 text-left font-medium text-muted-foreground">
+                            Equipe / Técnico
+                          </th>
+                          {Array.from({ length: 14 }, (_, i) => {
+                            const d = new Date(weekStart);
+                            d.setDate(d.getDate() + i);
+                            return (
+                              <th
+                                key={i}
+                                className="min-w-[52px] px-1 py-2 text-center text-xs font-medium text-muted-foreground"
+                              >
+                                {format(d, "dd/MM")}
+                              </th>
+                            );
+                          })}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {occupancy.resources.map((r) => (
+                          <tr key={`${r.type}:${r.id}`} className="border-b last:border-0">
+                            <td className="sticky left-0 z-10 whitespace-nowrap bg-card px-4 py-2 font-medium">
+                              <span className="inline-flex items-center gap-1.5">
+                                {r.type === "team" ? (
+                                  <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                                ) : (
+                                  <User className="h-3.5 w-3.5 text-muted-foreground" />
+                                )}
+                                {r.name}
+                              </span>
+                            </td>
+                            {Array.from({ length: 14 }, (_, i) => {
+                              const d = new Date(weekStart);
+                              d.setDate(d.getDate() + i);
+                              const dateStr = format(d, "yyyy-MM-dd");
+                              const day = r.days[dateStr];
+                              const tier = day?.tier ?? "livre";
+                              const cor =
+                                tier === "livre"
+                                  ? "bg-green-500/20"
+                                  : tier === "parcial"
+                                    ? "bg-amber-500/40"
+                                    : "bg-red-500/50";
+                              return (
+                                <td key={i} className="p-1 text-center">
+                                  <div
+                                    title={
+                                      day
+                                        ? `${day.count} agendamento(s) — capacidade ${r.capacity}`
+                                        : "Livre"
+                                    }
+                                    className={cn("mx-auto h-6 w-full rounded", cor)}
+                                  />
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="flex items-center gap-4 border-t p-3 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-3 w-3 rounded bg-green-500/20" /> Livre
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-3 w-3 rounded bg-amber-500/40" /> Parcialmente ocupado
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-3 w-3 rounded bg-red-500/50" /> Totalmente ocupado
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </motion.div>
         )}
       </AnimatePresence>

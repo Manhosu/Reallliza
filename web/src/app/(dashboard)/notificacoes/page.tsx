@@ -103,13 +103,24 @@ function NotificationsSkeleton() {
 // Page
 // ============================================================
 
+type Tab = "todas" | "nao_lidas" | "prioritarias";
+
 export default function NotificacoesPage() {
   const router = useRouter();
   const [markingAll, setMarkingAll] = useState(false);
+  const [tab, setTab] = useState<Tab>("todas");
 
-  const fetcher = useCallback((page: number, limit: number) => {
-    return notificationsApi.list({ page, limit });
-  }, []);
+  const fetcher = useCallback(
+    (page: number, limit: number) => {
+      return notificationsApi.list({
+        page,
+        limit,
+        unread_only: tab === "nao_lidas" || undefined,
+        priority_only: tab === "prioritarias" || undefined,
+      });
+    },
+    [tab]
+  );
 
   const {
     data: notifications,
@@ -118,7 +129,12 @@ export default function NotificacoesPage() {
     page,
     setPage,
     mutate,
-  } = usePaginatedApi<Notification>(fetcher, 1, 15);
+  } = usePaginatedApi<Notification>(fetcher, 1, 15, [tab]);
+
+  function selecionarAba(novaAba: Tab) {
+    setTab(novaAba);
+    setPage(1);
+  }
 
   const totalPages = meta?.total_pages ?? 1;
   const totalNotifications = meta?.total ?? 0;
@@ -186,6 +202,33 @@ export default function NotificacoesPage() {
         </Button>
       </motion.div>
 
+      {/* Abas: Todas / Não lidas / Prioritárias (Marco 4/5, item 3) */}
+      <div className="flex flex-wrap gap-1 rounded-xl bg-secondary/50 p-1 sm:inline-flex">
+        {(
+          [
+            { key: "todas" as Tab, label: "Todas" },
+            { key: "nao_lidas" as Tab, label: "Não lidas" },
+            { key: "prioritarias" as Tab, label: "Prioritárias" },
+          ]
+        ).map((t) => {
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => selecionarAba(t.key)}
+              className={cn(
+                "inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition",
+                active
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Notifications List */}
       {isLoading ? (
         <NotificationsSkeleton />
@@ -213,6 +256,14 @@ export default function NotificacoesPage() {
             const iconColor =
               NOTIFICATION_ICON_COLORS[notification.type] ||
               "bg-zinc-500/15 text-zinc-500";
+            // Mesmas cores/rotulos que o mobile ja usa — antes so' existia
+            // destaque de prioridade la', nunca aqui no web (Marco 4/5).
+            const isLoud =
+              notification.priority === "high" || notification.priority === "urgent";
+            const priorityColor =
+              notification.priority === "urgent" ? "border-l-red-500" : "border-l-amber-500";
+            const priorityLabel =
+              notification.priority === "urgent" ? "URGENTE" : "IMPORTANTE";
 
             return (
               <motion.div
@@ -224,7 +275,9 @@ export default function NotificacoesPage() {
                 <Card
                   className={cn(
                     "cursor-pointer transition-all hover:shadow-md",
-                    isUnread && "border-l-4 border-l-yellow-500"
+                    isLoud
+                      ? cn("border-l-4", priorityColor)
+                      : isUnread && "border-l-4 border-l-yellow-500"
                   )}
                   onClick={() => {
                     if (isUnread) handleMarkAsRead(notification.id);
@@ -256,6 +309,14 @@ export default function NotificacoesPage() {
                         >
                           {notification.title}
                         </h3>
+                        {isLoud && (
+                          <Badge
+                            variant={notification.priority === "urgent" ? "destructive" : "warning"}
+                            size="sm"
+                          >
+                            {priorityLabel}
+                          </Badge>
+                        )}
                         {isUnread && (
                           <Badge variant="warning" size="sm">
                             Nova

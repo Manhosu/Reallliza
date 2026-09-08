@@ -33,6 +33,10 @@ const NOTIFICATION_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   tool_custody: 'hammer-outline',
   proposal_available: 'flash-outline',
   message_received: 'chatbubble-ellipses-outline',
+  // Faltavam essas duas — a navegacao ja funcionava (openNotification trata
+  // os dois tipos), so' caia no icone generico (Marco 4/5, item 3).
+  warranty_opened: 'shield-checkmark-outline',
+  warranty_resolved: 'shield-checkmark-outline',
   system: 'information-circle-outline',
   general: 'megaphone-outline',
 };
@@ -70,9 +74,12 @@ function formatNotificationDate(dateStr: string): string {
 // Component
 // ============================================================
 
+type Tab = 'todas' | 'nao_lidas' | 'prioritarias';
+
 export function NotificationsScreen() {
   const navigation = useNavigation<any>();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [tab, setTab] = useState<Tab>('todas');
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [page, setPage] = useState(1);
@@ -85,7 +92,12 @@ export function NotificationsScreen() {
       try {
         const response = await apiClient.get<PaginatedResponse<Notification>>(
           '/notifications',
-          { page: pageNum, limit: 30 },
+          {
+            page: pageNum,
+            limit: 30,
+            unread_only: tab === 'nao_lidas' || undefined,
+            priority_only: tab === 'prioritarias' || undefined,
+          },
         );
 
         if (isRefresh || pageNum === 1) {
@@ -100,13 +112,17 @@ export function NotificationsScreen() {
         console.error('Error fetching notifications:', error);
       }
     },
-    [],
+    [tab],
   );
 
   useEffect(() => {
     setIsLoading(true);
     fetchNotifications(1).finally(() => setIsLoading(false));
   }, [fetchNotifications]);
+
+  function selecionarAba(novaAba: Tab) {
+    setTab(novaAba);
+  }
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -288,6 +304,27 @@ export function NotificationsScreen() {
           )}
         </View>
 
+        {/* Abas: Todas / Nao lidas / Prioritarias (Marco 4/5, item 3) */}
+        <View style={styles.tabRow}>
+          {(
+            [
+              { key: 'todas' as Tab, label: 'Todas' },
+              { key: 'nao_lidas' as Tab, label: 'Não lidas' },
+              { key: 'prioritarias' as Tab, label: 'Prioritárias' },
+            ]
+          ).map(t => (
+            <TouchableOpacity
+              key={t.key}
+              style={[styles.tab, tab === t.key && styles.tabActive]}
+              onPress={() => selecionarAba(t.key)}
+            >
+              <Text style={[styles.tabText, tab === t.key && styles.tabTextActive]}>
+                {t.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {isLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -349,6 +386,33 @@ const styles = StyleSheet.create({
   headerTitle: {
     ...typography.h3,
     color: colors.primary,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tabActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  tabText: {
+    ...typography.captionBold,
+    color: colors.textMuted,
+  },
+  tabTextActive: {
+    color: colors.black,
   },
   markAllBtn: {
     paddingVertical: 4,

@@ -20,7 +20,18 @@ import {
   Trash2,
   Megaphone,
   Boxes,
+  X,
+  TrendingUp,
 } from "lucide-react";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as ChartTooltip,
+  ResponsiveContainer,
+} from "recharts";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,8 +48,9 @@ import {
   USER_STATUS_LABELS,
   type Profile,
   type PixKeyType,
+  type ProfessionalRating,
 } from "@/lib/types";
-import { usersApi, apiClient, specialtiesApi } from "@/lib/api";
+import { usersApi, apiClient, specialtiesApi, ratingsApi } from "@/lib/api";
 import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
 import type { Specialty } from "@/lib/api/specialties";
 import { usePaginatedApi } from "@/hooks/use-api";
@@ -125,6 +137,128 @@ function UserTableSkeleton() {
 }
 
 // ============================================================
+// Historico de avaliacoes (Marco 4/5, item 2)
+// ============================================================
+
+const AVERAGE_LABELS: Record<string, string> = {
+  overall: "Geral",
+  quality: "Qualidade",
+  punctuality: "Pontualidade",
+  organization: "Organização",
+  communication: "Comunicação",
+};
+
+function RatingsHistoryContent({
+  data,
+}: {
+  data: { ratings: ProfessionalRating[]; averages: Record<string, number>; total: number };
+}) {
+  // Tendencia mensal — a API nao pagina/filtra por data, o agrupamento e'
+  // client-side em cima da lista inteira que ela ja devolve.
+  const monthly = (() => {
+    const buckets = new Map<string, { sum: number; count: number }>();
+    for (const r of data.ratings) {
+      const overall =
+        (r.quality_score + r.punctuality_score + r.organization_score + r.communication_score) /
+        4;
+      const key = r.created_at.slice(0, 7); // YYYY-MM
+      const b = buckets.get(key) ?? { sum: 0, count: 0 };
+      b.sum += overall;
+      b.count += 1;
+      buckets.set(key, b);
+    }
+    return Array.from(buckets.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, b]) => ({
+        month: new Date(`${month}-02`).toLocaleDateString("pt-BR", {
+          month: "short",
+          year: "2-digit",
+        }),
+        media: Math.round((b.sum / b.count) * 100) / 100,
+      }));
+  })();
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        {Object.entries(AVERAGE_LABELS).map(([key, label]) => (
+          <div key={key} className="rounded-lg border bg-background p-3 text-center">
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className="mt-1 flex items-center justify-center gap-1 text-lg font-bold">
+              <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+              {(data.averages[key] ?? 0).toFixed(1)}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {monthly.length > 1 && (
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold">Evolução mensal</h3>
+          </div>
+          <ResponsiveContainer width="100%" height={180}>
+            <AreaChart data={monthly}>
+              <defs>
+                <linearGradient id="ratingArea" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#EAB308" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="#EAB308" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+              <XAxis dataKey="month" className="text-xs" />
+              <YAxis domain={[0, 5]} className="text-xs" />
+              <ChartTooltip
+                contentStyle={{ background: "var(--background)", border: "1px solid var(--border)" }}
+              />
+              <Area
+                type="monotone"
+                dataKey="media"
+                stroke="#EAB308"
+                fill="url(#ratingArea)"
+                strokeWidth={2}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">
+          Avaliações ({data.total})
+        </h3>
+        <div className="space-y-2">
+          {data.ratings.map((r) => {
+            const overall =
+              (r.quality_score + r.punctuality_score + r.organization_score + r.communication_score) /
+              4;
+            return (
+              <div key={r.id} className="rounded-lg border bg-background p-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1 font-medium">
+                    <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                    {overall.toFixed(1)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {formatDate(r.created_at)}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {r.rated_by_user?.full_name && `Por ${r.rated_by_user.full_name}`}
+                  {r.service_order?.title && ` · OS: ${r.service_order.title}`}
+                </p>
+                {r.notes && <p className="mt-1 text-xs">{r.notes}</p>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // Users Page
 // ============================================================
 
@@ -152,6 +286,31 @@ export default function UsuariosPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState<string | null>(null);
   const [purgingUser, setPurgingUser] = useState<Profile | null>(null);
+
+  // Historico de evolucao e medias de avaliacao (Marco 4/5, item 2) — a API
+  // ja existia (ratingsApi.getByProfessional) mas nenhuma tela chamava.
+  const [ratingsUser, setRatingsUser] = useState<Profile | null>(null);
+  const [ratingsData, setRatingsData] = useState<{
+    ratings: ProfessionalRating[];
+    averages: Record<string, number>;
+    total: number;
+  } | null>(null);
+  const [loadingRatings, setLoadingRatings] = useState(false);
+
+  async function abrirHistoricoAvaliacoes(user: Profile) {
+    setActionMenuId(null);
+    setRatingsUser(user);
+    setLoadingRatings(true);
+    try {
+      const data = await ratingsApi.getByProfessional(user.id);
+      setRatingsData(data);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar avaliações");
+      setRatingsData(null);
+    } finally {
+      setLoadingRatings(false);
+    }
+  }
 
   // Especialidades carregadas dinamicamente do CMS (admin gerencia em /especialidades).
   const [specialtyOptions, setSpecialtyOptions] = useState<Specialty[]>([]);
@@ -652,7 +811,7 @@ export default function UsuariosPage() {
                             {actionMenuId === user.id && (
                               <div className="absolute right-0 top-full z-10 mt-1 w-44 rounded-xl border bg-popover p-1 shadow-lg">
                                 <button
-                                  onClick={() => setActionMenuId(null)}
+                                  onClick={() => void abrirHistoricoAvaliacoes(user)}
                                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent"
                                 >
                                   <Eye className="h-4 w-4" />
@@ -1038,6 +1197,52 @@ export default function UsuariosPage() {
           mutate();
         }}
       />
+
+      {/* ============================================================ */}
+      {/* HISTORICO DE AVALIACOES (Marco 4/5, item 2) */}
+      {/* ============================================================ */}
+      {ratingsUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => {
+              setRatingsUser(null);
+              setRatingsData(null);
+            }}
+          />
+          <div className="relative z-10 w-full max-w-2xl rounded-xl bg-card border p-6 shadow-xl mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold">{ratingsUser.full_name}</h2>
+                <p className="text-sm text-muted-foreground">
+                  Histórico de avaliações
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setRatingsUser(null);
+                  setRatingsData(null);
+                }}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {loadingRatings ? (
+              <Skeleton className="h-64 w-full rounded-xl" />
+            ) : !ratingsData || ratingsData.total === 0 ? (
+              <EmptyState
+                icon={<Star className="h-8 w-8" />}
+                title="Sem avaliações"
+                description="Este profissional ainda não recebeu nenhuma avaliação."
+              />
+            ) : (
+              <RatingsHistoryContent data={ratingsData} />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
