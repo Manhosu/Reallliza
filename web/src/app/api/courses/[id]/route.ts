@@ -16,7 +16,7 @@ export async function GET(
     const { data, error } = await supabase
       .from("courses")
       .select(
-        "*, modules:course_modules(*, lessons:course_lessons(*))"
+        "*, category:course_categories(id, name, icon), modules:course_modules(*, lessons:course_lessons(*))"
       )
       .eq("id", id)
       .single();
@@ -59,6 +59,7 @@ export async function PATCH(
     if (body.title !== undefined) update.title = String(body.title).slice(0, 200);
     if (body.description !== undefined) update.description = body.description ? String(body.description).slice(0, 2000) : null;
     if (body.thumbnail_url !== undefined) update.thumbnail_url = body.thumbnail_url || null;
+    if (body.category_id !== undefined) update.category_id = body.category_id || null;
     if (body.audience !== undefined) update.audience = body.audience;
     if (body.order_index !== undefined) update.order_index = body.order_index;
     if (body.is_published !== undefined) update.is_published = !!body.is_published;

@@ -191,6 +191,11 @@ const ROTULOS: Record<string, { singular: string; plural: string; motivo: string
     plural: "categorias de serviço",
     motivo: "ficam sem modelo de checklist padrão",
   },
+  courses: {
+    singular: "curso",
+    plural: "cursos",
+    motivo: "ficam sem categoria (continuam existindo, só perdem o agrupamento)",
+  },
   tool_requests: {
     singular: "pedido de ferramenta",
     plural: "pedidos de ferramenta",

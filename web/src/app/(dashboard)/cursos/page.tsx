@@ -15,6 +15,9 @@ import {
   Trash2,
   AlertCircle,
   Ban,
+  Tag,
+  Check,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,15 +28,26 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { SelectNative } from "@/components/ui/select-native";
 import { EmptyState } from "@/components/ui/empty-state";
 import { apiClient } from "@/lib/api/client";
-import { HardDeleteDialog } from "@/components/admin/hard-delete-dialog";
+import { HardDeleteDialog, type Dependency } from "@/components/admin/hard-delete-dialog";
 import { useExclusao } from "@/hooks/use-exclusao";
 import { cn } from "@/lib/utils";
+
+interface CourseCategory {
+  id: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  order_index: number;
+  is_active: boolean;
+}
 
 interface Course {
   id: string;
   title: string;
   description: string | null;
   thumbnail_url: string | null;
+  category_id: string | null;
+  category?: { id: string; name: string; icon: string | null } | null;
   audience: "all" | "technician" | "partner" | "admin";
   is_published: boolean;
   emit_certificate: boolean;
@@ -53,14 +67,218 @@ const AUDIENCE_LABELS: Record<Course["audience"], { label: string; icon: React.C
   admin: { label: "Admin", icon: Users },
 };
 
+function errMsg(err: unknown, fallback: string) {
+  return err instanceof Error ? err.message : fallback;
+}
+
+interface CategoriesPanelProps {
+  categories: CourseCategory[];
+  onChanged: () => void;
+}
+
+/**
+ * Painel de categorias — mesmo padrão de `CategoriesPanel` em
+ * servicos/page.tsx (service_categories), sem o vínculo de template de
+ * etapas (não se aplica a curso).
+ */
+function CategoriesPanel({ categories, onChanged }: CategoriesPanelProps) {
+  const [novoNome, setNovoNome] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editNome, setEditNome] = useState("");
+
+  const [excluindo, setExcluindo] = useState<{ id: string; nome: string } | null>(null);
+  const [dependencias, setDependencias] = useState<Dependency[]>([]);
+  const [carregandoDeps, setCarregandoDeps] = useState(false);
+
+  async function criar() {
+    if (!novoNome.trim()) return;
+    setSaving(true);
+    try {
+      await apiClient.post("/course-categories", {
+        name: novoNome.trim(),
+        order_index: categories.length,
+      });
+      setNovoNome("");
+      toast.success("Categoria criada");
+      onChanged();
+    } catch (err: unknown) {
+      toast.error(errMsg(err, "Erro ao criar categoria"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function salvarEdicao(id: string) {
+    if (!editNome.trim()) return;
+    try {
+      await apiClient.patch(`/course-categories/${id}`, { name: editNome.trim() });
+      setEditId(null);
+      toast.success("Categoria atualizada");
+      onChanged();
+    } catch (err: unknown) {
+      toast.error(errMsg(err, "Erro ao atualizar"));
+    }
+  }
+
+  async function toggleAtivo(cat: CourseCategory) {
+    try {
+      await apiClient.patch(`/course-categories/${cat.id}`, { is_active: !cat.is_active });
+      onChanged();
+    } catch {
+      toast.error("Erro ao atualizar categoria");
+    }
+  }
+
+  const abrirExclusao = useCallback(async (id: string, nome: string) => {
+    setExcluindo({ id, nome });
+    setCarregandoDeps(true);
+    try {
+      const d = await apiClient.get<{ dependencies: Dependency[] }>(
+        `/admin/dependencias?tabela=course_categories&id=${id}`
+      );
+      setDependencias(d.dependencies);
+    } catch {
+      setDependencias([]);
+    } finally {
+      setCarregandoDeps(false);
+    }
+  }, []);
+
+  async function remover(cat: CourseCategory) {
+    if (!confirm(`Desativar a categoria "${cat.name}"?`)) return;
+    try {
+      await apiClient.delete(`/course-categories/${cat.id}`);
+      toast.success("Categoria desativada");
+      onChanged();
+    } catch (err: unknown) {
+      toast.error(errMsg(err, "Erro ao remover"));
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-5">
+        <div className="flex items-center gap-2">
+          <Tag className="h-4 w-4 text-primary" />
+          <h2 className="font-semibold">Categorias</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Agrupam os cursos da biblioteca técnica. Crie, renomeie e ative/desative.
+        </p>
+
+        <div className="flex gap-2">
+          <Input
+            value={novoNome}
+            onChange={(e) => setNovoNome(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && criar()}
+            placeholder="Nova categoria (ex: Instalação, Perícia...)"
+          />
+          <Button onClick={criar} isLoading={saving} className="shrink-0">
+            <Plus className="h-4 w-4" /> Adicionar
+          </Button>
+        </div>
+
+        <div className="space-y-1">
+          {categories.map((c) => (
+            <div
+              key={c.id}
+              className={cn(
+                "flex items-center gap-2 rounded-lg border bg-background px-3 py-2",
+                !c.is_active && "opacity-50"
+              )}
+            >
+              {editId === c.id ? (
+                <>
+                  <Input
+                    value={editNome}
+                    onChange={(e) => setEditNome(e.target.value)}
+                    className="h-8 flex-1"
+                    autoFocus
+                  />
+                  <Button size="sm" variant="ghost" onClick={() => salvarEdicao(c.id)}>
+                    <Check className="h-4 w-4 text-green-600" />
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditId(null)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className="flex-1 text-left text-sm font-medium"
+                    onClick={() => {
+                      setEditId(c.id);
+                      setEditNome(c.name);
+                    }}
+                  >
+                    {c.name}
+                  </button>
+                  <button
+                    onClick={() => toggleAtivo(c)}
+                    className={cn(
+                      "rounded px-2 py-0.5 text-[10px] font-medium",
+                      c.is_active
+                        ? "bg-green-500/15 text-green-600"
+                        : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {c.is_active ? "Ativa" : "Inativa"}
+                  </button>
+                  <Button size="sm" variant="ghost" onClick={() => remover(c)} title="Desativar">
+                    <Ban className="h-4 w-4 text-amber-600" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void abrirExclusao(c.id, c.name)}
+                    title="Excluir permanentemente"
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </>
+              )}
+            </div>
+          ))}
+          {categories.length === 0 && (
+            <p className="py-3 text-center text-sm text-muted-foreground">
+              Nenhuma categoria cadastrada
+            </p>
+          )}
+        </div>
+      </CardContent>
+
+      <HardDeleteDialog
+        open={!!excluindo}
+        entityLabel="categoria"
+        entityName={excluindo?.nome ?? ""}
+        dependencies={dependencias}
+        loadingDeps={carregandoDeps}
+        onClose={() => {
+          setExcluindo(null);
+          setDependencias([]);
+        }}
+        onConfirm={async () => {
+          if (!excluindo) return;
+          await apiClient.delete(`/course-categories/${excluindo.id}/purge`);
+          onChanged();
+        }}
+      />
+    </Card>
+  );
+}
+
 export default function CursosAdminPage() {
   const [courses, setCourses] = useState<Course[]>([]);
+  const [categories, setCategories] = useState<CourseCategory[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [categoryId, setCategoryId] = useState("");
   const [audience, setAudience] = useState<Course["audience"]>("technician");
   const [emitCert, setEmitCert] = useState(true);
   const [requiredPct, setRequiredPct] = useState("100");
@@ -78,13 +296,30 @@ export default function CursosAdminPage() {
     }
   }, []);
 
+  const loadCategories = useCallback(async () => {
+    try {
+      const data = await apiClient.get<CourseCategory[]>(
+        "/course-categories?include_inactive=true"
+      );
+      setCategories(data);
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
   useEffect(() => {
     load();
-  }, [load]);
+    loadCategories();
+  }, [load, loadCategories]);
+
+  const visibleCourses = categoryFilter
+    ? courses.filter((c) => c.category_id === categoryFilter)
+    : courses;
 
   function resetForm() {
     setTitle("");
     setDescription("");
+    setCategoryId("");
     setAudience("technician");
     setEmitCert(true);
     setRequiredPct("100");
@@ -101,6 +336,7 @@ export default function CursosAdminPage() {
       await apiClient.post("/courses", {
         title,
         description: description || null,
+        category_id: categoryId || null,
         audience,
         emit_certificate: emitCert,
         required_completion_pct: Number(requiredPct) || 100,
@@ -169,13 +405,33 @@ export default function CursosAdminPage() {
         </Button>
       </motion.div>
 
+      <CategoriesPanel categories={categories} onChanged={loadCategories} />
+
+      {categories.length > 0 && courses.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Tag className="h-4 w-4 text-muted-foreground" />
+          <SelectNative
+            className="h-9 w-56 text-sm"
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+          >
+            <option value="">Todas as categorias</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </SelectNative>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-48 w-full rounded-xl" />
           ))}
         </div>
-      ) : courses.length === 0 ? (
+      ) : visibleCourses.length === 0 ? (
         <EmptyState
           icon={<GraduationCap className="h-8 w-8" />}
           title="Nenhum curso cadastrado"
@@ -183,7 +439,7 @@ export default function CursosAdminPage() {
         />
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {courses.map((c) => {
+          {visibleCourses.map((c) => {
             const aud = AUDIENCE_LABELS[c.audience];
             const AudIcon = aud.icon;
             const moduleCount = c.modules?.length ?? 0;
@@ -262,6 +518,12 @@ export default function CursosAdminPage() {
                         <AudIcon className="h-3 w-3" />
                         {aud.label}
                       </span>
+                      {c.category?.name && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-violet-700 dark:text-violet-300">
+                          <Tag className="h-3 w-3" />
+                          {c.category.name}
+                        </span>
+                      )}
                       {c.emit_certificate && (
                         <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-300">
                           🎓 Certificado
@@ -304,6 +566,22 @@ export default function CursosAdminPage() {
               rows={3}
               className="flex w-full rounded-xl border border-input bg-background px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Categoria</label>
+            <SelectNative
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+            >
+              <option value="">Sem categoria</option>
+              {categories
+                .filter((c) => c.is_active)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </SelectNative>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">

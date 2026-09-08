@@ -7,7 +7,7 @@ import { OsStack } from './os-stack';
 import { ToolsStack } from './tools-stack';
 import { FeedStack } from './feed-stack';
 import { GarantiasStack } from './garantias-stack';
-import { LearningScreen } from '../screens/LearningScreen';
+import { CoursesStack } from './courses-stack';
 import { AgendaScreen } from '../screens/AgendaScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
@@ -114,15 +114,11 @@ export function MainTabs() {
       {!isPartner && (
         <Tab.Screen
           name="LearningTab"
-          component={LearningScreen}
+          component={CoursesStack}
           options={{
-            title: 'Aprendizado',
+            headerShown: false,
+            title: 'Cursos',
             tabBarLabel: 'Cursos',
-            headerTitleStyle: {
-              fontWeight: '700',
-              fontSize: 20,
-              color: colors.primary,
-            },
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="school-outline" size={size} color={color} />
             ),

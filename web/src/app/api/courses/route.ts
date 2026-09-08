@@ -17,10 +17,12 @@ export async function GET(request: NextRequest) {
     const supabase = getAdminClient();
     const includeUnpub = request.nextUrl.searchParams.get("include_unpublished") === "true";
 
+    const categoryId = request.nextUrl.searchParams.get("category_id");
+
     let query = supabase
       .from("courses")
       .select(
-        "*, modules:course_modules(id, title, description, order_index, is_published, lessons:course_lessons(id, title, lesson_type, duration_sec, order_index, is_published, is_required))"
+        "*, category:course_categories(id, name, icon), modules:course_modules(id, title, description, order_index, is_published, lessons:course_lessons(id, title, lesson_type, duration_sec, order_index, is_published, is_required))"
       )
       .order("order_index");
 
@@ -31,6 +33,9 @@ export async function GET(request: NextRequest) {
       query = query.in("audience", ["all", "technician"]);
     } else if (user.role === "partner") {
       query = query.in("audience", ["all", "partner"]);
+    }
+    if (categoryId) {
+      query = query.eq("category_id", categoryId);
     }
 
     const { data, error } = await query;
@@ -82,6 +87,7 @@ export async function POST(request: NextRequest) {
         title: String(body.title).trim().slice(0, 200),
         description: body.description ? String(body.description).slice(0, 2000) : null,
         thumbnail_url: body.thumbnail_url || null,
+        category_id: body.category_id || null,
         audience: body.audience ?? "technician",
         order_index: typeof body.order_index === "number" ? body.order_index : 0,
         is_published: body.is_published !== false,

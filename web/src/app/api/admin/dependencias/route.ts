@@ -33,7 +33,7 @@ const CADASTROS_CONSULTAVEIS = new Set([
   "services", "service_categories", "specialties", "regions",
   "teams", "partners", "profiles",
   "checklist_templates", "step_template_groups",
-  "courses", "course_modules", "course_lessons",
+  "courses", "course_modules", "course_lessons", "course_categories",
   "feed_posts", "feed_campaigns", "feed_sponsors", "feed_audience_rules",
   "schedules", "warranties", "quality_evaluations",
   "service_proposals", "professional_ratings", "checklist_templates",

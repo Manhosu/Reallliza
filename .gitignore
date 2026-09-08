@@ -46,3 +46,6 @@ prisma/migrations/**/migration_lock.toml
 .expo/
 
 .vercel
+
+.vercel
+.env*
