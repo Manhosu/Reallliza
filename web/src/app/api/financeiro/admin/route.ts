@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
       receivableRes,
       invoicesRes,
       pendingQuotesRes,
+      custodyRes,
     ] = await Promise.all([
       supabase
         .from("payments")
@@ -46,6 +47,18 @@ export async function GET(request: NextRequest) {
         .from("quotes")
         .select("total_amount")
         .in("status", ["draft", "awaiting_payment"]),
+      // Jessica 07/09: nao existia NENHUMA tela pra liberar um repasse — a
+      // rota /quotes/[id]/release-payout so era alcancavel via chamada
+      // manual de API. Lista os pagamentos em custodia (modalidade
+      // homologados) pra existir um botao "Liberar repasse" de verdade.
+      supabase
+        .from("payments")
+        .select(
+          "id, payout_amount, platform_fee_amount, paid_at, quote:quotes!inner(id, quote_number, modality, client_name, service_order_id, service_order:service_orders(order_number, status, technician_id, technician:profiles!service_orders_technician_id_fkey(full_name)))"
+        )
+        .eq("custody_status", "held")
+        .eq("quote.modality", "homologados")
+        .order("paid_at", { ascending: true }),
     ]);
 
     type PaymentRow = {
@@ -84,6 +97,40 @@ export async function GET(request: NextRequest) {
       0
     );
 
+    type CustodyPaymentRow = {
+      id: string;
+      payout_amount: number | null;
+      platform_fee_amount: number | null;
+      paid_at: string | null;
+      quote: {
+        id: string;
+        quote_number: number | string;
+        client_name: string | null;
+        service_order_id: string | null;
+        service_order: {
+          order_number: number | null;
+          status: string;
+          technician_id: string | null;
+          technician: { full_name: string } | null;
+        } | null;
+      } | null;
+    };
+
+    const custody_pending = (
+      ((custodyRes.data as unknown) as CustodyPaymentRow[] | null) ?? []
+    ).map((p) => ({
+      payment_id: p.id,
+      quote_id: p.quote?.id ?? null,
+      quote_number: p.quote?.quote_number ?? null,
+      client_name: p.quote?.client_name ?? null,
+      order_number: p.quote?.service_order?.order_number ?? null,
+      os_status: p.quote?.service_order?.status ?? null,
+      technician_name: p.quote?.service_order?.technician?.full_name ?? null,
+      payout_amount: Number(p.payout_amount ?? 0),
+      platform_fee_amount: Number(p.platform_fee_amount ?? 0),
+      paid_at: p.paid_at,
+    }));
+
     const round = (n: number) => Math.round(n * 100) / 100;
 
     return jsonResponse({
@@ -94,6 +141,7 @@ export async function GET(request: NextRequest) {
         pending: round(pending),
         platform_fees_total: round(platform_fees_total),
       },
+      custody_pending,
       payable: payableRes.data ?? [],
       receivable: receivableRes.data ?? [],
       invoices: invoicesRes.data ?? [],

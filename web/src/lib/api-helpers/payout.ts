@@ -24,6 +24,28 @@ export async function resolvePayoutForOs(
   return Number.isFinite(valor) && valor > 0 ? valor : null;
 }
 
+export interface StepExecutionLite {
+  status: string;
+  metadata?: Record<string, unknown> | null;
+}
+
+/**
+ * Etapas obrigatórias que ainda não terminaram (nem `completed`, nem
+ * `skipped`). O release-payout bloqueia o repasse enquanto essa lista não
+ * estiver vazia — extraído pra função pura porque a regra tem uma pegadinha
+ * fácil de esquecer: `is_required` ausente/undefined conta como obrigatória
+ * (default `true`), só `is_required: false` explícito libera a etapa.
+ */
+export function pendingRequiredSteps(
+  steps: StepExecutionLite[]
+): StepExecutionLite[] {
+  return steps.filter((s) => {
+    const meta = (s.metadata ?? {}) as { is_required?: boolean };
+    const isRequired = meta.is_required !== false;
+    return isRequired && s.status !== "completed" && s.status !== "skipped";
+  });
+}
+
 /** Versão em lote, pra listas — uma consulta em vez de uma por OS. */
 export async function resolvePayoutsForOsList(
   supabase: SupabaseClient,

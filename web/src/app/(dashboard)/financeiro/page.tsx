@@ -22,6 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api/client";
+import { quotesApi } from "@/lib/api/quotes";
 import { cn } from "@/lib/utils";
 
 interface AccountRow {
@@ -53,6 +54,19 @@ interface InvoiceRow {
   } | null;
 }
 
+interface CustodyRow {
+  payment_id: string;
+  quote_id: string | null;
+  quote_number: number | string | null;
+  client_name: string | null;
+  order_number: number | null;
+  os_status: string | null;
+  technician_name: string | null;
+  payout_amount: number;
+  platform_fee_amount: number;
+  paid_at: string | null;
+}
+
 interface FinAdminData {
   kpis: {
     revenue_month: number;
@@ -64,6 +78,7 @@ interface FinAdminData {
   payable: AccountRow[];
   receivable: AccountRow[];
   invoices: InvoiceRow[];
+  custody_pending: CustodyRow[];
 }
 
 function formatBRL(value: number) {
@@ -75,13 +90,14 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleDateString("pt-BR");
 }
 
-type Tab = "kpis" | "payable" | "receivable" | "invoices";
+type Tab = "kpis" | "payable" | "receivable" | "invoices" | "repasses";
 
 export default function FinanceiroAdminPage() {
   const [data, setData] = useState<FinAdminData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("kpis");
   const [emitting, setEmitting] = useState<string | null>(null);
+  const [releasing, setReleasing] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -109,6 +125,45 @@ export default function FinanceiroAdminPage() {
       toast.error(err instanceof Error ? err.message : "Erro");
     } finally {
       setEmitting(null);
+    }
+  }
+
+  async function handleRelease(row: CustodyRow) {
+    if (!row.quote_id) return;
+    if (
+      !window.confirm(
+        `Liberar repasse de ${formatBRL(row.payout_amount)} pro homologado${
+          row.technician_name ? ` (${row.technician_name})` : ""
+        }? Isso dispara a transferência PIX.`
+      )
+    ) {
+      return;
+    }
+    setReleasing(row.payment_id);
+    try {
+      const res = await quotesApi.releasePayout(row.quote_id);
+      // As duas transferências (homologado + taxa da plataforma) são
+      // independentes — uma pode ter ido via PIX automático e a outra
+      // precisar de ação manual. Mostra os dois avisos se existirem, em vez
+      // de um "sucesso" genérico que esconderia isso.
+      if (res.transfer_warning || res.platform_transfer_warning) {
+        toast.warning(
+          [
+            "Custódia liberada, mas com pendência manual:",
+            res.transfer_warning,
+            res.platform_transfer_warning,
+          ]
+            .filter(Boolean)
+            .join(" ")
+        );
+      } else {
+        toast.success("Repasse liberado — transferências PIX enviadas.");
+      }
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao liberar repasse");
+    } finally {
+      setReleasing(null);
     }
   }
 
@@ -202,6 +257,7 @@ export default function FinanceiroAdminPage() {
           { key: "payable" as Tab, label: "Contas a Pagar", icon: ArrowUpFromLine },
           { key: "receivable" as Tab, label: "Contas a Receber", icon: ArrowDownToLine },
           { key: "invoices" as Tab, label: "Faturamento + NFe", icon: Receipt },
+          { key: "repasses" as Tab, label: "Repasses", icon: Banknote },
         ].map((t) => {
           const Icon = t.icon;
           const active = tab === t.key;
@@ -336,6 +392,70 @@ export default function FinanceiroAdminPage() {
                     <p className="text-sm font-bold">{formatBRL(r.amount)}</p>
                   </div>
                 ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : tab === "repasses" ? (
+        <Card>
+          <CardContent className="p-0">
+            {data.custody_pending.length === 0 ? (
+              <p className="p-8 text-center text-sm text-muted-foreground">
+                Nenhum repasse em custódia aguardando liberação.
+              </p>
+            ) : (
+              <div className="divide-y">
+                {data.custody_pending.map((row) => {
+                  const osReady = row.os_status === "completed";
+                  return (
+                    <div
+                      key={row.payment_id}
+                      className="flex flex-wrap items-center gap-3 p-4"
+                    >
+                      <ShieldCheck className="h-4 w-4 text-amber-500" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-semibold">
+                            Orçamento #{row.quote_number ?? "—"}
+                          </span>
+                          {row.order_number != null && (
+                            <>
+                              <span className="text-sm text-muted-foreground">·</span>
+                              <span className="text-sm">
+                                OS #{row.order_number} — {row.client_name}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Homologado: {row.technician_name ?? "—"}
+                          {" · "}
+                          {osReady ? (
+                            "OS concluída"
+                          ) : (
+                            <span className="text-amber-600 dark:text-amber-400">
+                              OS ainda {row.os_status ?? "em andamento"} — a
+                              liberação será recusada até concluir
+                            </span>
+                          )}
+                          {row.paid_at && ` · Pago em ${formatDate(row.paid_at)}`}
+                        </p>
+                      </div>
+                      <div className="text-right text-xs text-muted-foreground">
+                        <p>Repasse: {formatBRL(row.payout_amount)}</p>
+                        <p>Taxa: {formatBRL(row.platform_fee_amount)}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => handleRelease(row)}
+                        isLoading={releasing === row.payment_id}
+                        disabled={!!releasing}
+                      >
+                        Liberar repasse
+                      </Button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardContent>

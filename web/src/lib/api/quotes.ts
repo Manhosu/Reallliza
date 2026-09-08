@@ -194,4 +194,14 @@ export const quotesApi = {
       {}
     );
   },
+  releasePayout(id: string, reason?: string) {
+    return apiClient.post<{
+      success: true;
+      payment_id: string;
+      asaas_transfer_id: string | null;
+      transfer_warning: string | null;
+      platform_asaas_transfer_id: string | null;
+      platform_transfer_warning: string | null;
+    }>(`/quotes/${id}/release-payout`, reason ? { reason } : {});
+  },
 };

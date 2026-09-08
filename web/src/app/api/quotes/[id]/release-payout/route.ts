@@ -4,6 +4,7 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { createTransfer } from "@/lib/asaas/client";
+import { pendingRequiredSteps } from "@/lib/api-helpers/payout";
 
 /**
  * POST /api/quotes/[id]/release-payout
@@ -95,16 +96,9 @@ export async function POST(
       .select("status, metadata")
       .eq("service_order_id", os.id);
 
-    const pendingRequired = (steps ?? []).filter((s) => {
-      const meta = ((s as { metadata?: Record<string, unknown> }).metadata ??
-        {}) as { is_required?: boolean };
-      const isRequired = meta.is_required !== false; // default true
-      return (
-        isRequired &&
-        (s as { status: string }).status !== "completed" &&
-        (s as { status: string }).status !== "skipped"
-      );
-    });
+    const pendingRequired = pendingRequiredSteps(
+      (steps ?? []) as { status: string; metadata?: Record<string, unknown> | null }[]
+    );
     if (pendingRequired.length > 0) {
       throw new AuthError(
         400,
