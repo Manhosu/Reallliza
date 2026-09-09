@@ -27,7 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SelectNative } from "@/components/ui/select-native";
 import { EmptyState } from "@/components/ui/empty-state";
-import { apiClient } from "@/lib/api/client";
+import { apiClient, getAccessToken, BASE_URL } from "@/lib/api/client";
 import { HardDeleteDialog, type Dependency } from "@/components/admin/hard-delete-dialog";
 import { useExclusao } from "@/hooks/use-exclusao";
 import { cn } from "@/lib/utils";
@@ -323,7 +323,39 @@ export default function CursosAdminPage() {
     setAudience("technician");
     setEmitCert(true);
     setRequiredPct("100");
+    setThumbnailUrl(null);
     setError(null);
+  }
+
+  // Capa do curso — Jessica 09/09: `thumbnail_url` sempre existiu na
+  // tabela e a listagem ja' mostrava a imagem quando presente, so' nunca
+  // existiu um jeito de definir ela no form de criar curso. Reaproveita o
+  // upload generico do Feed (admin-only, mesmo bucket "photos") em vez de
+  // criar uma rota nova so' pra isso.
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [uploadingThumb, setUploadingThumb] = useState(false);
+
+  async function handleThumbnailUpload(file: File) {
+    setUploadingThumb(true);
+    try {
+      const token = await getAccessToken();
+      const formData = new FormData();
+      formData.append("file", file);
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(`${BASE_URL}/feed/upload`, {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "Erro ao enviar imagem");
+      setThumbnailUrl(data.url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao enviar imagem");
+    } finally {
+      setUploadingThumb(false);
+    }
   }
 
   async function handleCreate() {
@@ -337,6 +369,7 @@ export default function CursosAdminPage() {
         title,
         description: description || null,
         category_id: categoryId || null,
+        thumbnail_url: thumbnailUrl,
         audience,
         emit_certificate: emitCert,
         required_completion_pct: Number(requiredPct) || 100,
@@ -566,6 +599,40 @@ export default function CursosAdminPage() {
               rows={3}
               className="flex w-full rounded-xl border border-input bg-background px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Capa do curso</label>
+            {thumbnailUrl ? (
+              <div className="relative">
+                <img
+                  src={thumbnailUrl}
+                  alt="Capa do curso"
+                  className="h-32 w-full rounded-xl object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setThumbnailUrl(null)}
+                  className="absolute right-2 top-2 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex h-24 cursor-pointer items-center justify-center rounded-xl border border-dashed border-input text-sm text-muted-foreground hover:bg-muted/50">
+                {uploadingThumb ? "Enviando..." : "Clique para enviar uma imagem"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingThumb}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleThumbnailUpload(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
           </div>
           <div className="space-y-1">
             <label className="text-sm font-medium">Categoria</label>
