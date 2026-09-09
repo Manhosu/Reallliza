@@ -92,8 +92,21 @@ interface Course {
   id: string;
   title: string;
   description: string | null;
+  thumbnail_url: string | null;
+  category_id: string | null;
+  audience: "all" | "technician" | "partner" | "admin";
   price_cents: number | null;
+  level: "iniciante" | "intermediario" | "avancado" | null;
+  workload_hours: number | null;
+  required_completion_pct: number;
+  emit_certificate: boolean;
   modules: Module[];
+}
+
+interface CourseCategory {
+  id: string;
+  name: string;
+  is_active: boolean;
 }
 
 interface AccessGrant {
@@ -342,6 +355,91 @@ export default function CursoDetailPage({
   const { id } = use(params);
   const [course, setCourse] = useState<Course | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [categories, setCategories] = useState<CourseCategory[]>([]);
+
+  // Editar curso — Jessica (09/09): a capa so' existia no form de CRIAR
+  // curso; um curso já existente (ex: "Painéis Vinílicos", já em teste)
+  // não tinha como ganhar capa depois. Mesmos campos do form de criação.
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editThumbnailUrl, setEditThumbnailUrl] = useState<string | null>(null);
+  const [uploadingEditThumb, setUploadingEditThumb] = useState(false);
+  const [editCategoryId, setEditCategoryId] = useState("");
+  const [editAudience, setEditAudience] = useState<Course["audience"]>("technician");
+  const [editLevel, setEditLevel] = useState<"" | Course["level"]>("");
+  const [editWorkloadHours, setEditWorkloadHours] = useState("");
+  const [editPriceReais, setEditPriceReais] = useState("");
+  const [editRequiredPct, setEditRequiredPct] = useState("100");
+  const [editEmitCert, setEditEmitCert] = useState(true);
+  const [editSaving, setEditSaving] = useState(false);
+
+  function openEditModal() {
+    if (!course) return;
+    setEditTitle(course.title);
+    setEditDescription(course.description ?? "");
+    setEditThumbnailUrl(course.thumbnail_url);
+    setEditCategoryId(course.category_id ?? "");
+    setEditAudience(course.audience);
+    setEditLevel(course.level ?? "");
+    setEditWorkloadHours(course.workload_hours != null ? String(course.workload_hours) : "");
+    setEditPriceReais(course.price_cents ? String(course.price_cents / 100) : "");
+    setEditRequiredPct(String(course.required_completion_pct));
+    setEditEmitCert(course.emit_certificate);
+    setShowEditModal(true);
+  }
+
+  async function handleEditThumbnailUpload(file: File) {
+    setUploadingEditThumb(true);
+    try {
+      const token = await getAccessToken();
+      const formData = new FormData();
+      formData.append("file", file);
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(`${BASE_URL}/feed/upload`, {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "Erro ao enviar imagem");
+      setEditThumbnailUrl(data.url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao enviar imagem");
+    } finally {
+      setUploadingEditThumb(false);
+    }
+  }
+
+  async function handleSaveEdit() {
+    if (!editTitle.trim()) {
+      toast.error("Informe o título");
+      return;
+    }
+    setEditSaving(true);
+    try {
+      await apiClient.patch(`/courses/${id}`, {
+        title: editTitle,
+        description: editDescription || null,
+        thumbnail_url: editThumbnailUrl,
+        category_id: editCategoryId || null,
+        audience: editAudience,
+        level: editLevel || null,
+        workload_hours: editWorkloadHours ? Number(editWorkloadHours) : null,
+        price_cents: editPriceReais ? Math.round(Number(editPriceReais) * 100) : null,
+        required_completion_pct: Number(editRequiredPct) || 100,
+        emit_certificate: editEmitCert,
+      });
+      toast.success("Curso atualizado");
+      setShowEditModal(false);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar curso");
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   // Module modal
   const [showModuleModal, setShowModuleModal] = useState(false);
@@ -476,6 +574,13 @@ export default function CursoDetailPage({
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    apiClient
+      .get<CourseCategory[]>("/course-categories?include_inactive=true")
+      .then(setCategories)
+      .catch((err) => console.error(err));
+  }, []);
 
   async function handleAddModule() {
     if (!moduleTitle.trim()) {
@@ -620,12 +725,19 @@ export default function CursoDetailPage({
         >
           <ArrowLeft className="h-4 w-4" /> Cursos
         </Link>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight lg:text-3xl">
-          {course.title}
-        </h1>
-        {course.description && (
-          <p className="text-muted-foreground">{course.description}</p>
-        )}
+        <div className="mt-2 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
+              {course.title}
+            </h1>
+            {course.description && (
+              <p className="text-muted-foreground">{course.description}</p>
+            )}
+          </div>
+          <Button variant="outline" onClick={openEditModal} className="shrink-0">
+            Editar curso
+          </Button>
+        </div>
       </motion.div>
 
       {!!course.price_cents && <AccessPanel courseId={course.id} />}
@@ -986,6 +1098,152 @@ export default function CursoDetailPage({
           </Button>
           <Button onClick={handleAddLesson} isLoading={lessonSaving}>
             Criar aula
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Modal editar curso */}
+      <Dialog open={showEditModal} onClose={() => setShowEditModal(false)}>
+        <DialogHeader>
+          <DialogTitle>Editar curso</DialogTitle>
+        </DialogHeader>
+        <DialogContent className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Título *</label>
+            <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Descrição</label>
+            <textarea
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              rows={3}
+              className="flex w-full rounded-xl border border-input bg-background px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Capa do curso</label>
+            {editThumbnailUrl ? (
+              <div className="relative">
+                <img
+                  src={editThumbnailUrl}
+                  alt="Capa do curso"
+                  className="h-32 w-full rounded-xl object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setEditThumbnailUrl(null)}
+                  className="absolute right-2 top-2 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex h-24 cursor-pointer items-center justify-center rounded-xl border border-dashed border-input text-sm text-muted-foreground hover:bg-muted/50">
+                {uploadingEditThumb ? "Enviando..." : "Clique para enviar uma imagem"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingEditThumb}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleEditThumbnailUpload(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Categoria</label>
+            <SelectNative value={editCategoryId} onChange={(e) => setEditCategoryId(e.target.value)}>
+              <option value="">Sem categoria</option>
+              {categories
+                .filter((c) => c.is_active)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </SelectNative>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Público-alvo</label>
+              <SelectNative
+                value={editAudience}
+                onChange={(e) => setEditAudience(e.target.value as Course["audience"])}
+              >
+                <option value="all">Todos</option>
+                <option value="technician">Técnicos</option>
+                <option value="partner">Lojas</option>
+                <option value="admin">Admin</option>
+              </SelectNative>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">% pra concluir</label>
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                value={editRequiredPct}
+                onChange={(e) => setEditRequiredPct(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Nível</label>
+              <SelectNative
+                value={editLevel ?? ""}
+                onChange={(e) => setEditLevel(e.target.value as typeof editLevel)}
+              >
+                <option value="">Não informado</option>
+                <option value="iniciante">Iniciante</option>
+                <option value="intermediario">Intermediário</option>
+                <option value="avancado">Avançado</option>
+              </SelectNative>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Carga horária (h)</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.5"
+                value={editWorkloadHours}
+                onChange={(e) => setEditWorkloadHours(e.target.value)}
+                placeholder="Ex: 4"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Preço (R$)</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={editPriceReais}
+                onChange={(e) => setEditPriceReais(e.target.value)}
+                placeholder="0 = grátis"
+              />
+            </div>
+          </div>
+          <label className="flex items-center gap-2 rounded-lg border bg-card p-3 text-sm">
+            <input
+              type="checkbox"
+              checked={editEmitCert}
+              onChange={(e) => setEditEmitCert(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <span>Emitir certificado em PDF ao concluir</span>
+          </label>
+        </DialogContent>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowEditModal(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSaveEdit} isLoading={editSaving}>
+            Salvar alterações
           </Button>
         </DialogFooter>
       </Dialog>

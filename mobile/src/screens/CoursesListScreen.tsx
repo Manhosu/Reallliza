@@ -197,7 +197,11 @@ function CourseCard({ course, onPress }: { course: CourseSummary; onPress: () =>
   const isLocked = course.has_access === false;
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity
+      style={[styles.card, isLocked && styles.cardLocked]}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
       <View style={styles.thumbWrap}>
         {course.thumbnail_url ? (
           <Image source={{ uri: course.thumbnail_url }} style={styles.thumb} resizeMode="cover" />
@@ -312,6 +316,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
+  },
+  cardLocked: {
+    opacity: 0.55,
   },
   thumbWrap: {
     position: 'relative',
