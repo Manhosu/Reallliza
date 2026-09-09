@@ -42,38 +42,71 @@ export async function confirmarPagamentoAsaas(
       .eq("id", externalReference)
       .maybeSingle();
 
-    if (!campanha) {
-      return { ok: false, motivo: "Pagamento não encontrado" };
-    }
-    if (campanha.payment_status !== "pending") {
-      return { ok: true, jaConfirmado: true, feedCampaignId: campanha.id };
+    if (campanha) {
+      if (campanha.payment_status !== "pending") {
+        return { ok: true, jaConfirmado: true, feedCampaignId: campanha.id };
+      }
+
+      const agora = new Date().toISOString();
+      await supabase
+        .from("feed_campaigns")
+        .update({
+          payment_status: "paid",
+          paid_at: agora,
+          paid_amount_cents: campanha.total_price_cents,
+          // payment_confirmed_by fica NULL de propósito: distingue
+          // confirmação automática (aqui) de confirmação manual (o botão
+          // /pay grava quem clicou).
+        })
+        .eq("id", campanha.id);
+
+      logAudit({
+        userId: SYSTEM_USER_ID,
+        action: "feed_campaign.paid_webhook",
+        entityType: "feed_campaign",
+        entityId: campanha.id,
+        newData: { source: "asaas" },
+      });
+
+      // Pagamento confirmado já aprova e publica sozinho (Karol, 21/08).
+      await aprovarEPublicarCampanha(supabase, campanha.id, SYSTEM_USER_ID);
+
+      return { ok: true, jaConfirmado: false, feedCampaignId: campanha.id };
     }
 
-    const agora = new Date().toISOString();
+    // Nem orçamento, nem campanha — tenta compra de curso (Módulo de
+    // Cursos, fechado com o Ricardo). Mesmo motivo de não usar `payments`:
+    // compra de curso é por usuário, não tem FK pra quote nem cabe no
+    // enum `kind` fechado.
+    const { data: coursePurchase } = await supabase
+      .from("course_purchases")
+      .select("id, status")
+      .eq("id", externalReference)
+      .maybeSingle();
+
+    if (!coursePurchase) {
+      return { ok: false, motivo: "Pagamento não encontrado" };
+    }
+    if (coursePurchase.status !== "pending") {
+      return { ok: true, jaConfirmado: true };
+    }
+
     await supabase
-      .from("feed_campaigns")
-      .update({
-        payment_status: "paid",
-        paid_at: agora,
-        paid_amount_cents: campanha.total_price_cents,
-        // payment_confirmed_by fica NULL de propósito: distingue
-        // confirmação automática (aqui) de confirmação manual (o botão
-        // /pay grava quem clicou).
-      })
-      .eq("id", campanha.id);
+      .from("course_purchases")
+      .update({ status: "paid", paid_at: new Date().toISOString() })
+      .eq("id", coursePurchase.id);
 
     logAudit({
       userId: SYSTEM_USER_ID,
-      action: "feed_campaign.paid_webhook",
-      entityType: "feed_campaign",
-      entityId: campanha.id,
+      action: "course_purchase.paid_webhook",
+      entityType: "course_purchase",
+      entityId: coursePurchase.id,
       newData: { source: "asaas" },
     });
 
-    // Pagamento confirmado já aprova e publica sozinho (Karol, 21/08).
-    await aprovarEPublicarCampanha(supabase, campanha.id, SYSTEM_USER_ID);
-
-    return { ok: true, jaConfirmado: false, feedCampaignId: campanha.id };
+    // Sem "liberar acesso" separado: hasAccessToCourse já lê o status
+    // pago na hora que o usuário voltar pra tela do curso.
+    return { ok: true, jaConfirmado: false };
   }
 
   if (payment.status === "confirmed") {

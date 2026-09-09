@@ -18,7 +18,7 @@ export async function POST(
 
     if (!body.title) throw new AuthError(400, "title obrigatorio");
     const lessonType = body.lesson_type ?? "video";
-    if (!["video", "text", "quiz", "pdf"].includes(lessonType)) {
+    if (!["video", "text", "quiz", "pdf", "image", "attachment"].includes(lessonType)) {
       throw new AuthError(400, "lesson_type invalido");
     }
 
@@ -32,8 +32,19 @@ export async function POST(
         lesson_type: lessonType,
         video_url: body.video_url || null,
         pdf_url: body.pdf_url || null,
+        image_url: body.image_url || null,
+        attachment_url: body.attachment_url || null,
+        attachment_name: body.attachment_name ? String(body.attachment_name).slice(0, 200) : null,
         content_md: body.content_md ? String(body.content_md).slice(0, 50000) : null,
         quiz_questions: body.quiz_questions ?? null,
+        min_passing_score:
+          typeof body.min_passing_score === "number"
+            ? Math.max(0, Math.min(100, body.min_passing_score))
+            : null,
+        max_attempts:
+          typeof body.max_attempts === "number" && body.max_attempts > 0
+            ? Math.round(body.max_attempts)
+            : null,
         learning_content_id: body.learning_content_id || null,
         duration_sec: typeof body.duration_sec === "number" ? body.duration_sec : null,
         order_index: typeof body.order_index === "number" ? body.order_index : 0,

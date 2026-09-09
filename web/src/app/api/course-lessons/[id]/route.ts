@@ -20,9 +20,26 @@ export async function PATCH(
     if (body.lesson_type !== undefined) update.lesson_type = body.lesson_type;
     if (body.video_url !== undefined) update.video_url = body.video_url || null;
     if (body.pdf_url !== undefined) update.pdf_url = body.pdf_url || null;
+    if (body.image_url !== undefined) update.image_url = body.image_url || null;
+    if (body.attachment_url !== undefined) update.attachment_url = body.attachment_url || null;
+    if (body.attachment_name !== undefined) {
+      update.attachment_name = body.attachment_name ? String(body.attachment_name).slice(0, 200) : null;
+    }
     if (body.content_md !== undefined)
       update.content_md = body.content_md ? String(body.content_md).slice(0, 50000) : null;
     if (body.quiz_questions !== undefined) update.quiz_questions = body.quiz_questions;
+    if (body.min_passing_score !== undefined) {
+      update.min_passing_score =
+        typeof body.min_passing_score === "number"
+          ? Math.max(0, Math.min(100, body.min_passing_score))
+          : null;
+    }
+    if (body.max_attempts !== undefined) {
+      update.max_attempts =
+        typeof body.max_attempts === "number" && body.max_attempts > 0
+          ? Math.round(body.max_attempts)
+          : null;
+    }
     if (body.duration_sec !== undefined) update.duration_sec = body.duration_sec;
     if (body.order_index !== undefined) update.order_index = body.order_index;
     if (body.is_required !== undefined) update.is_required = !!body.is_required;

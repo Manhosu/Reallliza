@@ -9,6 +9,7 @@ import {
   Clock,
   Award,
   PlayCircle,
+  Lock,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,6 +24,8 @@ interface Course {
   thumbnail_url: string | null;
   emit_certificate: boolean;
   required_completion_pct: number;
+  price_cents: number | null;
+  has_access?: boolean;
   modules?: Array<{
     id: string;
     lessons?: Array<{ id: string }>;
@@ -62,7 +65,8 @@ export default function AprendizadoPage() {
   const completed = courses.filter(
     (c) => c.enrollment?.status === "completed"
   );
-  const available = courses.filter((c) => !c.enrollment);
+  const available = courses.filter((c) => !c.enrollment && c.has_access !== false);
+  const locked = courses.filter((c) => !c.enrollment && c.has_access === false);
 
   return (
     <div className="space-y-6">
@@ -108,6 +112,11 @@ export default function AprendizadoPage() {
               <CourseGrid courses={completed} />
             </Section>
           )}
+          {locked.length > 0 && (
+            <Section title="Disponíveis para compra" icon={Lock}>
+              <CourseGrid courses={locked} />
+            </Section>
+          )}
         </div>
       )}
     </div>
@@ -142,6 +151,7 @@ function CourseGrid({ courses }: { courses: Course[] }) {
           c.modules?.reduce((s, m) => s + (m.lessons?.length ?? 0), 0) ?? 0;
         const pct = c.enrollment?.progress_pct ?? 0;
         const isCompleted = c.enrollment?.status === "completed";
+        const isLocked = c.has_access === false;
         return (
           <motion.div
             key={c.id}
@@ -149,18 +159,22 @@ function CourseGrid({ courses }: { courses: Course[] }) {
             animate={{ opacity: 1, y: 0 }}
           >
             <Link href={`/aprendizado/${c.id}`} className="block">
-              <Card className="transition hover:-translate-y-0.5 hover:shadow-md">
+              <Card className={cn("transition hover:-translate-y-0.5 hover:shadow-md", isLocked && "opacity-75")}>
                 <CardContent className="space-y-3 p-4">
                   <div className="flex items-start gap-3">
                     <div
                       className={cn(
                         "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl",
-                        isCompleted
-                          ? "bg-green-500/10 text-green-600 dark:text-green-400"
-                          : "bg-primary/10 text-primary"
+                        isLocked
+                          ? "bg-muted text-muted-foreground"
+                          : isCompleted
+                            ? "bg-green-500/10 text-green-600 dark:text-green-400"
+                            : "bg-primary/10 text-primary"
                       )}
                     >
-                      {isCompleted ? (
+                      {isLocked ? (
+                        <Lock className="h-6 w-6" />
+                      ) : isCompleted ? (
                         <CheckCircle2 className="h-6 w-6" />
                       ) : (
                         <GraduationCap className="h-6 w-6" />
@@ -175,34 +189,42 @@ function CourseGrid({ courses }: { courses: Course[] }) {
                       )}
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>
-                        {lessonCount} aula{lessonCount === 1 ? "" : "s"}
-                      </span>
-                      <span className="font-medium">{pct}%</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className={cn(
-                          "h-full transition-all",
-                          isCompleted ? "bg-green-500" : "bg-primary"
-                        )}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                  {isCompleted && c.enrollment?.certificate_code && (
-                    <a
-                      href={`/api/course-enrollments/${c.enrollment.id}/certificate`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"
-                    >
-                      <Award className="h-3.5 w-3.5" />
-                      Baixar certificado
-                    </a>
+                  {isLocked ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                      R$ {((c.price_cents ?? 0) / 100).toFixed(2).replace(".", ",")}
+                    </span>
+                  ) : (
+                    <>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>
+                            {lessonCount} aula{lessonCount === 1 ? "" : "s"}
+                          </span>
+                          <span className="font-medium">{pct}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className={cn(
+                              "h-full transition-all",
+                              isCompleted ? "bg-green-500" : "bg-primary"
+                            )}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                      {isCompleted && c.enrollment?.certificate_code && (
+                        <a
+                          href={`/api/course-enrollments/${c.enrollment.id}/certificate`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-500/20 dark:text-amber-300"
+                        >
+                          <Award className="h-3.5 w-3.5" />
+                          Baixar certificado
+                        </a>
+                      )}
+                    </>
                   )}
                 </CardContent>
               </Card>

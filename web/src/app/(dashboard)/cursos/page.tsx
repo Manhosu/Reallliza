@@ -18,6 +18,7 @@ import {
   Tag,
   Check,
   X,
+  BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -53,6 +54,9 @@ interface Course {
   emit_certificate: boolean;
   required_completion_pct: number;
   order_index: number;
+  price_cents: number | null;
+  level: "iniciante" | "intermediario" | "avancado" | null;
+  workload_hours: number | null;
   modules?: Array<{
     id: string;
     title: string;
@@ -282,6 +286,9 @@ export default function CursosAdminPage() {
   const [audience, setAudience] = useState<Course["audience"]>("technician");
   const [emitCert, setEmitCert] = useState(true);
   const [requiredPct, setRequiredPct] = useState("100");
+  const [level, setLevel] = useState<"" | Course["level"]>("");
+  const [workloadHours, setWorkloadHours] = useState("");
+  const [priceReais, setPriceReais] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -323,6 +330,9 @@ export default function CursosAdminPage() {
     setAudience("technician");
     setEmitCert(true);
     setRequiredPct("100");
+    setLevel("");
+    setWorkloadHours("");
+    setPriceReais("");
     setThumbnailUrl(null);
     setError(null);
   }
@@ -373,6 +383,9 @@ export default function CursosAdminPage() {
         audience,
         emit_certificate: emitCert,
         required_completion_pct: Number(requiredPct) || 100,
+        level: level || null,
+        workload_hours: workloadHours ? Number(workloadHours) : null,
+        price_cents: priceReais ? Math.round(Number(priceReais) * 100) : null,
       });
       toast.success("Curso criado");
       setShowModal(false);
@@ -432,10 +445,19 @@ export default function CursosAdminPage() {
             PDFs e quizzes.
           </p>
         </div>
-        <Button onClick={() => setShowModal(true)}>
-          <Plus className="h-4 w-4" />
-          Novo curso
-        </Button>
+        <div className="flex gap-2">
+          <Link
+            href="/cursos/analytics"
+            className="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-xl border border-input bg-background px-4 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            <BarChart3 className="h-4 w-4" />
+            Analytics
+          </Link>
+          <Button onClick={() => setShowModal(true)}>
+            <Plus className="h-4 w-4" />
+            Novo curso
+          </Button>
+        </div>
       </motion.div>
 
       <CategoriesPanel categories={categories} onChanged={loadCategories} />
@@ -562,6 +584,15 @@ export default function CursosAdminPage() {
                           🎓 Certificado
                         </span>
                       )}
+                      {c.price_cents ? (
+                        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-700 dark:text-emerald-300">
+                          R$ {(c.price_cents / 100).toFixed(2).replace(".", ",")}
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                          Grátis
+                        </span>
+                      )}
                     </div>
                     <div className="border-t pt-2 text-xs text-muted-foreground">
                       <strong>{moduleCount}</strong> módulo
@@ -671,6 +702,42 @@ export default function CursosAdminPage() {
                 max="100"
                 value={requiredPct}
                 onChange={(e) => setRequiredPct(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Nível</label>
+              <SelectNative
+                value={level ?? ""}
+                onChange={(e) => setLevel(e.target.value as typeof level)}
+              >
+                <option value="">Não informado</option>
+                <option value="iniciante">Iniciante</option>
+                <option value="intermediario">Intermediário</option>
+                <option value="avancado">Avançado</option>
+              </SelectNative>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Carga horária (h)</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.5"
+                value={workloadHours}
+                onChange={(e) => setWorkloadHours(e.target.value)}
+                placeholder="Ex: 4"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Preço (R$)</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={priceReais}
+                onChange={(e) => setPriceReais(e.target.value)}
+                placeholder="0 = grátis"
               />
             </div>
           </div>

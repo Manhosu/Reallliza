@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  AppState,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, RouteProp } from '@react-navigation/native';
@@ -27,16 +29,33 @@ import type { CoursesStackParamList } from '../navigation/courses-stack';
  * nao e regressao manter esse padrao aqui tambem.
  */
 
+interface QuizOption {
+  id: string;
+  text: string;
+}
+
+interface QuizQuestion {
+  id: string;
+  text: string;
+  type: 'multiple_choice' | 'true_false';
+  options: QuizOption[];
+}
+
 interface Lesson {
   id: string;
   title: string;
   description: string | null;
-  lesson_type: 'video' | 'text' | 'quiz' | 'pdf';
+  lesson_type: 'video' | 'text' | 'quiz' | 'pdf' | 'image' | 'attachment';
   video_url: string | null;
   pdf_url: string | null;
+  image_url: string | null;
+  attachment_url: string | null;
+  attachment_name: string | null;
   content_md: string | null;
+  quiz_questions: QuizQuestion[] | null;
   duration_sec: number | null;
   order_index: number;
+  is_required: boolean;
 }
 
 interface Module {
@@ -62,6 +81,8 @@ interface Course {
   id: string;
   title: string;
   description: string | null;
+  price_cents: number | null;
+  has_access?: boolean;
   modules: Module[];
   enrollment: Enrollment | null;
   progress: ProgressItem[];
@@ -72,6 +93,8 @@ const TYPE_ICONS: Record<Lesson['lesson_type'], keyof typeof Ionicons.glyphMap> 
   text: 'document-text-outline',
   quiz: 'help-circle-outline',
   pdf: 'document-outline',
+  image: 'image-outline',
+  attachment: 'attach-outline',
 };
 
 type DetailRoute = RouteProp<CoursesStackParamList, 'CourseDetail'>;
@@ -85,6 +108,14 @@ export function CourseDetailScreen() {
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [completing, setCompleting] = useState(false);
   const [downloadingCert, setDownloadingCert] = useState(false);
+  const [buying, setBuying] = useState(false);
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
+  const [quizSubmitting, setQuizSubmitting] = useState(false);
+  const [quizResult, setQuizResult] = useState<{
+    score: number;
+    passed: boolean;
+    attempts_remaining: number | null;
+  } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -101,7 +132,9 @@ export function CourseDetailScreen() {
       };
 
       let finalCourse = sorted;
-      if (!data.enrollment) {
+      // Curso pago sem acesso: nao tenta auto-matricular, mostra a tela
+      // de compra (a rota tambem recusaria com 403).
+      if (!data.enrollment && data.has_access !== false) {
         try {
           await apiClient.post(`/courses/${courseId}/enroll`, {});
           const refreshed = await apiClient.get<Course>(`/courses/${courseId}`);
@@ -129,13 +162,92 @@ export function CourseDetailScreen() {
     load();
   }, [load]);
 
+  // Volta do checkout externo (Asaas abre no navegador do aparelho) --
+  // re-checa acesso ao voltar pro primeiro plano, mesma ideia do listener
+  // de AppState ja usado em sync-manager.ts pra reconectividade offline.
+  const appState = useRef(AppState.currentState);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (appState.current.match(/inactive|background/) && next === 'active') {
+        load();
+      }
+      appState.current = next;
+    });
+    return () => sub.remove();
+  }, [load]);
+
+  async function handlePurchase() {
+    setBuying(true);
+    try {
+      const result = await apiClient.post<{ checkout_url: string | null }>(
+        `/courses/${courseId}/purchase`,
+        {},
+      );
+      if (result.checkout_url) {
+        await Linking.openURL(result.checkout_url);
+      } else {
+        Alert.alert('Compra registrada', 'Aguarde a liberação do acesso.');
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro ao iniciar compra';
+      Alert.alert('Erro', msg);
+    } finally {
+      setBuying(false);
+    }
+  }
+
   function isCompleted(lessonId: string): boolean {
     return !!course?.progress?.find((p) => p.lesson_id === lessonId && p.completed_at);
   }
 
+  // Mesma regra do backend (quiz-attempt/route.ts): a prova só libera
+  // quando todo o RESTO do conteúdo obrigatório do curso já foi concluído.
+  function isQuizUnlocked(lesson: Lesson): boolean {
+    if (!course) return false;
+    const otherRequired = course.modules
+      .flatMap((m) => m.lessons)
+      .filter((l) => l.id !== lesson.id && l.is_required);
+    return otherRequired.every((l) => isCompleted(l.id));
+  }
+
+  function selectLesson(l: Lesson) {
+    setActiveLesson(l);
+    setQuizAnswers({});
+    setQuizResult(null);
+  }
+
+  async function handleQuizSubmit() {
+    if (!activeLesson) return;
+    setQuizSubmitting(true);
+    try {
+      const result = await apiClient.post<{
+        score: number;
+        passed: boolean;
+        attempts_remaining: number | null;
+        completed: boolean;
+      }>(`/course-lessons/${activeLesson.id}/quiz-attempt`, { answers: quizAnswers });
+      setQuizResult(result);
+      if (result.passed) {
+        if (result.completed) {
+          Alert.alert('Curso concluído!', `Aprovado com ${result.score}%. Certificado disponível.`);
+        } else {
+          Alert.alert('Aprovado!', `Nota: ${result.score}%.`);
+        }
+        await load();
+      } else {
+        Alert.alert('Reprovado', `Nota: ${result.score}%.`);
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro ao enviar respostas';
+      Alert.alert('Erro', msg);
+    } finally {
+      setQuizSubmitting(false);
+    }
+  }
+
   async function openLessonContent() {
     if (!activeLesson) return;
-    const url = activeLesson.video_url || activeLesson.pdf_url;
+    const url = activeLesson.video_url || activeLesson.pdf_url || activeLesson.attachment_url;
     if (!url) return;
     try {
       const supported = await Linking.canOpenURL(url);
@@ -222,6 +334,32 @@ export function CourseDetailScreen() {
         <Text style={styles.title}>{course.title}</Text>
         {course.description && <Text style={styles.description}>{course.description}</Text>}
 
+        {course.has_access === false ? (
+          <View style={styles.purchaseCard}>
+            <View style={styles.purchaseIconWrap}>
+              <Ionicons name="lock-closed" size={28} color={colors.textMuted} />
+            </View>
+            <Text style={styles.purchaseTitle}>Este curso é pago</Text>
+            <Text style={styles.purchaseText}>
+              Compre o acesso para liberar módulos, aulas e certificado.
+            </Text>
+            <Text style={styles.purchasePrice}>
+              R$ {((course.price_cents ?? 0) / 100).toFixed(2).replace('.', ',')}
+            </Text>
+            <TouchableOpacity
+              style={styles.completeButton}
+              onPress={handlePurchase}
+              disabled={buying}
+            >
+              {buying ? (
+                <ActivityIndicator size="small" color={colors.black} />
+              ) : (
+                <Text style={styles.completeButtonText}>Comprar acesso</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
         {course.enrollment && (
           <View style={styles.progressCard}>
             <View style={styles.progressRow}>
@@ -278,35 +416,125 @@ export function CourseDetailScreen() {
                 <Text style={styles.textContent}>{activeLesson.content_md}</Text>
               </View>
             )}
-            {activeLesson.lesson_type === 'quiz' && (
-              <View style={styles.textBox}>
-                <Text style={styles.lessonDescription}>Quiz será exibido aqui.</Text>
-              </View>
+            {activeLesson.lesson_type === 'image' && activeLesson.image_url && (
+              <Image
+                source={{ uri: activeLesson.image_url }}
+                style={styles.lessonImage}
+                resizeMode="contain"
+              />
             )}
-
-            <View style={styles.completeRow}>
-              {isCompleted(activeLesson.id) ? (
-                <View style={styles.completedPill}>
-                  <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                  <Text style={styles.completedPillText}>Aula concluída</Text>
+            {activeLesson.lesson_type === 'attachment' && activeLesson.attachment_url && (
+              <TouchableOpacity style={styles.openButton} onPress={openLessonContent}>
+                <Ionicons name="download-outline" size={20} color={colors.black} />
+                <Text style={styles.openButtonText}>
+                  {activeLesson.attachment_name || 'Baixar arquivo'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {activeLesson.lesson_type === 'quiz' &&
+              (!isQuizUnlocked(activeLesson) ? (
+                <View style={styles.quizLockBox}>
+                  <Ionicons name="lock-closed" size={22} color={colors.textMuted} />
+                  <Text style={styles.lessonDescription}>
+                    Conclua todo o restante do conteúdo do curso antes de fazer esta avaliação.
+                  </Text>
                 </View>
               ) : (
-                <TouchableOpacity
-                  style={styles.completeButton}
-                  onPress={handleComplete}
-                  disabled={completing}
-                >
-                  {completing ? (
-                    <ActivityIndicator size="small" color={colors.black} />
-                  ) : (
-                    <>
-                      <Ionicons name="checkmark-circle-outline" size={18} color={colors.black} />
-                      <Text style={styles.completeButtonText}>Marcar como concluída</Text>
-                    </>
+                <View style={{ gap: 12 }}>
+                  {(activeLesson.quiz_questions ?? []).map((q, qIdx) => (
+                    <View key={q.id} style={styles.quizQuestionBox}>
+                      <Text style={styles.quizQuestionText}>
+                        {qIdx + 1}. {q.text}
+                      </Text>
+                      {q.options.map((o) => (
+                        <TouchableOpacity
+                          key={o.id}
+                          style={styles.quizOptionRow}
+                          disabled={!!quizResult}
+                          onPress={() => setQuizAnswers((a) => ({ ...a, [q.id]: o.id }))}
+                        >
+                          <Ionicons
+                            name={quizAnswers[q.id] === o.id ? 'radio-button-on' : 'radio-button-off'}
+                            size={18}
+                            color={quizAnswers[q.id] === o.id ? colors.primary : colors.textMuted}
+                          />
+                          <Text style={styles.quizOptionText}>{o.text}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ))}
+
+                  {quizResult && (
+                    <View
+                      style={[
+                        styles.quizResultBox,
+                        { backgroundColor: (quizResult.passed ? colors.success : colors.danger) + '15' },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.quizResultText,
+                          { color: quizResult.passed ? colors.success : colors.danger },
+                        ]}
+                      >
+                        {quizResult.passed
+                          ? `Aprovado com ${quizResult.score}%!`
+                          : `Reprovado com ${quizResult.score}%.` +
+                            (quizResult.attempts_remaining === 0
+                              ? ' Sem mais tentativas.'
+                              : quizResult.attempts_remaining != null
+                                ? ` Tentativas restantes: ${quizResult.attempts_remaining}.`
+                                : '')}
+                      </Text>
+                    </View>
                   )}
-                </TouchableOpacity>
-              )}
-            </View>
+
+                  {!quizResult?.passed && (
+                    <TouchableOpacity
+                      style={styles.completeButton}
+                      onPress={handleQuizSubmit}
+                      disabled={
+                        quizSubmitting ||
+                        (activeLesson.quiz_questions?.length ?? 0) === 0 ||
+                        (activeLesson.quiz_questions ?? []).some((q) => !quizAnswers[q.id]) ||
+                        quizResult?.attempts_remaining === 0
+                      }
+                    >
+                      {quizSubmitting ? (
+                        <ActivityIndicator size="small" color={colors.black} />
+                      ) : (
+                        <Text style={styles.completeButtonText}>Enviar respostas</Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+
+            {activeLesson.lesson_type !== 'quiz' && (
+              <View style={styles.completeRow}>
+                {isCompleted(activeLesson.id) ? (
+                  <View style={styles.completedPill}>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                    <Text style={styles.completedPillText}>Aula concluída</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.completeButton}
+                    onPress={handleComplete}
+                    disabled={completing}
+                  >
+                    {completing ? (
+                      <ActivityIndicator size="small" color={colors.black} />
+                    ) : (
+                      <>
+                        <Ionicons name="checkmark-circle-outline" size={18} color={colors.black} />
+                        <Text style={styles.completeButtonText}>Marcar como concluída</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
         )}
 
@@ -320,14 +548,19 @@ export function CourseDetailScreen() {
               {m.lessons.map((l) => {
                 const done = isCompleted(l.id);
                 const isActive = activeLesson?.id === l.id;
+                const locked = l.lesson_type === 'quiz' && !done && !isQuizUnlocked(l);
                 return (
                   <TouchableOpacity
                     key={l.id}
-                    style={[styles.lessonRow, isActive && styles.lessonRowActive]}
-                    onPress={() => setActiveLesson(l)}
+                    style={[
+                      styles.lessonRow,
+                      isActive && styles.lessonRowActive,
+                      locked && styles.lessonRowLocked,
+                    ]}
+                    onPress={() => selectLesson(l)}
                   >
                     <Ionicons
-                      name={done ? 'checkmark-circle' : 'ellipse-outline'}
+                      name={locked ? 'lock-closed' : done ? 'checkmark-circle' : 'ellipse-outline'}
                       size={18}
                       color={done ? colors.success : colors.textMuted}
                     />
@@ -344,6 +577,8 @@ export function CourseDetailScreen() {
               })}
             </View>
           ))
+        )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -367,6 +602,38 @@ const styles = StyleSheet.create({
   description: {
     ...typography.bodySm,
     color: colors.textMuted,
+  },
+  purchaseCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+  },
+  purchaseIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  purchaseTitle: {
+    ...typography.h4,
+    color: colors.text,
+  },
+  purchaseText: {
+    ...typography.bodySm,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  purchasePrice: {
+    ...typography.h3,
+    color: colors.text,
+    marginVertical: 4,
   },
   progressCard: {
     backgroundColor: colors.card,
@@ -509,9 +776,53 @@ const styles = StyleSheet.create({
   lessonRowActive: {
     backgroundColor: colors.primary + '15',
   },
+  lessonRowLocked: {
+    opacity: 0.55,
+  },
   lessonRowText: {
     ...typography.bodySm,
     color: colors.text,
     flex: 1,
+  },
+  lessonImage: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: 10,
+    backgroundColor: colors.background,
+  },
+  quizLockBox: {
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.background,
+    borderRadius: 10,
+    padding: 20,
+  },
+  quizQuestionBox: {
+    backgroundColor: colors.background,
+    borderRadius: 10,
+    padding: 12,
+    gap: 8,
+  },
+  quizQuestionText: {
+    ...typography.bodySmBold,
+    color: colors.text,
+  },
+  quizOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  quizOptionText: {
+    ...typography.bodySm,
+    color: colors.text,
+    flex: 1,
+  },
+  quizResultBox: {
+    borderRadius: 10,
+    padding: 12,
+  },
+  quizResultText: {
+    ...typography.bodySmBold,
   },
 });

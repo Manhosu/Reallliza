@@ -13,6 +13,10 @@ import {
   FileType,
   Award,
   PlayCircle,
+  Lock,
+  Image as ImageIcon,
+  Paperclip,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,14 +25,30 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
+interface QuizOption {
+  id: string;
+  text: string;
+}
+
+interface QuizQuestion {
+  id: string;
+  text: string;
+  type: "multiple_choice" | "true_false";
+  options: QuizOption[];
+}
+
 interface Lesson {
   id: string;
   title: string;
   description: string | null;
-  lesson_type: "video" | "text" | "quiz" | "pdf";
+  lesson_type: "video" | "text" | "quiz" | "pdf" | "image" | "attachment";
   video_url: string | null;
   pdf_url: string | null;
+  image_url: string | null;
+  attachment_url: string | null;
+  attachment_name: string | null;
   content_md: string | null;
+  quiz_questions: QuizQuestion[] | null;
   duration_sec: number | null;
   order_index: number;
   is_required: boolean;
@@ -52,6 +72,8 @@ interface Course {
   title: string;
   description: string | null;
   required_completion_pct: number;
+  price_cents: number | null;
+  has_access?: boolean;
   modules: Module[];
   enrollment: {
     id: string;
@@ -67,6 +89,8 @@ const TYPE_ICONS: Record<Lesson["lesson_type"], React.ComponentType<{ className?
   text: FileText,
   quiz: HelpCircle,
   pdf: FileType,
+  image: ImageIcon,
+  attachment: Paperclip,
 };
 
 export default function AprendizadoDetailPage({
@@ -79,6 +103,14 @@ export default function AprendizadoDetailPage({
   const [isLoading, setIsLoading] = useState(true);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [completing, setCompleting] = useState(false);
+  const [buying, setBuying] = useState(false);
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
+  const [quizSubmitting, setQuizSubmitting] = useState(false);
+  const [quizResult, setQuizResult] = useState<{
+    score: number;
+    passed: boolean;
+    attempts_remaining: number | null;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -96,8 +128,10 @@ export default function AprendizadoDetailPage({
           })),
       };
       setCourse(sortedCourse);
-      // Auto-enroll
-      if (!data.enrollment) {
+      // Auto-enroll — só se já tiver acesso (curso grátis, comprado ou
+      // liberado). Curso pago sem acesso mostra a tela de compra em vez
+      // de tentar matricular (a rota agora recusa com 403 mesmo).
+      if (!data.enrollment && data.has_access !== false) {
         try {
           await apiClient.post(`/courses/${id}/enroll`);
           // Recarrega
@@ -129,10 +163,82 @@ export default function AprendizadoDetailPage({
     load();
   }, [load]);
 
+  // Volta do checkout externo (Asaas abre em outra aba) — re-checa acesso
+  // ao focar a janela de novo, mesma ideia do listener de AppState que já
+  // existe no app mobile pra este mesmo problema.
+  useEffect(() => {
+    function onFocus() {
+      load();
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [load]);
+
+  async function handlePurchase() {
+    setBuying(true);
+    try {
+      const result = await apiClient.post<{ checkout_url: string | null; manual: boolean }>(
+        `/courses/${id}/purchase`
+      );
+      if (result.checkout_url) {
+        window.location.href = result.checkout_url;
+      } else {
+        toast.success("Compra registrada. Aguarde a liberação do acesso.");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao iniciar compra");
+    } finally {
+      setBuying(false);
+    }
+  }
+
   function isCompleted(lessonId: string): boolean {
     return !!course?.progress?.find(
       (p) => p.lesson_id === lessonId && p.completed_at
     );
+  }
+
+  // Mesma regra do backend (quiz-attempt/route.ts): a prova só libera
+  // quando todo o RESTO do conteúdo obrigatório do curso já foi concluído.
+  function isQuizUnlocked(lesson: Lesson): boolean {
+    if (!course) return false;
+    const otherRequired = course.modules
+      .flatMap((m) => m.lessons)
+      .filter((l) => l.id !== lesson.id && l.is_required);
+    return otherRequired.every((l) => isCompleted(l.id));
+  }
+
+  function selectLesson(l: Lesson) {
+    setActiveLesson(l);
+    setQuizAnswers({});
+    setQuizResult(null);
+  }
+
+  async function handleQuizSubmit() {
+    if (!activeLesson) return;
+    setQuizSubmitting(true);
+    try {
+      const result = await apiClient.post<{
+        score: number;
+        passed: boolean;
+        attempts_remaining: number | null;
+        completed: boolean;
+      }>(`/course-lessons/${activeLesson.id}/quiz-attempt`, { answers: quizAnswers });
+      setQuizResult(result);
+      if (result.passed) {
+        toast.success(`Aprovado com ${result.score}%!`);
+        if (result.completed) {
+          toast.success("🎉 Curso concluído! Certificado disponível.", { duration: 6000 });
+        }
+        load();
+      } else {
+        toast.error(`Reprovado com ${result.score}%.`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao enviar respostas");
+    } finally {
+      setQuizSubmitting(false);
+    }
   }
 
   async function handleComplete() {
@@ -193,6 +299,28 @@ export default function AprendizadoDetailPage({
         )}
       </motion.div>
 
+      {course.has_access === false ? (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-3 p-10 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <Lock className="h-7 w-7" />
+            </div>
+            <div>
+              <h2 className="font-semibold">Este curso é pago</h2>
+              <p className="text-sm text-muted-foreground">
+                Compre o acesso para liberar módulos, aulas e certificado.
+              </p>
+            </div>
+            <span className="text-2xl font-bold">
+              R$ {((course.price_cents ?? 0) / 100).toFixed(2).replace(".", ",")}
+            </span>
+            <Button onClick={handlePurchase} isLoading={buying}>
+              Comprar acesso
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
       {course.enrollment && (
         <Card>
           <CardContent className="space-y-2 p-4">
@@ -263,25 +391,112 @@ export default function AprendizadoDetailPage({
                     </pre>
                   </div>
                 )}
-                {activeLesson.lesson_type === "quiz" && (
-                  <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
-                    Quiz será exibido aqui.
+                {activeLesson.lesson_type === "image" && activeLesson.image_url && (
+                  <img
+                    src={activeLesson.image_url}
+                    alt={activeLesson.title}
+                    className="w-full rounded-lg"
+                  />
+                )}
+                {activeLesson.lesson_type === "attachment" && activeLesson.attachment_url && (
+                  <a
+                    href={activeLesson.attachment_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:opacity-90"
+                  >
+                    <Download className="h-4 w-4" />
+                    {activeLesson.attachment_name || "Baixar arquivo"}
+                  </a>
+                )}
+                {activeLesson.lesson_type === "quiz" &&
+                  (!isQuizUnlocked(activeLesson) ? (
+                    <div className="flex flex-col items-center gap-2 rounded-lg border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+                      <Lock className="h-6 w-6" />
+                      Conclua todo o restante do conteúdo do curso antes de fazer esta avaliação.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {(activeLesson.quiz_questions ?? []).map((q, qIdx) => (
+                        <div key={q.id} className="space-y-2 rounded-lg border p-3">
+                          <p className="text-sm font-medium">
+                            {qIdx + 1}. {q.text}
+                          </p>
+                          <div className="space-y-1.5 pl-2">
+                            {q.options.map((o) => (
+                              <label
+                                key={o.id}
+                                className="flex cursor-pointer items-center gap-2 text-sm"
+                              >
+                                <input
+                                  type="radio"
+                                  name={q.id}
+                                  checked={quizAnswers[q.id] === o.id}
+                                  onChange={() =>
+                                    setQuizAnswers((a) => ({ ...a, [q.id]: o.id }))
+                                  }
+                                  disabled={!!quizResult}
+                                />
+                                {o.text}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+
+                      {quizResult && (
+                        <div
+                          className={cn(
+                            "rounded-lg p-3 text-sm font-medium",
+                            quizResult.passed
+                              ? "bg-green-500/10 text-green-700 dark:text-green-300"
+                              : "bg-destructive/10 text-destructive"
+                          )}
+                        >
+                          {quizResult.passed
+                            ? `Aprovado com ${quizResult.score}%!`
+                            : `Reprovado com ${quizResult.score}%.` +
+                              (quizResult.attempts_remaining === 0
+                                ? " Sem mais tentativas."
+                                : quizResult.attempts_remaining != null
+                                  ? ` Tentativas restantes: ${quizResult.attempts_remaining}.`
+                                  : "")}
+                        </div>
+                      )}
+
+                      {!quizResult?.passed && (
+                        <div className="flex justify-end">
+                          <Button
+                            onClick={handleQuizSubmit}
+                            isLoading={quizSubmitting}
+                            disabled={
+                              (activeLesson.quiz_questions?.length ?? 0) === 0 ||
+                              (activeLesson.quiz_questions ?? []).some((q) => !quizAnswers[q.id]) ||
+                              quizResult?.attempts_remaining === 0
+                            }
+                          >
+                            Enviar respostas
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                {activeLesson.lesson_type !== "quiz" && (
+                  <div className="flex items-center justify-end pt-2">
+                    {isCompleted(activeLesson.id) ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-3 py-1.5 text-sm font-medium text-green-700 dark:text-green-300">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Aula concluída
+                      </span>
+                    ) : (
+                      <Button onClick={handleComplete} isLoading={completing}>
+                        <CheckCircle2 className="h-4 w-4" />
+                        Marcar como concluída
+                      </Button>
+                    )}
                   </div>
                 )}
-
-                <div className="flex items-center justify-end pt-2">
-                  {isCompleted(activeLesson.id) ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-3 py-1.5 text-sm font-medium text-green-700 dark:text-green-300">
-                      <CheckCircle2 className="h-4 w-4" />
-                      Aula concluída
-                    </span>
-                  ) : (
-                    <Button onClick={handleComplete} isLoading={completing}>
-                      <CheckCircle2 className="h-4 w-4" />
-                      Marcar como concluída
-                    </Button>
-                  )}
-                </div>
               </>
             ) : (
               <p className="py-8 text-center text-muted-foreground">
@@ -309,19 +524,23 @@ export default function AprendizadoDetailPage({
                         const Icon = TYPE_ICONS[l.lesson_type];
                         const done = isCompleted(l.id);
                         const isActive = activeLesson?.id === l.id;
+                        const locked = l.lesson_type === "quiz" && !done && !isQuizUnlocked(l);
                         return (
                           <button
                             type="button"
                             key={l.id}
-                            onClick={() => setActiveLesson(l)}
+                            onClick={() => selectLesson(l)}
                             className={cn(
                               "flex w-full items-center gap-2 rounded-lg p-2 text-left text-xs transition",
                               isActive
                                 ? "bg-primary/10 text-foreground"
-                                : "hover:bg-muted"
+                                : "hover:bg-muted",
+                              locked && "opacity-55"
                             )}
                           >
-                            {done ? (
+                            {locked ? (
+                              <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            ) : done ? (
                               <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
                             ) : (
                               <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -346,6 +565,8 @@ export default function AprendizadoDetailPage({
           </CardContent>
         </Card>
       </div>
+        </>
+      )}
     </div>
   );
 }

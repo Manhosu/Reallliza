@@ -2,9 +2,18 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import PDFDocument from "pdfkit";
+import QRCode from "qrcode";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, AuthError } from "@/lib/api-helpers/auth";
 import { errorResponse } from "@/lib/api-helpers/response";
+
+function getBaseUrl(request: NextRequest): string {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (envUrl) return envUrl.replace(/\/$/, "");
+  const host = request.headers.get("host") ?? "reallliza-web.vercel.app";
+  const proto = host.startsWith("localhost") ? "http" : "https";
+  return `${proto}://${host}`;
+}
 
 /**
  * GET /api/course-enrollments/[id]/certificate
@@ -25,7 +34,7 @@ export async function GET(
     const { data: enr } = await supabase
       .from("course_enrollments")
       .select(
-        "*, course:courses(title, description), user:profiles(full_name, email)"
+        "*, course:courses(title, description, workload_hours), user:profiles(full_name, email)"
       )
       .eq("id", id)
       .single();
@@ -39,7 +48,7 @@ export async function GET(
       certificate_issued_at: string | null;
       progress_pct: number;
       completed_at: string | null;
-      course: { title: string; description: string | null } | null;
+      course: { title: string; description: string | null; workload_hours: number | null } | null;
       user: { full_name: string; email: string } | null;
     };
 
@@ -91,9 +100,17 @@ export async function GET(
     doc.fontSize(22).font("Helvetica-Bold").fillColor("#1F2937")
       .text(e.course?.title ?? "—", 0, 320, { align: "center", width: w });
 
+    if (e.course?.workload_hours) {
+      doc.fontSize(11).font("Helvetica-Bold").fillColor("#A16207")
+        .text(`Carga horária: ${e.course.workload_hours}h`, 0, 352, {
+          align: "center",
+          width: w,
+        });
+    }
+
     if (e.course?.description) {
       doc.fontSize(11).font("Helvetica-Oblique").fillColor("#666666")
-        .text(e.course.description.slice(0, 200), 80, 360, {
+        .text(e.course.description.slice(0, 200), 80, 372, {
           align: "center",
           width: w - 160,
         });
@@ -124,6 +141,22 @@ export async function GET(
         h - 70,
         { align: "center", width: w }
       );
+
+    // QR de validação — mesmo padrão de execution-report/route.ts, aponta
+    // pra página pública que confirma o certificado direto no banco.
+    if (e.certificate_code) {
+      try {
+        const verificationUrl = `${getBaseUrl(request)}/certificado/${e.certificate_code}`;
+        const qrPngBuffer = await QRCode.toBuffer(verificationUrl, {
+          margin: 0,
+          width: 200,
+          color: { dark: "#000000", light: "#FFFFFF" },
+        });
+        doc.image(qrPngBuffer, w - 130, h - 130, { width: 70, height: 70 });
+      } catch {
+        /* segue sem QR se falhar */
+      }
+    }
 
     doc.end();
     const pdfBuffer = await done;

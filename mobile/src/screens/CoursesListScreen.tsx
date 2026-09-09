@@ -32,12 +32,18 @@ interface CourseSummary {
   thumbnail_url: string | null;
   category: { id: string; name: string; icon: string | null } | null;
   required_completion_pct: number;
+  price_cents: number | null;
+  has_access?: boolean;
   modules?: Array<{ lessons?: Array<{ id: string }> }>;
   enrollment: {
     id: string;
     status: 'in_progress' | 'completed' | 'cancelled';
     progress_pct: number;
   } | null;
+}
+
+function formatPrice(cents: number): string {
+  return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
 }
 
 type NavigationProp = NativeStackNavigationProp<CoursesStackParamList>;
@@ -188,6 +194,7 @@ function CourseCard({ course, onPress }: { course: CourseSummary; onPress: () =>
     course.modules?.reduce((s, m) => s + (m.lessons?.length ?? 0), 0) ?? 0;
   const isCompleted = course.enrollment?.status === 'completed';
   const progress = course.enrollment?.progress_pct ?? 0;
+  const isLocked = course.has_access === false;
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
@@ -199,11 +206,18 @@ function CourseCard({ course, onPress }: { course: CourseSummary; onPress: () =>
             <Ionicons name="school" size={40} color={colors.primary} />
           </View>
         )}
-        {isCompleted && (
-          <View style={styles.completedBadge}>
-            <Ionicons name="checkmark-circle" size={14} color={colors.black} />
-            <Text style={styles.completedBadgeText}>Concluído</Text>
+        {isLocked ? (
+          <View style={styles.priceBadge}>
+            <Ionicons name="lock-closed" size={12} color={colors.text} />
+            <Text style={styles.priceBadgeText}>{formatPrice(course.price_cents ?? 0)}</Text>
           </View>
+        ) : (
+          isCompleted && (
+            <View style={styles.completedBadge}>
+              <Ionicons name="checkmark-circle" size={14} color={colors.black} />
+              <Text style={styles.completedBadgeText}>Concluído</Text>
+            </View>
+          )
         )}
       </View>
       <View style={styles.cardBody}>
@@ -327,6 +341,25 @@ const styles = StyleSheet.create({
   },
   completedBadgeText: {
     color: colors.black,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  priceBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.card,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  priceBadgeText: {
+    color: colors.text,
     fontSize: 11,
     fontWeight: '700',
   },

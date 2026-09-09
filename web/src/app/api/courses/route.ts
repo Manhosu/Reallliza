@@ -3,6 +3,7 @@ import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { hasAccessToCourse } from "@/lib/courses/access";
 
 /**
  * GET /api/courses
@@ -41,9 +42,10 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
     if (error) throw new Error("Falha ao listar cursos");
 
-    // Enrich com enrollment do user
+    // Enrich com enrollment + acesso do user
     if (data && data.length > 0 && user.role !== "admin") {
-      const ids = (data as Array<{ id: string }>).map((c) => c.id);
+      const courses = data as Array<{ id: string; price_cents?: number | null }>;
+      const ids = courses.map((c) => c.id);
       const { data: enrolls } = await supabase
         .from("course_enrollments")
         .select("*")
@@ -53,12 +55,14 @@ export async function GET(request: NextRequest) {
       const map = new Map(
         ((enrolls as Array<{ course_id: string }> | null) ?? []).map((e) => [e.course_id, e])
       );
-      return jsonResponse(
-        (data as Array<{ id: string }>).map((c) => ({
+      const withAccess = await Promise.all(
+        courses.map(async (c) => ({
           ...c,
           enrollment: map.get(c.id) ?? null,
+          has_access: await hasAccessToCourse(supabase, user.id, c),
         }))
       );
+      return jsonResponse(withAccess);
     }
 
     return jsonResponse(data ?? []);
@@ -89,6 +93,12 @@ export async function POST(request: NextRequest) {
         thumbnail_url: body.thumbnail_url || null,
         category_id: body.category_id || null,
         audience: body.audience ?? "technician",
+        price_cents:
+          typeof body.price_cents === "number" && body.price_cents > 0
+            ? Math.round(body.price_cents)
+            : null,
+        level: body.level || null,
+        workload_hours: typeof body.workload_hours === "number" ? body.workload_hours : null,
         order_index: typeof body.order_index === "number" ? body.order_index : 0,
         is_published: body.is_published !== false,
         emit_certificate: body.emit_certificate !== false,

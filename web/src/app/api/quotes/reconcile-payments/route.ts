@@ -46,7 +46,7 @@ async function handle(request: NextRequest) {
     const supabase = getAdminClient();
     const desde = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [{ data: pagamentosPendentes }, { data: campanhasPendentes }] =
+    const [{ data: pagamentosPendentes }, { data: campanhasPendentes }, { data: comprasPendentes }] =
       await Promise.all([
         supabase
           .from("payments")
@@ -60,6 +60,12 @@ async function handle(request: NextRequest) {
           .eq("payment_status", "pending")
           .not("pix_asaas_id", "is", null)
           .gte("created_at", desde),
+        supabase
+          .from("course_purchases")
+          .select("id, asaas_id")
+          .eq("status", "pending")
+          .not("asaas_id", "is", null)
+          .gte("created_at", desde),
       ]);
 
     const candidatos = [
@@ -72,6 +78,11 @@ async function handle(request: NextRequest) {
         externalReference: c.id as string,
         asaasId: c.pix_asaas_id as string,
         tipo: "feed_campaign" as const,
+      })),
+      ...(comprasPendentes ?? []).map((c) => ({
+        externalReference: c.id as string,
+        asaasId: c.asaas_id as string,
+        tipo: "course_purchase" as const,
       })),
     ];
 
