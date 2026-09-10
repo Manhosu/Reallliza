@@ -2,7 +2,7 @@
   "expo": {
     "name": "Reallliza Revestimentos",
     "slug": "reallliza-mobile",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -27,7 +27,7 @@
     },
     "android": {
       "package": "com.reallliza.app",
-      "versionCode": 4,
+      "versionCode": 5,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FCFCFC"
