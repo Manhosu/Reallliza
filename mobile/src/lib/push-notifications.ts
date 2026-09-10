@@ -70,14 +70,23 @@ export async function registerForPushNotifications(): Promise<string | null> {
       // pro som: nenhuma atualização de app resolve, só desinstalar e
       // reinstalar. Renomeado o id pra forçar um canal novo, criado do zero
       // já com o som certo, em qualquer aparelho (novo ou antigo).
-      await Notifications.setNotificationChannelAsync('realliza-urgent-v2', {
+      //
+      // Jessica 10/09: ainda sem som mesmo com o id v2. A doc do
+      // expo-notifications e' explicita — `sound` precisa do nome de
+      // arquivo COMPLETO com extensao ("mySoundFile.wav"), nunca so' o
+      // nome base. O v2 passava `sound: 'realliza'` (sem ".mp3"), que o
+      // Android nao consegue resolver pro arquivo bundled — cai no toque
+      // padrao silenciosamente. Corrigido pra 'realliza.mp3' e, pelo mesmo
+      // motivo do v2 (canal imutavel por id), o id precisa mudar de novo
+      // pra forcar recriacao em quem ja tem o v2 quebrado instalado.
+      await Notifications.setNotificationChannelAsync('realliza-urgent-v3', {
         name: 'Reallliza — Eventos Urgentes',
         description:
           'Alertas com som identitario para propostas, OS atribuidas, mensagens e mudancas criticas.',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 500, 200, 500, 200, 500],
         lightColor: '#EAB308',
-        sound: 'realliza',
+        sound: 'realliza.mp3',
         bypassDnd: false,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });

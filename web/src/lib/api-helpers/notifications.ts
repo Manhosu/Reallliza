@@ -25,19 +25,24 @@ interface CreateNotificationOptions {
  * Cria uma notificação para o usuário (Execução).
  *
  * Persiste em `notifications` e dispara push Expo (fire-and-forget).
- * O som customizado "realliza.mp3" e channel `realliza-urgent-v2` são
+ * O som customizado "realliza.mp3" e channel `realliza-urgent-v3` são
  * usados em prioridades `high` ou `urgent` — coloca a notificação em
  * destaque na gaveta do Android e toca o áudio identitário no
  * foreground/background.
  *
- * Jessica 27/08: o id era `realliza-urgent` (sem "-v2") até este commit —
+ * Jessica 27/08: o id era `realliza-urgent` (sem "-v2") até aquele commit —
  * renomeado porque canais do Android são imutáveis por id depois de
  * criados no aparelho, e este canal nasceu (20/05) com um som placeholder
  * quase mudo, corrigido só do lado do arquivo (30/07) sem nunca trocar o
- * id. Qualquer aparelho com o app instalado desde antes disso ficou preso
- * no som antigo pra sempre, mesmo com apps novos instalados por cima —
- * só reinstalar do zero resolvia. Um id novo força o Android a criar o
- * canal do zero, já com o som certo, em qualquer aparelho.
+ * id.
+ *
+ * Jessica 10/09: som ainda não tocava com o v2. Causa raiz diferente dessa
+ * vez — `sound: 'realliza'` faltava a extensão. A doc do expo-notifications
+ * exige o nome de arquivo completo ("mySoundFile.wav"), o Android não
+ * resolve "realliza" pro asset "realliza.mp3" e cai pro toque padrão sem
+ * avisar erro nenhum. Corrigido pra "realliza.mp3" — e o id precisa mudar
+ * de novo (v2 -> v3) pelo mesmo motivo de sempre: canal já criado num
+ * aparelho não se autocorrige, só um id novo força recriação.
  */
 export async function createNotification(
   userId: string,
@@ -102,8 +107,12 @@ async function sendPushNotification(
   if (error || !devices || devices.length === 0) return;
 
   const isLoud = priority === "high" || priority === "urgent";
-  const sound: string | "default" = isLoud ? "realliza" : "default";
-  const channelId = isLoud ? "realliza-urgent-v2" : "default";
+  // "realliza.mp3" com extensao — a doc do expo-notifications exige o nome
+  // de arquivo completo (ver push-notifications.ts, 10/09). channelId
+  // trocado pra v3 pelo mesmo motivo do v2: canal do Android e' imutavel
+  // por id, um aparelho que ja criou o v2 quebrado nunca reconfigura sozinho.
+  const sound: string | "default" = isLoud ? "realliza.mp3" : "default";
+  const channelId = isLoud ? "realliza-urgent-v3" : "default";
   const expoPriority = priority === "urgent" ? "high" : isLoud ? "high" : "default";
 
   const payload = devices.map((device) => ({
