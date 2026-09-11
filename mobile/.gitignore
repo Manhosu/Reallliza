@@ -18,6 +18,10 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 credentials.json
+# Chave de conta de servico do FCM V1 -- nunca commitar (google-services.json
+# em si e' seguro e fica versionado normalmente).
+*firebase-adminsdk*.json
+*service-account*.json
 
 # Metro
 .metro-health-check*
