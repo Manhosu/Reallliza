@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "932111044270",
+    "project_id": "reallliza",
+    "storage_bucket": "reallliza.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:932111044270:android:4c421740f456e69afba73f",
+        "android_client_info": {
+          "package_name": "com.reallliza.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCfiLeoyFKJ-J1HR6W18SdA_mB6crKOxzU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
