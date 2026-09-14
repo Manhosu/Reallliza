@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { syncManager } from './src/lib/sync-manager';
@@ -35,6 +36,24 @@ export default function App() {
   useEffect(() => {
     if (!userId) return;
     registerForPushNotifications();
+  }, [userId]);
+
+  // Jessica (14/09): negou a permissao de notificacao sem querer (ou ela
+  // nunca apareceu numa instalacao antiga), ativou depois manualmente nas
+  // configuracoes do Android, reabriu o app e mesmo assim nao registrou --
+  // porque o efeito acima so' roda quando o ID do usuario MUDA, e ela
+  // continuava logada com o mesmo ID. Sem isto, quem concede a permissao
+  // depois de logado fica sem notificacao pra sempre, precisando deslogar
+  // e logar de novo pra registrar. Tenta de novo toda vez que o app volta
+  // pro primeiro plano -- registerForPushNotifications() e' idempotente
+  // (register-device faz upsert por token), entao repetir e' seguro.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active' && userId) {
+        registerForPushNotifications();
+      }
+    });
+    return () => sub.remove();
   }, [userId]);
 
   return (
