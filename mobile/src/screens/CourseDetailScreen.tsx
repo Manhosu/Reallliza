@@ -19,15 +19,29 @@ import * as Sharing from 'expo-sharing';
 import { apiClient, getAccessToken, BASE_URL } from '../lib/api';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { LessonVideo } from '../components/LessonVideo';
 import type { CoursesStackParamList } from '../navigation/courses-stack';
 
 /**
  * Espelha a logica de web/src/app/(dashboard)/aprendizado/[id]/page.tsx:
  * auto-matricula no primeiro acesso, aula ativa = primeira nao concluida,
- * marca conclusao, mostra progresso e certificado. Video/pdf abrem por
- * fora (Linking) -- nao existe player in-app em lugar nenhum do app hoje,
- * nao e regressao manter esse padrao aqui tambem.
+ * marca conclusao, mostra progresso e certificado.
+ *
+ * Jessica (14/09), dois ajustes: video agora toca inline (LessonVideo) em
+ * vez de abrir por fora via Linking; e o botao "Concluir" so libera depois
+ * que o aluno de fato consumiu o conteudo (video ate o fim, pdf/anexo
+ * abertos, texto/imagem com um tempo minimo de tela) -- antes ficava
+ * disponivel na hora que a aula abria, sem nunca ter sido vista.
  */
+
+/** Texto tipo-a-tipo mostrado enquanto o "Concluir" ainda esta bloqueado. */
+const CONSUME_HINTS: Partial<Record<Lesson['lesson_type'], string>> = {
+  video: 'Assista o vídeo até o fim para liberar a conclusão.',
+  pdf: 'Abra o PDF para liberar a conclusão.',
+  attachment: 'Baixe o arquivo para liberar a conclusão.',
+  text: 'Aguarde alguns segundos para liberar a conclusão.',
+  image: 'Aguarde alguns segundos para liberar a conclusão.',
+};
 
 interface QuizOption {
   id: string;
@@ -111,6 +125,9 @@ export function CourseDetailScreen() {
   const [buying, setBuying] = useState(false);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
   const [quizSubmitting, setQuizSubmitting] = useState(false);
+  // Libera o botao "Concluir" so depois que a aula foi de fato consumida:
+  // video ate o fim, pdf/anexo abertos, ou um tempo minimo pra texto/imagem.
+  const [hasConsumed, setHasConsumed] = useState(false);
   const [quizResult, setQuizResult] = useState<{
     score: number;
     passed: boolean;
@@ -161,6 +178,17 @@ export function CourseDetailScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Reseta o "ja consumiu" ao trocar de aula. Texto/imagem liberam sozinhos
+  // depois de um tempo minimo de tela; video/pdf/anexo so liberam por acao
+  // do aluno (assistir ate o fim / abrir), tratado nos handlers proprios.
+  useEffect(() => {
+    setHasConsumed(false);
+    if (activeLesson?.lesson_type === 'text' || activeLesson?.lesson_type === 'image') {
+      const t = setTimeout(() => setHasConsumed(true), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [activeLesson?.id]);
 
   // Volta do checkout externo (Asaas abre no navegador do aparelho) --
   // re-checa acesso ao voltar pro primeiro plano, mesma ideia do listener
@@ -245,9 +273,13 @@ export function CourseDetailScreen() {
     }
   }
 
+  // Video toca inline (LessonVideo) -- isto so abre pdf/anexo por fora,
+  // unico jeito hoje (nao existe visualizador de pdf embutido no app).
+  // Abrir conta como "consumido": e' o unico sinal disponivel de que o
+  // aluno de fato viu o arquivo antes de poder concluir a aula.
   async function openLessonContent() {
     if (!activeLesson) return;
-    const url = activeLesson.video_url || activeLesson.pdf_url || activeLesson.attachment_url;
+    const url = activeLesson.pdf_url || activeLesson.attachment_url;
     if (!url) return;
     try {
       const supported = await Linking.canOpenURL(url);
@@ -256,6 +288,7 @@ export function CourseDetailScreen() {
         return;
       }
       await Linking.openURL(url);
+      setHasConsumed(true);
     } catch {
       Alert.alert('Erro', 'Falha ao abrir o conteúdo.');
     }
@@ -399,16 +432,16 @@ export function CourseDetailScreen() {
               <Text style={styles.lessonDescription}>{activeLesson.description}</Text>
             )}
 
-            {(activeLesson.lesson_type === 'video' || activeLesson.lesson_type === 'pdf') && (
+            {activeLesson.lesson_type === 'video' && activeLesson.video_url && (
+              <LessonVideo
+                uri={activeLesson.video_url}
+                onFinish={() => setHasConsumed(true)}
+              />
+            )}
+            {activeLesson.lesson_type === 'pdf' && (
               <TouchableOpacity style={styles.openButton} onPress={openLessonContent}>
-                <Ionicons
-                  name={activeLesson.lesson_type === 'video' ? 'play-circle' : 'document'}
-                  size={20}
-                  color={colors.black}
-                />
-                <Text style={styles.openButtonText}>
-                  {activeLesson.lesson_type === 'video' ? 'Assistir vídeo' : 'Abrir PDF'}
-                </Text>
+                <Ionicons name="document" size={20} color={colors.black} />
+                <Text style={styles.openButtonText}>Abrir PDF</Text>
               </TouchableOpacity>
             )}
             {activeLesson.lesson_type === 'text' && activeLesson.content_md && (
@@ -517,7 +550,7 @@ export function CourseDetailScreen() {
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
                     <Text style={styles.completedPillText}>Aula concluída</Text>
                   </View>
-                ) : (
+                ) : hasConsumed ? (
                   <TouchableOpacity
                     style={styles.completeButton}
                     onPress={handleComplete}
@@ -532,6 +565,10 @@ export function CourseDetailScreen() {
                       </>
                     )}
                   </TouchableOpacity>
+                ) : (
+                  <Text style={styles.consumeHintText}>
+                    {CONSUME_HINTS[activeLesson.lesson_type]}
+                  </Text>
                 )}
               </View>
             )}
@@ -746,6 +783,11 @@ const styles = StyleSheet.create({
   completedPillText: {
     ...typography.bodySmBold,
     color: colors.success,
+  },
+  consumeHintText: {
+    ...typography.bodySm,
+    color: colors.textMuted,
+    fontStyle: 'italic',
   },
   sectionHeading: {
     ...typography.bodyBold,

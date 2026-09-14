@@ -93,6 +93,15 @@ const TYPE_ICONS: Record<Lesson["lesson_type"], React.ComponentType<{ className?
   attachment: Paperclip,
 };
 
+/** Texto tipo-a-tipo mostrado enquanto o "Concluir" ainda está bloqueado. */
+const CONSUME_HINTS: Partial<Record<Lesson["lesson_type"], string>> = {
+  video: "Assista o vídeo até o fim para liberar a conclusão.",
+  attachment: "Baixe o arquivo para liberar a conclusão.",
+  pdf: "Aguarde alguns segundos para liberar a conclusão.",
+  text: "Aguarde alguns segundos para liberar a conclusão.",
+  image: "Aguarde alguns segundos para liberar a conclusão.",
+};
+
 export default function AprendizadoDetailPage({
   params,
 }: {
@@ -111,6 +120,11 @@ export default function AprendizadoDetailPage({
     passed: boolean;
     attempts_remaining: number | null;
   } | null>(null);
+  // Libera "Marcar como concluída" só depois que a aula foi de fato
+  // consumida: vídeo até o fim, pdf/anexo abertos, ou um tempo mínimo pra
+  // texto/imagem (Jéssica, 14/09 — antes o botão ficava disponível assim
+  // que a aula abria, sem o aluno ter visto nada).
+  const [hasConsumed, setHasConsumed] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -173,6 +187,22 @@ export default function AprendizadoDetailPage({
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [load]);
+
+  // Reseta o "já consumiu" ao trocar de aula. Pdf/texto/imagem liberam
+  // sozinhos depois de um tempo mínimo de tela (não tem player embutido
+  // pra pdf, e texto/imagem não têm um "fim" natural); vídeo e anexo só
+  // liberam por ação do aluno (assistir até o fim / clicar em baixar).
+  useEffect(() => {
+    setHasConsumed(false);
+    if (
+      activeLesson?.lesson_type === "text" ||
+      activeLesson?.lesson_type === "image" ||
+      activeLesson?.lesson_type === "pdf"
+    ) {
+      const t = setTimeout(() => setHasConsumed(true), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [activeLesson?.id]);
 
   async function handlePurchase() {
     setBuying(true);
@@ -372,8 +402,10 @@ export default function AprendizadoDetailPage({
 
                 {activeLesson.lesson_type === "video" && activeLesson.video_url && (
                   <video
+                    key={activeLesson.id}
                     src={activeLesson.video_url}
                     controls
+                    onEnded={() => setHasConsumed(true)}
                     className="w-full rounded-lg"
                   />
                 )}
@@ -403,6 +435,7 @@ export default function AprendizadoDetailPage({
                     href={activeLesson.attachment_url}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() => setHasConsumed(true)}
                     className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:opacity-90"
                   >
                     <Download className="h-4 w-4" />
@@ -489,11 +522,15 @@ export default function AprendizadoDetailPage({
                         <CheckCircle2 className="h-4 w-4" />
                         Aula concluída
                       </span>
-                    ) : (
+                    ) : hasConsumed ? (
                       <Button onClick={handleComplete} isLoading={completing}>
                         <CheckCircle2 className="h-4 w-4" />
                         Marcar como concluída
                       </Button>
+                    ) : (
+                      <span className="text-sm italic text-muted-foreground">
+                        {CONSUME_HINTS[activeLesson.lesson_type]}
+                      </span>
                     )}
                   </div>
                 )}
