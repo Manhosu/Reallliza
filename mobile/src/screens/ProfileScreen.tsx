@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../stores/auth-store';
 import { apiClient } from '../lib/api';
+import { diagnosePushNotifications } from '../lib/push-notifications';
 import { NivelEcossistemaCard } from '../components/NivelEcossistemaCard';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -29,6 +30,7 @@ export function ProfileScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isTestingPush, setIsTestingPush] = useState(false);
 
   const handleSavePhone = async () => {
     try {
@@ -75,6 +77,24 @@ export function ProfileScreen() {
       Alert.alert('Erro', 'Não foi possível alterar a senha. Verifique a senha atual.');
     } finally {
       setIsChangingPassword(false);
+    }
+  };
+
+  // Diagnostico manual de notificacao (Jessica, 14/09): toda falha de
+  // registro sempre foi silenciosa, so' visivel no console do aparelho.
+  // Este botao chama o registro na hora e mostra o motivo exato de
+  // sucesso ou falha, pra quem esta testando conseguir reportar o erro
+  // de verdade em vez de "nao funciona".
+  const handleTestPush = async () => {
+    setIsTestingPush(true);
+    try {
+      const result = await diagnosePushNotifications();
+      Alert.alert(
+        result.ok ? 'Notificações OK' : 'Notificações com problema',
+        result.reason,
+      );
+    } finally {
+      setIsTestingPush(false);
     }
   };
 
@@ -320,6 +340,32 @@ export function ProfileScreen() {
               </TouchableOpacity>
             </View>
           )}
+        </View>
+      </View>
+
+      {/* Notificações */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Notificações</Text>
+        <View style={styles.infoCard}>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={handleTestPush}
+            disabled={isTestingPush}
+          >
+            <View style={styles.menuItemLeft}>
+              <Ionicons
+                name="notifications-outline"
+                size={20}
+                color={colors.textMuted}
+              />
+              <Text style={styles.menuItemText}>Testar notificações</Text>
+            </View>
+            {isTestingPush ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Ionicons name="chevron-forward" size={18} color={colors.textDark} />
+            )}
+          </TouchableOpacity>
         </View>
       </View>
 

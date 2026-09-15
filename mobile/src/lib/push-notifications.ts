@@ -25,13 +25,28 @@ Notifications.setNotificationHandler({
 /** Guardado para conseguir desvincular o aparelho no logout. */
 let ultimoToken: string | null = null;
 
-export async function registerForPushNotifications(): Promise<string | null> {
-  // Push notifications only work on physical devices
+export interface PushRegistrationResult {
+  ok: boolean;
+  /** Motivo em texto -- pensado pra mostrar direto pro usuario num Alert
+   * de diagnostico, nao so' pro console. */
+  reason: string;
+  token?: string;
+}
+
+/**
+ * Faz o registro de verdade e devolve o motivo exato de sucesso ou falha.
+ * Existe porque toda falha aqui sempre foi silenciosa (so' console.error) --
+ * quando algo dava errado num aparelho real (Jessica, 14/09: permissao
+ * concedida e mesmo assim nao registrava), so' dava pra adivinhar. Usada
+ * tanto pelo registro automatico (registerForPushNotifications, abaixo)
+ * quanto pelo botao de diagnostico em Perfil (diagnosePushNotifications).
+ */
+async function registerForPushNotificationsDetailed(): Promise<PushRegistrationResult> {
   if (!Device.isDevice) {
-    console.log(
-      '[PushNotifications] Must use physical device for push notifications',
-    );
-    return null;
+    return {
+      ok: false,
+      reason: 'Este aparelho não é físico (emulador) — notificação push não funciona aqui.',
+    };
   }
 
   try {
@@ -47,8 +62,10 @@ export async function registerForPushNotifications(): Promise<string | null> {
     }
 
     if (finalStatus !== 'granted') {
-      console.log('[PushNotifications] Permission not granted');
-      return null;
+      return {
+        ok: false,
+        reason: `Permissão de notificação não concedida (status: ${finalStatus}). Ative em Configurações do aparelho > Apps > Reallliza Revestimentos > Notificações.`,
+      };
     }
 
     // Android: configure notification channels
@@ -96,14 +113,28 @@ export async function registerForPushNotifications(): Promise<string | null> {
     const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ??
       Constants.easConfig?.projectId;
+    if (!projectId) {
+      return {
+        ok: false,
+        reason: 'Project ID do Expo não encontrado na configuração do app (extra.eas.projectId).',
+      };
+    }
 
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: projectId as string,
-    });
-
-    const token = tokenData.data;
-    ultimoToken = token;
-    console.log('[PushNotifications] Token:', token);
+    let token: string;
+    try {
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId: projectId as string,
+      });
+      token = tokenData.data;
+      console.log('[PushNotifications] Token:', token);
+    } catch (error) {
+      return {
+        ok: false,
+        reason: `Falha ao gerar o token de notificação junto ao Expo/Firebase: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
 
     // A rota exige sessao. Quem chama e' responsavel por so' registrar depois
     // do login — ver App.tsx. Antes isso rodava na abertura do app e o 401
@@ -116,18 +147,40 @@ export async function registerForPushNotifications(): Promise<string | null> {
       });
       console.log('[PushNotifications] Token registered with backend');
     } catch (error) {
-      console.error(
-        '[PushNotifications] Failed to register token with backend:',
-        error,
-      );
-      return null;
+      return {
+        ok: false,
+        reason: `Token gerado, mas falhou ao registrar no servidor: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
     }
 
-    return token;
+    ultimoToken = token;
+    return { ok: true, reason: 'Registrado com sucesso.', token };
   } catch (error) {
-    console.error('[PushNotifications] Registration error:', error);
-    return null;
+    return {
+      ok: false,
+      reason: `Erro inesperado: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
+}
+
+/** Registro automatico (chamado no login e ao voltar pro primeiro plano). */
+export async function registerForPushNotifications(): Promise<string | null> {
+  const result = await registerForPushNotificationsDetailed();
+  if (!result.ok) {
+    console.log(`[PushNotifications] ${result.reason}`);
+  }
+  return result.ok ? (result.token ?? null) : null;
+}
+
+/**
+ * Testa o registro na hora e devolve o motivo exato de sucesso ou falha --
+ * usado pelo botao "Testar notificações" em Perfil, pra quem esta testando
+ * conseguir ver e reportar o erro de verdade em vez de "não funciona".
+ */
+export async function diagnosePushNotifications(): Promise<PushRegistrationResult> {
+  return registerForPushNotificationsDetailed();
 }
 
 /**
