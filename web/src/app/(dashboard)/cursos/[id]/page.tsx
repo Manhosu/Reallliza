@@ -452,6 +452,7 @@ export default function CursoDetailPage({
   const [lessonTitle, setLessonTitle] = useState("");
   const [lessonType, setLessonType] = useState<Lesson["lesson_type"]>("video");
   const [lessonVideoUrl, setLessonVideoUrl] = useState("");
+  const [uploadingVideo, setUploadingVideo] = useState(false);
   const [lessonPdfUrl, setLessonPdfUrl] = useState("");
   const [lessonImageUrl, setLessonImageUrl] = useState("");
   const [uploadingLessonImage, setUploadingLessonImage] = useState(false);
@@ -484,6 +485,41 @@ export default function CursoDetailPage({
       toast.error(err instanceof Error ? err.message : "Erro ao enviar imagem");
     } finally {
       setUploadingLessonImage(false);
+    }
+  }
+
+  // Jéssica (15/09): pediu pra enviar o vídeo direto do aparelho/computador
+  // em vez de depender de colar um link externo. Vídeo não cabe no caminho
+  // normal de upload (a Vercel recusa o corpo da requisição bem antes de
+  // qualquer limite que o app declare) — vai direto do navegador pro
+  // Storage com uma URL assinada, mesmo padrão já usado no Feed.
+  async function handleLessonVideoUpload(file: File) {
+    setUploadingVideo(true);
+    try {
+      const signed = await apiClient.post<{
+        path: string;
+        token: string;
+        bucket: string;
+        public_url: string;
+      }>("/courses/video-sign", {
+        file_name: file.name,
+        mime_type: file.type,
+        byte_size: file.size,
+      });
+
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      const { error } = await supabase.storage
+        .from(signed.bucket)
+        .uploadToSignedUrl(signed.path, signed.token, file);
+      if (error) throw new Error(error.message);
+
+      setLessonVideoUrl(signed.public_url);
+      toast.success("Vídeo enviado");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao enviar vídeo");
+    } finally {
+      setUploadingVideo(false);
     }
   }
 
@@ -902,13 +938,52 @@ export default function CursoDetailPage({
             </div>
           </div>
           {lessonType === "video" && (
-            <div className="space-y-1">
-              <label className="text-sm font-medium">URL do vídeo</label>
-              <Input
-                value={lessonVideoUrl}
-                onChange={(e) => setLessonVideoUrl(e.target.value)}
-                placeholder="https://..."
-              />
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Vídeo da aula</label>
+              {lessonVideoUrl ? (
+                <div className="flex items-center justify-between gap-2 rounded-xl border bg-card p-3 text-sm">
+                  <span className="truncate text-muted-foreground">{lessonVideoUrl}</span>
+                  <button
+                    type="button"
+                    onClick={() => setLessonVideoUrl("")}
+                    className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex h-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-input px-3 text-center text-sm text-muted-foreground hover:bg-muted/50">
+                  {uploadingVideo ? (
+                    "Enviando vídeo..."
+                  ) : (
+                    <>
+                      <span>Clique para enviar um vídeo do computador</span>
+                      <span className="text-xs">MP4 ou WEBM, até 100MB</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="video/mp4,video/webm"
+                    className="hidden"
+                    disabled={uploadingVideo}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleLessonVideoUpload(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              )}
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">
+                  Ou cole a URL de um vídeo já hospedado em outro lugar
+                </label>
+                <Input
+                  value={lessonVideoUrl}
+                  onChange={(e) => setLessonVideoUrl(e.target.value)}
+                  placeholder="https://..."
+                />
+              </div>
             </div>
           )}
           {lessonType === "pdf" && (
