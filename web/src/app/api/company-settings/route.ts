@@ -79,6 +79,20 @@ export async function PATCH(request: NextRequest) {
           : null;
     }
 
+    // Assinatura do certificado (Jéssica/Eduardo 17/09) — quem assina os
+    // certificados de curso pode mudar, fica configurável aqui em vez de
+    // fixo no código do PDF.
+    if (body.certificate_signature_url !== undefined)
+      update.certificate_signature_url = body.certificate_signature_url || null;
+    if (body.certificate_signer_name !== undefined)
+      update.certificate_signer_name = body.certificate_signer_name
+        ? String(body.certificate_signer_name).trim().slice(0, 200)
+        : null;
+    if (body.certificate_signer_title !== undefined)
+      update.certificate_signer_title = body.certificate_signer_title
+        ? String(body.certificate_signer_title).trim().slice(0, 100)
+        : null;
+
     if (Object.keys(update).length === 0) {
       throw new AuthError(400, "Nada para atualizar");
     }

@@ -14,6 +14,7 @@ import {
   Globe,
   Wrench,
   DollarSign,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiClient } from "@/lib/api/client";
+import { apiClient, getAccessToken, BASE_URL } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { StateCoverageGrid } from "@/components/settings/StateCoverageGrid";
 
@@ -40,6 +41,9 @@ interface CompanySettings {
   max_service_hours_no_stay: number;
   payout_pix_key: string | null;
   payout_pix_key_type: "CPF" | "CNPJ" | "EMAIL" | "PHONE" | "EVP" | null;
+  certificate_signature_url: string | null;
+  certificate_signer_name: string | null;
+  certificate_signer_title: string | null;
 }
 
 const PIX_KEY_TYPE_LABELS: Record<string, string> = {
@@ -162,6 +166,7 @@ function CompanyTab() {
   const [settings, setSettings] = useState<CompanySettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingSignature, setUploadingSignature] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -195,6 +200,9 @@ function CompanyTab() {
         max_service_hours_no_stay: settings.max_service_hours_no_stay,
         payout_pix_key: settings.payout_pix_key,
         payout_pix_key_type: settings.payout_pix_key_type,
+        certificate_signature_url: settings.certificate_signature_url,
+        certificate_signer_name: settings.certificate_signer_name,
+        certificate_signer_title: settings.certificate_signer_title,
       });
       setSettings(updated);
       toast.success("Configurações salvas");
@@ -208,6 +216,32 @@ function CompanyTab() {
       toast.error(msg);
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Jéssica/Eduardo (17/09): quem assina o certificado de curso pode mudar
+  // de nome — reaproveita o upload genérico do Feed (mesmo usado na capa
+  // do curso) em vez de fixar uma assinatura no código do PDF.
+  async function handleSignatureUpload(file: File) {
+    setUploadingSignature(true);
+    try {
+      const token = await getAccessToken();
+      const formData = new FormData();
+      formData.append("file", file);
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(`${BASE_URL}/feed/upload`, {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "Erro ao enviar imagem");
+      setSettings((s) => (s ? { ...s, certificate_signature_url: data.url } : s));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao enviar imagem");
+    } finally {
+      setUploadingSignature(false);
     }
   }
 
@@ -452,6 +486,83 @@ function CompanyTab() {
               <p className="text-xs text-muted-foreground">
                 Só cobra estadia acima desse tempo <em>E</em> além do raio.
               </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Jéssica/Eduardo 17/09: assinatura usada no certificado de
+            conclusão de curso (e em outros documentos gerados, futuramente).
+            Fica configurável aqui porque o nome de quem assina pode mudar. */}
+        <div className="space-y-3 rounded-lg border p-3">
+          <div>
+            <label className="text-sm font-medium">Assinatura do certificado</label>
+            <p className="text-xs text-muted-foreground">
+              Usada no certificado de conclusão de curso e em outros
+              documentos gerados pela plataforma.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[200px_1fr]">
+            {settings.certificate_signature_url ? (
+              <div className="relative flex h-24 items-center justify-center rounded-xl border bg-card p-2">
+                <img
+                  src={settings.certificate_signature_url}
+                  alt="Assinatura"
+                  className="max-h-full max-w-full object-contain"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSettings({ ...settings, certificate_signature_url: null })
+                  }
+                  className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex h-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-input text-center text-xs text-muted-foreground hover:bg-muted/50">
+                {uploadingSignature ? (
+                  "Enviando..."
+                ) : (
+                  <>
+                    <span>Clique para enviar a imagem da assinatura</span>
+                    <span>PNG com fundo transparente funciona melhor</span>
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingSignature}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleSignatureUpload(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Nome de quem assina</label>
+                <Input
+                  value={settings.certificate_signer_name ?? ""}
+                  onChange={(e) =>
+                    setSettings({ ...settings, certificate_signer_name: e.target.value || null })
+                  }
+                  placeholder="Ex: Ricardo Sousa"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Cargo</label>
+                <Input
+                  value={settings.certificate_signer_title ?? ""}
+                  onChange={(e) =>
+                    setSettings({ ...settings, certificate_signer_title: e.target.value || null })
+                  }
+                  placeholder="Diretor"
+                />
+              </div>
             </div>
           </div>
         </div>
