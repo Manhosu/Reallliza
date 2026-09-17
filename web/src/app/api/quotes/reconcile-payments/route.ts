@@ -46,27 +46,37 @@ async function handle(request: NextRequest) {
     const supabase = getAdminClient();
     const desde = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [{ data: pagamentosPendentes }, { data: campanhasPendentes }, { data: comprasPendentes }] =
-      await Promise.all([
-        supabase
-          .from("payments")
-          .select("id, asaas_id")
-          .eq("status", "pending")
-          .not("asaas_id", "is", null)
-          .gte("created_at", desde),
-        supabase
-          .from("feed_campaigns")
-          .select("id, pix_asaas_id")
-          .eq("payment_status", "pending")
-          .not("pix_asaas_id", "is", null)
-          .gte("created_at", desde),
-        supabase
-          .from("course_purchases")
-          .select("id, asaas_id")
-          .eq("status", "pending")
-          .not("asaas_id", "is", null)
-          .gte("created_at", desde),
-      ]);
+    const [
+      { data: pagamentosPendentes },
+      { data: campanhasPendentes },
+      { data: comprasPendentes },
+      { data: retestesPendentes },
+    ] = await Promise.all([
+      supabase
+        .from("payments")
+        .select("id, asaas_id")
+        .eq("status", "pending")
+        .not("asaas_id", "is", null)
+        .gte("created_at", desde),
+      supabase
+        .from("feed_campaigns")
+        .select("id, pix_asaas_id")
+        .eq("payment_status", "pending")
+        .not("pix_asaas_id", "is", null)
+        .gte("created_at", desde),
+      supabase
+        .from("course_purchases")
+        .select("id, asaas_id")
+        .eq("status", "pending")
+        .not("asaas_id", "is", null)
+        .gte("created_at", desde),
+      supabase
+        .from("quiz_retest_purchases")
+        .select("id, asaas_id")
+        .eq("status", "pending")
+        .not("asaas_id", "is", null)
+        .gte("created_at", desde),
+    ]);
 
     const candidatos = [
       ...(pagamentosPendentes ?? []).map((p) => ({
@@ -83,6 +93,11 @@ async function handle(request: NextRequest) {
         externalReference: c.id as string,
         asaasId: c.asaas_id as string,
         tipo: "course_purchase" as const,
+      })),
+      ...(retestesPendentes ?? []).map((r) => ({
+        externalReference: r.id as string,
+        asaasId: r.asaas_id as string,
+        tipo: "quiz_retest_purchase" as const,
       })),
     ];
 

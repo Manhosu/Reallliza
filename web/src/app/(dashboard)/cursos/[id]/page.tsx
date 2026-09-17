@@ -19,6 +19,7 @@ import {
   Paperclip,
   CheckCircle2,
   Circle,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -59,6 +60,7 @@ interface Lesson {
   quiz_questions: QuizQuestion[] | null;
   min_passing_score: number | null;
   max_attempts: number | null;
+  retest_price_cents: number | null;
   duration_sec: number | null;
   order_index: number;
   is_required: boolean;
@@ -448,6 +450,7 @@ export default function CursoDetailPage({
 
   // Lesson modal
   const [showLessonModal, setShowLessonModal] = useState(false);
+  const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
   const [activeModuleId, setActiveModuleId] = useState<string>("");
   const [lessonTitle, setLessonTitle] = useState("");
   const [lessonType, setLessonType] = useState<Lesson["lesson_type"]>("video");
@@ -464,6 +467,7 @@ export default function CursoDetailPage({
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
   const [minPassingScore, setMinPassingScore] = useState("");
   const [maxAttempts, setMaxAttempts] = useState("");
+  const [retestPriceReais, setRetestPriceReais] = useState("");
 
   async function handleLessonImageUpload(file: File) {
     setUploadingLessonImage(true);
@@ -653,6 +657,7 @@ export default function CursoDetailPage({
   }
 
   function openAddLesson(moduleId: string) {
+    setEditingLessonId(null);
     setActiveModuleId(moduleId);
     setLessonTitle("");
     setLessonType("video");
@@ -666,10 +671,34 @@ export default function CursoDetailPage({
     setQuizQuestions([]);
     setMinPassingScore("");
     setMaxAttempts("");
+    setRetestPriceReais("");
     setShowLessonModal(true);
   }
 
-  async function handleAddLesson() {
+  // Jéssica (17/09): hoje só dá pra excluir e recriar uma aula pra corrigir
+  // qualquer coisa nela — abre o mesmo modal preenchido com os dados atuais,
+  // e o salvamento decide criar ou atualizar conforme editingLessonId.
+  function openEditLesson(lesson: Lesson) {
+    setEditingLessonId(lesson.id);
+    setLessonTitle(lesson.title);
+    setLessonType(lesson.lesson_type);
+    setLessonVideoUrl(lesson.video_url ?? "");
+    setLessonPdfUrl(lesson.pdf_url ?? "");
+    setLessonImageUrl(lesson.image_url ?? "");
+    setLessonAttachmentUrl(lesson.attachment_url ?? "");
+    setLessonAttachmentName(lesson.attachment_name ?? "");
+    setLessonContent(lesson.content_md ?? "");
+    setLessonDuration(lesson.duration_sec ? String(lesson.duration_sec) : "");
+    setQuizQuestions(lesson.quiz_questions ?? []);
+    setMinPassingScore(lesson.min_passing_score != null ? String(lesson.min_passing_score) : "");
+    setMaxAttempts(lesson.max_attempts != null ? String(lesson.max_attempts) : "");
+    setRetestPriceReais(
+      lesson.retest_price_cents != null ? String(lesson.retest_price_cents / 100) : ""
+    );
+    setShowLessonModal(true);
+  }
+
+  async function handleSaveLesson() {
     if (!lessonTitle.trim()) {
       toast.error("Informe o título da aula");
       return;
@@ -696,9 +725,7 @@ export default function CursoDetailPage({
     }
     setLessonSaving(true);
     try {
-      const mod = course?.modules.find((m) => m.id === activeModuleId);
-      const nextIdx = (mod?.lessons.length ?? 0) + 1;
-      await apiClient.post(`/course-modules/${activeModuleId}/lessons`, {
+      const payload = {
         title: lessonTitle,
         lesson_type: lessonType,
         video_url: lessonType === "video" ? lessonVideoUrl : null,
@@ -711,10 +738,24 @@ export default function CursoDetailPage({
         min_passing_score:
           lessonType === "quiz" && minPassingScore ? Number(minPassingScore) : null,
         max_attempts: lessonType === "quiz" && maxAttempts ? Number(maxAttempts) : null,
+        retest_price_cents:
+          lessonType === "quiz" && retestPriceReais
+            ? Math.round(Number(retestPriceReais) * 100)
+            : null,
         duration_sec: lessonDuration ? Number(lessonDuration) : null,
-        order_index: nextIdx,
-      });
-      toast.success("Aula criada");
+      };
+      if (editingLessonId) {
+        await apiClient.patch(`/course-lessons/${editingLessonId}`, payload);
+        toast.success("Aula atualizada");
+      } else {
+        const mod = course?.modules.find((m) => m.id === activeModuleId);
+        const nextIdx = (mod?.lessons.length ?? 0) + 1;
+        await apiClient.post(`/course-modules/${activeModuleId}/lessons`, {
+          ...payload,
+          order_index: nextIdx,
+        });
+        toast.success("Aula criada");
+      }
       setShowLessonModal(false);
       load();
     } catch (err) {
@@ -857,6 +898,13 @@ export default function CursoDetailPage({
                           )}
                           <button
                             type="button"
+                            onClick={() => openEditLesson(l)}
+                            className="rounded-lg p-1 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleDeleteLesson(l.id)}
                             className="rounded-lg p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                           >
@@ -901,7 +949,7 @@ export default function CursoDetailPage({
       {/* Modal aula */}
       <Dialog open={showLessonModal} onClose={() => setShowLessonModal(false)}>
         <DialogHeader>
-          <DialogTitle>Nova aula</DialogTitle>
+          <DialogTitle>{editingLessonId ? "Editar aula" : "Nova aula"}</DialogTitle>
         </DialogHeader>
         <DialogContent className="space-y-3">
           <div className="space-y-1">
@@ -1088,6 +1136,22 @@ export default function CursoDetailPage({
                   />
                 </div>
               </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Preço do reteste (R$)</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={retestPriceReais}
+                  onChange={(e) => setRetestPriceReais(e.target.value)}
+                  placeholder="Sem reteste pago"
+                  disabled={!maxAttempts}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Cobrado do aluno quando ele esgota as tentativas acima sem ser aprovado, pra
+                  liberar mais uma tentativa. Só faz sentido com um número de tentativas definido.
+                </p>
+              </div>
 
               {quizQuestions.map((q, qIdx) => (
                 <div key={q.id} className="space-y-2 rounded-lg border bg-card p-3">
@@ -1171,8 +1235,8 @@ export default function CursoDetailPage({
           <Button variant="outline" onClick={() => setShowLessonModal(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleAddLesson} isLoading={lessonSaving}>
-            Criar aula
+          <Button onClick={handleSaveLesson} isLoading={lessonSaving}>
+            {editingLessonId ? "Salvar alterações" : "Criar aula"}
           </Button>
         </DialogFooter>
       </Dialog>

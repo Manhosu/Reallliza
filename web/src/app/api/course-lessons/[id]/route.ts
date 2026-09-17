@@ -40,6 +40,12 @@ export async function PATCH(
           ? Math.round(body.max_attempts)
           : null;
     }
+    if (body.retest_price_cents !== undefined) {
+      update.retest_price_cents =
+        typeof body.retest_price_cents === "number" && body.retest_price_cents > 0
+          ? Math.round(body.retest_price_cents)
+          : null;
+    }
     if (body.duration_sec !== undefined) update.duration_sec = body.duration_sec;
     if (body.order_index !== undefined) update.order_index = body.order_index;
     if (body.is_required !== undefined) update.is_required = !!body.is_required;

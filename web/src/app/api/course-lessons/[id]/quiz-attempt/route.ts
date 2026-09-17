@@ -4,6 +4,7 @@ import { authenticateRequest, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { hasAccessToCourse } from "@/lib/courses/access";
 import { completeLesson } from "@/lib/courses/complete-lesson";
+import { getQuizStatus } from "@/lib/courses/quiz-status";
 
 interface QuizQuestion {
   id: string;
@@ -37,7 +38,7 @@ export async function POST(
     const { data: lesson } = await supabase
       .from("course_lessons")
       .select(
-        "id, lesson_type, quiz_questions, min_passing_score, max_attempts, is_required, is_published, module:course_modules(course_id)"
+        "id, lesson_type, quiz_questions, min_passing_score, max_attempts, retest_price_cents, is_required, is_published, module:course_modules(course_id)"
       )
       .eq("id", lessonId)
       .single();
@@ -48,6 +49,7 @@ export async function POST(
       quiz_questions: QuizQuestion[] | null;
       min_passing_score: number | null;
       max_attempts: number | null;
+      retest_price_cents: number | null;
       module: { course_id: string } | { course_id: string }[];
     };
     if (l.lesson_type !== "quiz") throw new AuthError(400, "Esta aula não é um quiz");
@@ -96,22 +98,28 @@ export async function POST(
       }
     }
 
-    const { data: previousAttempts } = await supabase
-      .from("quiz_attempts")
-      .select("id, passed")
-      .eq("lesson_id", lessonId)
-      .eq("user_id", user.id)
-      .order("attempt_number", { ascending: true });
-
-    const attempts = previousAttempts ?? [];
-    const alreadyPassed = attempts.some((a) => a.passed);
-    if (
-      !alreadyPassed &&
-      l.max_attempts !== null &&
-      attempts.length >= l.max_attempts
-    ) {
-      throw new AuthError(403, "Número máximo de tentativas atingido");
+    const status = await getQuizStatus(supabase, user.id, lessonId, l.max_attempts);
+    let consumedRetestId: string | null = null;
+    if (status.exhausted) {
+      if (!status.retest_unlocked) {
+        throw new AuthError(
+          403,
+          "Número máximo de tentativas atingido — é preciso pagar o reteste para continuar"
+        );
+      }
+      const { data: retest } = await supabase
+        .from("quiz_retest_purchases")
+        .select("id")
+        .eq("lesson_id", lessonId)
+        .eq("user_id", user.id)
+        .eq("status", "paid")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .single();
+      consumedRetestId = retest?.id ?? null;
     }
+
+    const attemptNumber = status.attempts_used + 1;
 
     let correct = 0;
     for (const q of questions) {
@@ -119,7 +127,6 @@ export async function POST(
     }
     const score = Math.round((correct / questions.length) * 100);
     const passed = l.min_passing_score == null ? true : score >= l.min_passing_score;
-    const attemptNumber = attempts.length + 1;
 
     await supabase.from("quiz_attempts").insert({
       lesson_id: lessonId,
@@ -129,6 +136,13 @@ export async function POST(
       passed,
       attempt_number: attemptNumber,
     });
+
+    if (consumedRetestId) {
+      await supabase
+        .from("quiz_retest_purchases")
+        .update({ status: "consumed" })
+        .eq("id", consumedRetestId);
+    }
 
     let completionResult: Awaited<ReturnType<typeof completeLesson>> | null = null;
     if (passed) {
@@ -144,12 +158,15 @@ export async function POST(
         .neq("status", "completed");
     }
 
+    const exhaustedNow = !passed && l.max_attempts !== null && attemptNumber >= l.max_attempts;
     return jsonResponse({
       score,
       passed,
       attempt_number: attemptNumber,
       attempts_remaining:
         l.max_attempts == null ? null : Math.max(0, l.max_attempts - attemptNumber),
+      requires_retest_payment: exhaustedNow && !!l.retest_price_cents,
+      retest_price_cents: exhaustedNow ? l.retest_price_cents : null,
       progress_pct: completionResult?.progress_pct ?? null,
       completed: completionResult?.completed ?? false,
       enrollment: completionResult?.enrollment ?? null,

@@ -45,6 +45,10 @@ export async function POST(
           typeof body.max_attempts === "number" && body.max_attempts > 0
             ? Math.round(body.max_attempts)
             : null,
+        retest_price_cents:
+          typeof body.retest_price_cents === "number" && body.retest_price_cents > 0
+            ? Math.round(body.retest_price_cents)
+            : null,
         learning_content_id: body.learning_content_id || null,
         duration_sec: typeof body.duration_sec === "number" ? body.duration_sec : null,
         order_index: typeof body.order_index === "number" ? body.order_index : 0,

@@ -4,6 +4,7 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { hasAccessToCourse } from "@/lib/courses/access";
+import { getQuizStatus } from "@/lib/courses/quiz-status";
 
 export async function GET(
   request: NextRequest,
@@ -42,26 +43,41 @@ export async function GET(
       extra = { enrollment: enr ?? null, progress: progress ?? [], has_access: hasAccess };
 
       // Nunca manda o gabarito pro aluno — correct_option_id só existe
-      // pro admin, que edita o quiz.
-      responseData = {
-        ...data,
-        modules: (
-          data as unknown as {
-            modules: Array<{ lessons: Array<Record<string, unknown>> }>;
-          }
-        ).modules?.map((m) => ({
+      // pro admin, que edita o quiz. Aula de quiz também ganha quiz_status
+      // (tentativas usadas, se já passou, se um reteste pago já libera a
+      // próxima tentativa) — sem isso o aluno só descobria que esgotou as
+      // tentativas ao tentar enviar de novo depois de recarregar a página.
+      const modulesRaw = (
+        data as unknown as {
+          modules: Array<{ lessons: Array<Record<string, unknown>> }>;
+        }
+      ).modules ?? [];
+      const modulesWithStatus = await Promise.all(
+        modulesRaw.map(async (m) => ({
           ...m,
-          lessons: m.lessons?.map((l) => {
-            if (!Array.isArray(l.quiz_questions)) return l;
-            return {
-              ...l,
-              quiz_questions: (l.quiz_questions as Array<Record<string, unknown>>).map(
-                ({ correct_option_id, ...rest }) => rest
-              ),
-            };
-          }),
-        })),
-      } as typeof data;
+          lessons: await Promise.all(
+            (m.lessons ?? []).map(async (l) => {
+              if (l.lesson_type !== "quiz") return l;
+              const quizStatus = await getQuizStatus(
+                supabase,
+                user.id,
+                l.id as string,
+                l.max_attempts as number | null
+              );
+              return {
+                ...l,
+                quiz_questions: Array.isArray(l.quiz_questions)
+                  ? (l.quiz_questions as Array<Record<string, unknown>>).map(
+                      ({ correct_option_id, ...rest }) => rest
+                    )
+                  : l.quiz_questions,
+                quiz_status: quizStatus,
+              };
+            })
+          ),
+        }))
+      );
+      responseData = { ...data, modules: modulesWithStatus } as typeof data;
     }
 
     return jsonResponse({ ...responseData, ...extra });

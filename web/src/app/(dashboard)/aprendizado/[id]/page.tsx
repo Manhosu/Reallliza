@@ -49,6 +49,14 @@ interface Lesson {
   attachment_name: string | null;
   content_md: string | null;
   quiz_questions: QuizQuestion[] | null;
+  max_attempts: number | null;
+  retest_price_cents: number | null;
+  quiz_status: {
+    attempts_used: number;
+    passed: boolean;
+    exhausted: boolean;
+    retest_unlocked: boolean;
+  } | null;
   duration_sec: number | null;
   order_index: number;
   is_required: boolean;
@@ -113,12 +121,15 @@ export default function AprendizadoDetailPage({
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [completing, setCompleting] = useState(false);
   const [buying, setBuying] = useState(false);
+  const [buyingRetest, setBuyingRetest] = useState(false);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
   const [quizSubmitting, setQuizSubmitting] = useState(false);
   const [quizResult, setQuizResult] = useState<{
     score: number;
     passed: boolean;
     attempts_remaining: number | null;
+    requires_retest_payment?: boolean;
+    retest_price_cents?: number | null;
   } | null>(null);
   // Libera "Marcar como concluída" só depois que a aula foi de fato
   // consumida: vídeo até o fim, pdf/anexo abertos, ou um tempo mínimo pra
@@ -222,6 +233,25 @@ export default function AprendizadoDetailPage({
     }
   }
 
+  async function handleBuyRetest() {
+    if (!activeLesson) return;
+    setBuyingRetest(true);
+    try {
+      const result = await apiClient.post<{ checkout_url: string | null; manual: boolean }>(
+        `/course-lessons/${activeLesson.id}/retest-purchase`
+      );
+      if (result.checkout_url) {
+        window.location.href = result.checkout_url;
+      } else {
+        toast.success("Reteste registrado. Aguarde a confirmação do pagamento.");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao iniciar o reteste");
+    } finally {
+      setBuyingRetest(false);
+    }
+  }
+
   function isCompleted(lessonId: string): boolean {
     return !!course?.progress?.find(
       (p) => p.lesson_id === lessonId && p.completed_at
@@ -244,6 +274,32 @@ export default function AprendizadoDetailPage({
     setQuizResult(null);
   }
 
+  // Prioriza o resultado da última submissão desta sessão (mais fresco);
+  // sem isso cai pro quiz_status persistido, que é o que sobra depois de
+  // recarregar a página — sem isso o aluno só descobria que esgotou as
+  // tentativas ao tentar enviar de novo.
+  function getQuizBlockInfo(lesson: Lesson) {
+    if (quizResult) {
+      return {
+        passed: quizResult.passed,
+        blocked: !quizResult.passed && quizResult.attempts_remaining === 0,
+        retestUnlocked: false,
+        requiresPayment: !!quizResult.requires_retest_payment,
+        priceCents: quizResult.retest_price_cents ?? lesson.retest_price_cents ?? null,
+      };
+    }
+    const s = lesson.quiz_status;
+    const blocked = s?.exhausted ?? false;
+    const retestUnlocked = s?.retest_unlocked ?? false;
+    return {
+      passed: s?.passed ?? false,
+      blocked,
+      retestUnlocked,
+      requiresPayment: blocked && !retestUnlocked && !!lesson.retest_price_cents,
+      priceCents: lesson.retest_price_cents ?? null,
+    };
+  }
+
   async function handleQuizSubmit() {
     if (!activeLesson) return;
     setQuizSubmitting(true);
@@ -252,6 +308,8 @@ export default function AprendizadoDetailPage({
         score: number;
         passed: boolean;
         attempts_remaining: number | null;
+        requires_retest_payment: boolean;
+        retest_price_cents: number | null;
         completed: boolean;
       }>(`/course-lessons/${activeLesson.id}/quiz-attempt`, { answers: quizAnswers });
       setQuizResult(result);
@@ -477,41 +535,70 @@ export default function AprendizadoDetailPage({
                         </div>
                       ))}
 
-                      {quizResult && (
-                        <div
-                          className={cn(
-                            "rounded-lg p-3 text-sm font-medium",
-                            quizResult.passed
-                              ? "bg-green-500/10 text-green-700 dark:text-green-300"
-                              : "bg-destructive/10 text-destructive"
-                          )}
-                        >
-                          {quizResult.passed
-                            ? `Aprovado com ${quizResult.score}%!`
-                            : `Reprovado com ${quizResult.score}%.` +
-                              (quizResult.attempts_remaining === 0
-                                ? " Sem mais tentativas."
-                                : quizResult.attempts_remaining != null
-                                  ? ` Tentativas restantes: ${quizResult.attempts_remaining}.`
-                                  : "")}
-                        </div>
-                      )}
+                      {(() => {
+                        const block = getQuizBlockInfo(activeLesson);
+                        return (
+                          <>
+                            {quizResult && (
+                              <div
+                                className={cn(
+                                  "rounded-lg p-3 text-sm font-medium",
+                                  quizResult.passed
+                                    ? "bg-green-500/10 text-green-700 dark:text-green-300"
+                                    : "bg-destructive/10 text-destructive"
+                                )}
+                              >
+                                {quizResult.passed
+                                  ? `Aprovado com ${quizResult.score}%!`
+                                  : `Reprovado com ${quizResult.score}%.` +
+                                    (quizResult.attempts_remaining === 0
+                                      ? " Sem mais tentativas."
+                                      : quizResult.attempts_remaining != null
+                                        ? ` Tentativas restantes: ${quizResult.attempts_remaining}.`
+                                        : "")}
+                              </div>
+                            )}
 
-                      {!quizResult?.passed && (
-                        <div className="flex justify-end">
-                          <Button
-                            onClick={handleQuizSubmit}
-                            isLoading={quizSubmitting}
-                            disabled={
-                              (activeLesson.quiz_questions?.length ?? 0) === 0 ||
-                              (activeLesson.quiz_questions ?? []).some((q) => !quizAnswers[q.id]) ||
-                              quizResult?.attempts_remaining === 0
-                            }
-                          >
-                            Enviar respostas
-                          </Button>
-                        </div>
-                      )}
+                            {!quizResult && block.blocked && !block.retestUnlocked && (
+                              <div className="rounded-lg bg-destructive/10 p-3 text-sm font-medium text-destructive">
+                                Você atingiu o número máximo de tentativas sem ser aprovado.
+                              </div>
+                            )}
+
+                            {block.blocked && block.retestUnlocked && (
+                              <div className="rounded-lg bg-green-500/10 p-3 text-sm font-medium text-green-700 dark:text-green-300">
+                                Reteste pago confirmado — envie suas respostas.
+                              </div>
+                            )}
+
+                            {block.requiresPayment && !block.retestUnlocked ? (
+                              <div className="flex justify-end">
+                                <Button onClick={handleBuyRetest} isLoading={buyingRetest}>
+                                  Realizar Reteste — R$ {((block.priceCents ?? 0) / 100).toFixed(2)}
+                                </Button>
+                              </div>
+                            ) : (
+                              !block.passed && (
+                                <div className="flex justify-end">
+                                  <Button
+                                    onClick={handleQuizSubmit}
+                                    isLoading={quizSubmitting}
+                                    disabled={
+                                      (activeLesson.quiz_questions?.length ?? 0) === 0 ||
+                                      (activeLesson.quiz_questions ?? []).some(
+                                        (q) => !quizAnswers[q.id]
+                                      ) ||
+                                      (block.blocked && !block.retestUnlocked)
+                                    }
+                                  >
+                                    Enviar respostas
+                                  </Button>
+                                </div>
+                              )
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   ))}
 

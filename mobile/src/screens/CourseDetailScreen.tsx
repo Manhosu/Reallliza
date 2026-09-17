@@ -67,6 +67,14 @@ interface Lesson {
   attachment_name: string | null;
   content_md: string | null;
   quiz_questions: QuizQuestion[] | null;
+  max_attempts: number | null;
+  retest_price_cents: number | null;
+  quiz_status: {
+    attempts_used: number;
+    passed: boolean;
+    exhausted: boolean;
+    retest_unlocked: boolean;
+  } | null;
   duration_sec: number | null;
   order_index: number;
   is_required: boolean;
@@ -123,6 +131,7 @@ export function CourseDetailScreen() {
   const [completing, setCompleting] = useState(false);
   const [downloadingCert, setDownloadingCert] = useState(false);
   const [buying, setBuying] = useState(false);
+  const [buyingRetest, setBuyingRetest] = useState(false);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
   const [quizSubmitting, setQuizSubmitting] = useState(false);
   // Libera o botao "Concluir" so depois que a aula foi de fato consumida:
@@ -132,6 +141,8 @@ export function CourseDetailScreen() {
     score: number;
     passed: boolean;
     attempts_remaining: number | null;
+    requires_retest_payment?: boolean;
+    retest_price_cents?: number | null;
   } | null>(null);
 
   const load = useCallback(async () => {
@@ -224,6 +235,27 @@ export function CourseDetailScreen() {
     }
   }
 
+  async function handleBuyRetest() {
+    if (!activeLesson) return;
+    setBuyingRetest(true);
+    try {
+      const result = await apiClient.post<{ checkout_url: string | null }>(
+        `/course-lessons/${activeLesson.id}/retest-purchase`,
+        {},
+      );
+      if (result.checkout_url) {
+        await Linking.openURL(result.checkout_url);
+      } else {
+        Alert.alert('Reteste registrado', 'Aguarde a confirmação do pagamento.');
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Erro ao iniciar o reteste';
+      Alert.alert('Erro', msg);
+    } finally {
+      setBuyingRetest(false);
+    }
+  }
+
   function isCompleted(lessonId: string): boolean {
     return !!course?.progress?.find((p) => p.lesson_id === lessonId && p.completed_at);
   }
@@ -244,6 +276,32 @@ export function CourseDetailScreen() {
     setQuizResult(null);
   }
 
+  // Prioriza o resultado da ultima submissao desta sessao (mais fresco);
+  // sem isso cai pro quiz_status persistido, que e' o que sobra depois de
+  // reabrir o app -- sem isso o aluno so descobria que esgotou as
+  // tentativas ao tentar enviar de novo.
+  function getQuizBlockInfo(lesson: Lesson) {
+    if (quizResult) {
+      return {
+        passed: quizResult.passed,
+        blocked: !quizResult.passed && quizResult.attempts_remaining === 0,
+        retestUnlocked: false,
+        requiresPayment: !!quizResult.requires_retest_payment,
+        priceCents: quizResult.retest_price_cents ?? lesson.retest_price_cents ?? null,
+      };
+    }
+    const s = lesson.quiz_status;
+    const blocked = s?.exhausted ?? false;
+    const retestUnlocked = s?.retest_unlocked ?? false;
+    return {
+      passed: s?.passed ?? false,
+      blocked,
+      retestUnlocked,
+      requiresPayment: blocked && !retestUnlocked && !!lesson.retest_price_cents,
+      priceCents: lesson.retest_price_cents ?? null,
+    };
+  }
+
   async function handleQuizSubmit() {
     if (!activeLesson) return;
     setQuizSubmitting(true);
@@ -252,6 +310,8 @@ export function CourseDetailScreen() {
         score: number;
         passed: boolean;
         attempts_remaining: number | null;
+        requires_retest_payment: boolean;
+        retest_price_cents: number | null;
         completed: boolean;
       }>(`/course-lessons/${activeLesson.id}/quiz-attempt`, { answers: quizAnswers });
       setQuizResult(result);
@@ -522,24 +582,68 @@ export function CourseDetailScreen() {
                     </View>
                   )}
 
-                  {!quizResult?.passed && (
-                    <TouchableOpacity
-                      style={styles.completeButton}
-                      onPress={handleQuizSubmit}
-                      disabled={
-                        quizSubmitting ||
-                        (activeLesson.quiz_questions?.length ?? 0) === 0 ||
-                        (activeLesson.quiz_questions ?? []).some((q) => !quizAnswers[q.id]) ||
-                        quizResult?.attempts_remaining === 0
-                      }
-                    >
-                      {quizSubmitting ? (
-                        <ActivityIndicator size="small" color={colors.black} />
-                      ) : (
-                        <Text style={styles.completeButtonText}>Enviar respostas</Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
+                  {(() => {
+                    const block = getQuizBlockInfo(activeLesson);
+                    if (!quizResult && block.blocked && !block.retestUnlocked) {
+                      return (
+                        <View style={[styles.quizResultBox, { backgroundColor: colors.danger + '15' }]}>
+                          <Text style={[styles.quizResultText, { color: colors.danger }]}>
+                            Você atingiu o número máximo de tentativas sem ser aprovado.
+                          </Text>
+                        </View>
+                      );
+                    }
+                    if (block.blocked && block.retestUnlocked) {
+                      return (
+                        <View style={[styles.quizResultBox, { backgroundColor: colors.success + '15' }]}>
+                          <Text style={[styles.quizResultText, { color: colors.success }]}>
+                            Reteste pago confirmado — envie suas respostas.
+                          </Text>
+                        </View>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {(() => {
+                    const block = getQuizBlockInfo(activeLesson);
+                    if (block.requiresPayment && !block.retestUnlocked) {
+                      return (
+                        <TouchableOpacity
+                          style={styles.completeButton}
+                          onPress={handleBuyRetest}
+                          disabled={buyingRetest}
+                        >
+                          {buyingRetest ? (
+                            <ActivityIndicator size="small" color={colors.black} />
+                          ) : (
+                            <Text style={styles.completeButtonText}>
+                              Realizar Reteste — R$ {((block.priceCents ?? 0) / 100).toFixed(2)}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    }
+                    if (block.passed) return null;
+                    return (
+                      <TouchableOpacity
+                        style={styles.completeButton}
+                        onPress={handleQuizSubmit}
+                        disabled={
+                          quizSubmitting ||
+                          (activeLesson.quiz_questions?.length ?? 0) === 0 ||
+                          (activeLesson.quiz_questions ?? []).some((q) => !quizAnswers[q.id]) ||
+                          (block.blocked && !block.retestUnlocked)
+                        }
+                      >
+                        {quizSubmitting ? (
+                          <ActivityIndicator size="small" color={colors.black} />
+                        ) : (
+                          <Text style={styles.completeButtonText}>Enviar respostas</Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })()}
                 </View>
               ))}
 

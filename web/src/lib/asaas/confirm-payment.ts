@@ -84,28 +84,60 @@ export async function confirmarPagamentoAsaas(
       .eq("id", externalReference)
       .maybeSingle();
 
-    if (!coursePurchase) {
+    if (coursePurchase) {
+      if (coursePurchase.status !== "pending") {
+        return { ok: true, jaConfirmado: true };
+      }
+
+      await supabase
+        .from("course_purchases")
+        .update({ status: "paid", paid_at: new Date().toISOString() })
+        .eq("id", coursePurchase.id);
+
+      logAudit({
+        userId: SYSTEM_USER_ID,
+        action: "course_purchase.paid_webhook",
+        entityType: "course_purchase",
+        entityId: coursePurchase.id,
+        newData: { source: "asaas" },
+      });
+
+      // Sem "liberar acesso" separado: hasAccessToCourse já lê o status
+      // pago na hora que o usuário voltar pra tela do curso.
+      return { ok: true, jaConfirmado: false };
+    }
+
+    // Nem orçamento, campanha ou compra de curso — tenta reteste pago de
+    // quiz (Jéssica, 17/09). Mesmo motivo dos anteriores: é por aula/aluno,
+    // não cabe em `payments`.
+    const { data: retestPurchase } = await supabase
+      .from("quiz_retest_purchases")
+      .select("id, status")
+      .eq("id", externalReference)
+      .maybeSingle();
+
+    if (!retestPurchase) {
       return { ok: false, motivo: "Pagamento não encontrado" };
     }
-    if (coursePurchase.status !== "pending") {
+    if (retestPurchase.status !== "pending") {
       return { ok: true, jaConfirmado: true };
     }
 
     await supabase
-      .from("course_purchases")
+      .from("quiz_retest_purchases")
       .update({ status: "paid", paid_at: new Date().toISOString() })
-      .eq("id", coursePurchase.id);
+      .eq("id", retestPurchase.id);
 
     logAudit({
       userId: SYSTEM_USER_ID,
-      action: "course_purchase.paid_webhook",
-      entityType: "course_purchase",
-      entityId: coursePurchase.id,
+      action: "quiz_retest_purchase.paid_webhook",
+      entityType: "quiz_retest_purchase",
+      entityId: retestPurchase.id,
       newData: { source: "asaas" },
     });
 
-    // Sem "liberar acesso" separado: hasAccessToCourse já lê o status
-    // pago na hora que o usuário voltar pra tela do curso.
+    // Sem "consumir" aqui: a tentativa extra só é marcada como usada
+    // quando o aluno de fato responde de novo (quiz-attempt/route.ts).
     return { ok: true, jaConfirmado: false };
   }
 
