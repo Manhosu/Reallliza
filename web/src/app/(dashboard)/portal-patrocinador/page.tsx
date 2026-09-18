@@ -286,10 +286,13 @@ export default function PortalDoPatrocinador() {
             const post = c.posts?.[0];
             const podeEditar = !post || post.status === "draft";
             // Karol (18/09): patrocínio vencido (cron encerra sozinho, ver
-            // migration 095) ou encerrado manualmente pelo admin — mesmo
-            // status de post ("paused"), mas rótulo mais claro pra quem
-            // patrocina, com o caminho pra renovar do lado.
-            const patrocinioEncerrado = post?.status === "paused" && c.status === "ended";
+            // migration 095) ou encerrado manualmente pelo admin. A peça
+            // pode terminar em "paused" (cron novo, por campanha) OU
+            // "archived" (regra antiga, por unpublish_at da própria peça)
+            // — as duas contam como encerrado aqui; só olhar "paused"
+            // deixava a maioria das publicações vencidas sem nenhum botão.
+            const patrocinioEncerrado =
+              (post?.status === "paused" || post?.status === "archived") && c.status === "ended";
             return (
               <Card key={c.id}>
                 <CardContent className="flex flex-wrap items-start justify-between gap-3 p-4">
@@ -317,7 +320,14 @@ export default function PortalDoPatrocinador() {
                     )}
                   </div>
                   <div className="flex gap-2">
-                    {post?.status === "published" && (
+                    {/* Karol (18/09): "aperto na publicação e não aparecem os
+                        comentários" — o painel de desempenho (com os
+                        comentários dentro) só abria pra post "published".
+                        Uma publicação que já rodou e encerrou tem tanto ou
+                        mais valor rever (é o resultado final da campanha)
+                        quanto uma ainda no ar — só rascunho/agendada nunca
+                        tiveram engajamento nenhum pra mostrar. */}
+                    {post && post.status !== "draft" && post.status !== "scheduled" && (
                       <button
                         onClick={() => setVerDesempenhoDe({ id: post.id, title: post.title })}
                         className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
