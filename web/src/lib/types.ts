@@ -118,6 +118,8 @@ export interface Profile {
   documents_urls: string[] | null;
   pix_key: string | null;
   pix_key_type: PixKeyType | null;
+  is_homologated?: boolean;
+  uf?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { filtrarPorDisponibilidade } from "@/lib/quotes/homologado-availability";
 
 /**
  * Cria proposta broadcast pra homologados da UF alvo. Chamado tanto
@@ -21,15 +22,22 @@ export async function refanoutHomologadoProposal(
     offered_amount: number;
   }
 ): Promise<{ proposal_id: string | null; recipients: number }> {
-  // Jessica 27/07 D7: fallback pra address_state da OS se region_state
-  // nao veio da quote. Defesa em profundidade.
+  // Sempre busca a OS: além do fallback de UF (Jessica 27/07 D7), precisa
+  // da janela prevista (requested_date/time/days) pra cruzar com a
+  // disponibilidade configurada de cada homologado (Jéssica, 18/09).
+  const { data: osJanela } = await supabase
+    .from("service_orders")
+    .select("address_state, requested_date, requested_time, requested_days")
+    .eq("id", input.service_order_id)
+    .maybeSingle();
+  const janela = osJanela as {
+    address_state: string | null;
+    requested_date: string | null;
+    requested_time: string | null;
+    requested_days: number | null;
+  } | null;
   if (!input.target_state) {
-    const { data: os } = await supabase
-      .from("service_orders")
-      .select("address_state")
-      .eq("id", input.service_order_id)
-      .maybeSingle();
-    input.target_state = (os as { address_state: string | null } | null)?.address_state ?? null;
+    input.target_state = janela?.address_state ?? null;
   }
   if (!input.target_state) {
     console.warn(
@@ -69,21 +77,34 @@ export async function refanoutHomologadoProposal(
   // Jessica 27/07 D7: inclui homologados PJ cadastrados como role='partner'
   const { data: allHomologados } = await supabase
     .from("profiles")
-    .select("id, full_name, operating_region, role")
+    .select("id, full_name, operating_region, role, uf")
     .in("role", ["technician", "partner"])
     .eq("status", "active")
     .eq("is_homologated", true);
 
-  const list = (
+  const porRegiao = (
     (allHomologados as Array<{
       id: string;
       full_name: string;
       operating_region: string | null;
       role: string;
+      uf: string | null;
     }>) || []
   ).filter((h) => {
     const region = (h.operating_region || "").toUpperCase().trim();
     return !region || region.includes(uf);
+  });
+
+  // Disponibilidade de trabalho (Jéssica, 18/09): sábado/domingo/feriado/
+  // noturno/interestadual configurados no perfil, cruzados com a janela
+  // prevista da OS e a agenda atual. Sem requested_date (OS antiga, ou
+  // criada antes desta coluna existir), não filtra nada — mesma tolerância
+  // já aplicada quando operating_region vem vazio.
+  const list = await filtrarPorDisponibilidade(supabase, porRegiao, {
+    requested_date: janela?.requested_date ?? null,
+    requested_time: janela?.requested_time ?? null,
+    requested_days: janela?.requested_days ?? null,
+    target_state: uf,
   });
   if (list.length === 0) {
     console.warn(

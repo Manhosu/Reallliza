@@ -4,6 +4,7 @@ import { authenticateRequest, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { createScheduleFromOs } from "@/lib/api-helpers/schedules";
+import { filtrarPorDisponibilidade } from "@/lib/quotes/homologado-availability";
 
 /**
  * POST /api/proposals/[id]/respond
@@ -62,17 +63,46 @@ export async function POST(
       }
 
       // Verifica região se proposta tem target_state
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("operating_region, uf")
+        .eq("id", user.id)
+        .maybeSingle();
       if (proposal.target_state) {
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("operating_region")
-          .eq("id", user.id)
-          .maybeSingle();
         const region = (profileData?.operating_region || "").toUpperCase();
         if (region && !region.includes(proposal.target_state)) {
           throw new AuthError(
             403,
             `Esta proposta é para a região ${proposal.target_state} — sua região é ${profileData?.operating_region || "não informada"}`
+          );
+        }
+      }
+
+      // Disponibilidade de trabalho (Jéssica, 18/09): recheca no aceite,
+      // igual à região acima — a lista só mostra broadcasts pendentes pra
+      // todo mundo (sem filtro de disponibilidade na listagem), então esta
+      // é a barreira real contra aceitar um período que o próprio
+      // homologado já disse que não trabalha.
+      if (action === "accept") {
+        const { data: osJanela } = await supabase
+          .from("service_orders")
+          .select("requested_date, requested_time, requested_days")
+          .eq("id", proposal.service_order_id)
+          .maybeSingle();
+        const elegiveis = await filtrarPorDisponibilidade(
+          supabase,
+          [{ id: user.id, uf: profileData?.uf ?? null }],
+          {
+            requested_date: (osJanela?.requested_date as string | null) ?? null,
+            requested_time: (osJanela?.requested_time as string | null) ?? null,
+            requested_days: (osJanela?.requested_days as number | null) ?? null,
+            target_state: proposal.target_state ?? null,
+          }
+        );
+        if (elegiveis.length === 0) {
+          throw new AuthError(
+            403,
+            "Você configurou sua disponibilidade de trabalho de um jeito que não cobre o período desta proposta (fim de semana, feriado, horário noturno ou fora do seu estado)."
           );
         }
       }

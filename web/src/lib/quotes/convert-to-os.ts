@@ -140,6 +140,16 @@ export async function convertQuoteToServiceOrder(
     ? quote.project_files
     : [];
 
+  // Janela prevista de execução, copiada da quote — sem isso, nada fora do
+  // fluxo que criou a quote sabe "quando" a OS precisa acontecer (não tem
+  // FK de service_orders de volta pra quotes). Alimenta o cruzamento de
+  // disponibilidade do homologado (Jéssica, 18/09) sem precisar voltar na
+  // quote em cada checagem.
+  const requestedDate = (scheduleStart ?? (quote.service_date as string | null)) || null;
+  const requestedDays = Number(quote.total_days) > 0
+    ? Number(quote.total_days)
+    : Math.max(1, Math.ceil(Number(quote.total_hours ?? 8) / 8));
+
   const { data: os, error: osErr } = await supabase
     .from("service_orders")
     .insert({
@@ -147,6 +157,9 @@ export async function convertQuoteToServiceOrder(
       status: initialStatus,
       partner_id: quote.partner_id,
       team_id: autoAssignedTeamId,
+      requested_date: requestedDate,
+      requested_time: (quote.service_time as string | null) ?? null,
+      requested_days: requestedDate ? requestedDays : null,
       client_name: quote.client_name,
       client_phone: quote.client_phone,
       client_email: quote.client_email,

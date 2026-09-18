@@ -169,6 +169,10 @@ const ALLOWED_FIELDS = [
   "address",
   "specialties",
   "specialty_ratings",
+  // Estado do próprio homologado (Jéssica, 18/09) — usado pelo filtro
+  // "Trabalho interestadual" da disponibilidade de trabalho, distinto de
+  // `operating_region` (que pode listar várias UFs de atuação).
+  "uf",
 ];
 
 export async function PATCH(request: NextRequest) {
@@ -180,7 +184,10 @@ export async function PATCH(request: NextRequest) {
     const updateData: Record<string, unknown> = {};
     for (const field of ALLOWED_FIELDS) {
       if (body[field] !== undefined) {
-        updateData[field] = body[field];
+        updateData[field] =
+          field === "uf" && typeof body[field] === "string"
+            ? body[field].toUpperCase().slice(0, 2) || null
+            : body[field];
       }
     }
 

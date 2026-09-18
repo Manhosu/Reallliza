@@ -5,6 +5,7 @@ import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { createNotification } from "@/lib/api-helpers/notifications";
 import { loadRatingsAverages, rankCandidates } from "@/lib/proposals/ranking";
+import { filtrarPorDisponibilidade } from "@/lib/quotes/homologado-availability";
 
 // Campos sensíveis do cliente que só ficam visíveis após o aceite.
 const CLIENT_SENSITIVE_FIELDS = [
@@ -345,7 +346,9 @@ export async function POST(request: NextRequest) {
       // service_orders do passo de validação acima quando possível.
       const { data: soFull } = await supabase
         .from("service_orders")
-        .select("geo_lat, geo_lng, address_state, external_metadata")
+        .select(
+          "geo_lat, geo_lng, address_state, external_metadata, requested_date, requested_time, requested_days"
+        )
         .eq("id", service_order_id)
         .maybeSingle();
 
@@ -366,15 +369,25 @@ export async function POST(request: NextRequest) {
           const { data: rawCandidates } = await supabase
             .from("profiles")
             .select(
-              "id, full_name, operating_region, specialties, updated_at, level"
+              "id, full_name, operating_region, specialties, updated_at, level, uf"
             )
             .in("role", ["technician", "partner"])
             .eq("status", "active");
 
-          const filtered = (rawCandidates || []).filter((p) => {
+          const porRegiao = (rawCandidates || []).filter((p) => {
             if (!targetUF) return true;
             const region = (p.operating_region || "").toUpperCase();
             return !region || region.includes(targetUF);
+          });
+
+          // Disponibilidade de trabalho (Jéssica, 18/09) — mesmo cruzamento
+          // do fanout automático, aplicado aqui pro broadcast manual do
+          // admin não notificar quem não pode trabalhar naquele período.
+          const filtered = await filtrarPorDisponibilidade(supabase, porRegiao, {
+            requested_date: (soFull?.requested_date as string | null) ?? null,
+            requested_time: (soFull?.requested_time as string | null) ?? null,
+            requested_days: (soFull?.requested_days as number | null) ?? null,
+            target_state: targetUF || null,
           });
 
           if (filtered.length === 0) return;

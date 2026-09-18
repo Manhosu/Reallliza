@@ -12,6 +12,7 @@ import {
   EyeOff,
   Save,
   Settings,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,6 +105,15 @@ export default function ConfiguracoesPage() {
   const [notifyPush, setNotifyPush] = useState(true);
   const [notifyInApp, setNotifyInApp] = useState(true);
 
+  // Disponibilidade de trabalho (só homologado) — Jéssica 18/09
+  const [homeUf, setHomeUf] = useState("");
+  const [worksSaturday, setWorksSaturday] = useState(true);
+  const [worksSunday, setWorksSunday] = useState(true);
+  const [worksHolidays, setWorksHolidays] = useState(true);
+  const [worksAfterHours, setWorksAfterHours] = useState(true);
+  const [worksInterstate, setWorksInterstate] = useState(true);
+  const [savingAvailability, setSavingAvailability] = useState(false);
+
   // Security state
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -133,6 +143,48 @@ export default function ConfiguracoesPage() {
     }, 800);
     return () => clearTimeout(timer);
   }, [user]);
+
+  useEffect(() => {
+    if (!user?.is_homologated) return;
+    setHomeUf(user.uf ?? "");
+    apiClient
+      .get<{
+        works_saturday: boolean;
+        works_sunday: boolean;
+        works_holidays: boolean;
+        works_after_hours: boolean;
+        works_interstate: boolean;
+      }>("/profile/availability")
+      .then((d) => {
+        setWorksSaturday(d.works_saturday);
+        setWorksSunday(d.works_sunday);
+        setWorksHolidays(d.works_holidays);
+        setWorksAfterHours(d.works_after_hours);
+        setWorksInterstate(d.works_interstate);
+      })
+      .catch(() => {});
+  }, [user]);
+
+  async function handleSaveAvailability() {
+    setSavingAvailability(true);
+    try {
+      await Promise.all([
+        apiClient.patch("/profile/availability", {
+          works_saturday: worksSaturday,
+          works_sunday: worksSunday,
+          works_holidays: worksHolidays,
+          works_after_hours: worksAfterHours,
+          works_interstate: worksInterstate,
+        }),
+        homeUf !== (user?.uf ?? "") ? apiClient.patch("/profile/me", { uf: homeUf }) : null,
+      ]);
+      toast.success("Disponibilidade atualizada");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar disponibilidade");
+    } finally {
+      setSavingAvailability(false);
+    }
+  }
 
   const handleSave = async () => {
     // Validate passwords if trying to change
@@ -277,6 +329,80 @@ export default function ConfiguracoesPage() {
               </CardContent>
             </Card>
           </motion.div>
+
+          {/* ============================== DISPONIBILIDADE DE TRABALHO (só homologado) ============================== */}
+          {user?.is_homologated && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15, duration: 0.4 }}
+            >
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <CalendarClock className="h-5 w-5 text-primary" />
+                    Disponibilidade de Trabalho
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <p className="px-3 text-xs text-muted-foreground">
+                    Define quando você aceita trabalhar. Uma agenda vazia não quer dizer disponível —
+                    desative aqui o que você não faz, e o sistema só te oferece propostas que cabem no seu
+                    período. Alterar isto não afeta nenhuma OS que você já aceitou, só vale pra propostas novas.
+                  </p>
+
+                  <ToggleSwitch
+                    checked={worksSaturday}
+                    onChange={setWorksSaturday}
+                    label="Trabalho aos sábados"
+                  />
+                  <ToggleSwitch
+                    checked={worksSunday}
+                    onChange={setWorksSunday}
+                    label="Trabalho aos domingos"
+                  />
+                  <ToggleSwitch
+                    checked={worksHolidays}
+                    onChange={setWorksHolidays}
+                    label="Trabalho em feriados"
+                  />
+                  <ToggleSwitch
+                    checked={worksAfterHours}
+                    onChange={setWorksAfterHours}
+                    label="Trabalho fora do horário comercial / noturno"
+                  />
+                  <ToggleSwitch
+                    checked={worksInterstate}
+                    onChange={setWorksInterstate}
+                    label="Trabalho interestadual (fora do meu estado)"
+                  />
+
+                  <div className="flex items-center justify-between gap-3 rounded-xl p-3">
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-medium">Meu estado</p>
+                      <p className="text-xs text-muted-foreground">
+                        Necessário pra filtrar propostas interestaduais corretamente.
+                      </p>
+                    </div>
+                    <Input
+                      value={homeUf}
+                      onChange={(e) => setHomeUf(e.target.value.toUpperCase().slice(0, 2))}
+                      placeholder="Ex: PB"
+                      className="w-20 text-center uppercase"
+                      maxLength={2}
+                    />
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <Button size="sm" onClick={handleSaveAvailability} isLoading={savingAvailability}>
+                      <Save className="h-4 w-4" />
+                      Salvar disponibilidade
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
 
           {/* ============================== PREFERENCIAS ============================== */}
           <motion.div
