@@ -10,7 +10,7 @@ import { authenticateRequest, AuthError } from "@/lib/api-helpers/auth";
 import { errorResponse } from "@/lib/api-helpers/response";
 
 const BODY_BG = "#F8F7F5";
-const HEADER_BG = "#171717";
+const HEADER_BG = "#0C0C0C";
 const TEXT_DARK = "#1F2937";
 
 // Dimensões da arte de referência (Jéssica, 17/09) usada como fundo do PDF —
@@ -28,8 +28,8 @@ function getBaseUrl(request: NextRequest): string {
   return `${proto}://${host}`;
 }
 
-function findTemplatePath(): string | null {
-  const p = path.join(process.cwd(), "public/certificate-template.jpg");
+function findAsset(name: string): string | null {
+  const p = path.join(process.cwd(), "public", name);
   try {
     if (fs.existsSync(p)) return p;
   } catch {
@@ -59,9 +59,17 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
  * modelo aprovado — e só cobre+redesenha os campos que variam por aluno
  * (nome, curso, carga horária, data, aproveitamento, QR, código). A frase
  * "Pessoas mais preparadas / Lojas mais fortes" do canto superior direito
- * foi removida a pedido, sem substituição. A assinatura (imagem + nome +
- * cargo) só é sobrescrita se algo estiver configurado em Configurações
- * Globais — sem configuração, mantém a arte original tal como está.
+ * foi removida a pedido, sem substituição.
+ *
+ * Ajustes de 18/09: a arte original tinha "REALLLIZA" com 3 L's no logo do
+ * cabeçalho — cobre o lockup inteiro e desenha por cima a arte correta
+ * (public/logo-reallliza-header.png, 2 L's). A área da assinatura sempre é
+ * coberta e redesenhada (nome, cargo e a legenda "Realliza Revestimentos
+ * Vinílicos", corrigida do mesmo jeito) numa faixa generosa o bastante pra
+ * nunca deixar um traço da assinatura antiga da arte original vazar por
+ * baixo da nova, com uma linha desenhada por baixo da assinatura sempre
+ * presente. Sem nome/cargo configurados em Configurações Globais, cai pro
+ * padrão "Ricardo Sousa" / "Diretor" (o assinante original da arte).
  *
  * "Aproveitamento" = média das notas de quiz do curso. Sem quiz nenhum,
  * concluir já implica 100% do conteúdo obrigatório visto.
@@ -162,7 +170,7 @@ export async function GET(
       doc.rect(X(px), Y(py), W(pw), H(ph)).fill(color);
     };
 
-    const templatePath = findTemplatePath();
+    const templatePath = findAsset("certificate-template.jpg");
     if (templatePath) {
       doc.image(templatePath, 0, 0, { width: w, height: h });
     }
@@ -170,6 +178,19 @@ export async function GET(
     // Remove a frase "Pessoas mais preparadas / Lojas mais fortes" (Jéssica,
     // 17/09) — sem substituição, só limpa o canto do header.
     cover(1210, 15, 281, 140, HEADER_BG);
+
+    // Corrige "REALLLIZA" (3 L's, erro da arte original) pro logo de
+    // verdade (18/09) — troca o lockup inteiro (ícone + texto) pela arte
+    // correta em vez de tentar remendar só o texto. Para antes da faixa
+    // dourada (~y150) pra não apagar um pedaço dela.
+    cover(590, 0, 580, 148, HEADER_BG);
+    const logoPath = findAsset("logo-reallliza-header.png");
+    if (logoPath) {
+      doc.image(logoPath, X(600), Y(15), {
+        fit: [W(480), H(120)],
+        valign: "center",
+      });
+    }
 
     // Nome do aluno.
     cover(480, 385, 970, 68, BODY_BG);
@@ -225,33 +246,45 @@ export async function GET(
       }
     }
 
-    // Assinatura — só sobrescreve o que foi de fato configurado em
-    // Configurações Globais. Sem nada configurado, a arte original (Ricardo
-    // Sousa) permanece intacta. Trocando só o nome sem subir uma imagem
-    // nova, apaga o rabisco antigo em vez de deixar uma assinatura que não
-    // bate com o nome impresso embaixo.
-    if (signerName || signerTitle || signatureBuffer) {
-      cover(860, 740, 240, 65, BODY_BG);
-      if (signatureBuffer) {
-        try {
-          doc.image(signatureBuffer, X(870), Y(745), { fit: [W(220), H(55)], align: "center" });
-        } catch {
-          /* segue sem imagem se o buffer não for válido */
-        }
+    // Assinatura — sempre cobre e redesenha a faixa inteira (imagem + linha
+    // + nome + cargo + legenda), numa área generosa o bastante pra nunca
+    // deixar um traço da assinatura original vazar por baixo da nova (bug
+    // real: uma faixa curta demais deixava a ponta do "Ricardo Sousa"
+    // original visível ao lado da assinatura nova). A linha embaixo da
+    // assinatura é sempre desenhada, já que cobrir a área apaga a linha
+    // original junto.
+    const sigCenterX = 1010;
+    cover(sigCenterX - 200, 700, 400, 190, BODY_BG);
+    if (signatureBuffer) {
+      try {
+        doc.image(signatureBuffer, X(sigCenterX - 100), Y(710), {
+          fit: [W(200), H(55)],
+          align: "center",
+          valign: "center",
+        });
+      } catch {
+        /* segue só com a linha se o buffer não for uma imagem válida */
       }
     }
-    if (signerName || signerTitle) {
-      cover(840, 805, 360, 80, BODY_BG);
-      doc.font("Helvetica-Bold").fontSize(H(22)).fillColor(TEXT_DARK)
-        .text(signerName || "—", X(840), Y(812), { width: W(360), align: "center" });
-      doc.font("Helvetica").fontSize(H(18)).fillColor("#555555")
-        .text(signerTitle || "", X(840), Y(838), { width: W(360), align: "center" });
-      doc.font("Helvetica").fontSize(H(15)).fillColor("#999999")
-        .text("REALLLIZA Revestimentos Vinílicos", X(840), Y(862), {
-          width: W(360),
-          align: "center",
-        });
-    }
+    doc.lineWidth(0.75).strokeColor("#999999")
+      .moveTo(X(sigCenterX - 90), Y(800))
+      .lineTo(X(sigCenterX + 90), Y(800))
+      .stroke();
+    doc.font("Helvetica-Bold").fontSize(H(22)).fillColor(TEXT_DARK)
+      .text(signerName || "Ricardo Sousa", X(sigCenterX - 180), Y(806), {
+        width: W(360),
+        align: "center",
+      });
+    doc.font("Helvetica").fontSize(H(18)).fillColor("#555555")
+      .text(signerTitle || "Diretor", X(sigCenterX - 180), Y(832), {
+        width: W(360),
+        align: "center",
+      });
+    doc.font("Helvetica").fontSize(H(15)).fillColor("#999999")
+      .text("Realliza Revestimentos Vinílicos", X(sigCenterX - 180), Y(856), {
+        width: W(360),
+        align: "center",
+      });
 
     doc.end();
     const pdfBuffer = await done;
