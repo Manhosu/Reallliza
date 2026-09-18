@@ -3,6 +3,7 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
+import { resolverSponsorDoUsuario, postPertenceAoSponsor } from "@/lib/feed/sponsor-auth";
 
 /**
  * POST /api/feed/[id]/duplicate — copia uma publicação como rascunho.
@@ -14,6 +15,12 @@ import { logAudit } from "@/lib/api-helpers/audit";
  * contadores, agendamento, fixação e datas de publicação ficam para trás.
  * Herdar métrica de outra publicação é o tipo de erro que só se descobre na
  * reunião de resultado.
+ *
+ * Karol (18/09): também usada pelo botão "Patrocinar novamente" do Portal do
+ * Patrocinador, quando o patrocínio de uma publicação vence — por isso
+ * sponsor/parceiro também pode chamar, mas só na própria publicação, e a
+ * cópia SEMPRE nasce sem campaign_id/sponsor_id: precisa de uma campanha
+ * (e pagamento) novos, nunca herda o patrocínio vencido do original.
  */
 export async function POST(
   request: NextRequest,
@@ -21,7 +28,7 @@ export async function POST(
 ) {
   try {
     const user = await authenticateRequest(request);
-    checkRole(user, ["admin"]);
+    checkRole(user, ["admin", "sponsor", "partner"]);
     const { id } = await params;
     const supabase = getAdminClient();
 
@@ -32,6 +39,13 @@ export async function POST(
       .maybeSingle();
 
     if (!original) throw new AuthError(404, "Publicação não encontrada");
+
+    if (user.role !== "admin") {
+      const { sponsor_id } = await resolverSponsorDoUsuario(supabase, user.id);
+      if (!(await postPertenceAoSponsor(supabase, id, sponsor_id))) {
+        throw new AuthError(403, "Esta publicação não é sua");
+      }
+    }
 
     const {
       id: _id,
@@ -62,6 +76,8 @@ export async function POST(
       download_count: _downloads,
       lead_count: _leads,
       conversion_count: _conversoes,
+      campaign_id: campanhaOriginal,
+      sponsor_id: sponsorOriginal,
       ...herdado
     } = original as Record<string, unknown>;
 
@@ -70,8 +86,15 @@ export async function POST(
       .from("feed_posts")
       .insert({
         ...herdado,
+        // Sponsor/parceiro duplicando pra "Patrocinar novamente": a cópia
+        // nunca herda a campanha/patrocínio vencido, sempre precisa de um
+        // novo (ver POST /api/feed/campaigns com post_id). Admin duplicando
+        // conteúdo próprio mantém o vínculo, comportamento já existente.
+        ...(user.role === "admin"
+          ? { campaign_id: campanhaOriginal, sponsor_id: sponsorOriginal }
+          : {}),
         author_id: user.id,
-        title: `${titulo} (cópia)`,
+        title: user.role === "admin" ? `${titulo} (cópia)` : titulo,
         status: "draft",
         is_published: false,
         is_pinned: false,

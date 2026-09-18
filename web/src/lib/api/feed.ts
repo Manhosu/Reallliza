@@ -412,8 +412,9 @@ export const feedGestaoApi = {
   criarCampanha: (dados: Record<string, unknown>) =>
     apiClient.post<Campanha>("/feed/campaigns", dados),
   /** Cria a campanha e, no mesmo pedido, a primeira peça — o fluxo único do editor. */
-  criarCampanhaComPost: (dados: Record<string, unknown> & { post: EntradaDePublicacao }) =>
-    apiClient.post<Campanha & { post: FeedPost | null }>("/feed/campaigns", dados),
+  criarCampanhaComPost: (
+    dados: Record<string, unknown> & ({ post: EntradaDePublicacao } | { post_id: string })
+  ) => apiClient.post<Campanha & { post: FeedPost | null }>("/feed/campaigns", dados),
   atualizarCampanha: (id: string, dados: Record<string, unknown>) =>
     apiClient.patch<Campanha & { pecas_pausadas: number }>(`/feed/campaigns/${id}`, dados),
   removerCampanha: (id: string) =>

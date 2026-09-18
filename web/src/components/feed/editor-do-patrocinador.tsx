@@ -185,8 +185,12 @@ export function EditorDoPatrocinador({ aberto, post, onFechar, onSalvo, papel = 
 
       // Primeira vez: campanha e peça nascem juntas — o "criar publicação"
       // único que a Karol pediu, sem passar por uma tela de campanha à parte.
-      if (!idAtual && !campanhaVinculada) {
-        const criada = await feedGestaoApi.criarCampanhaComPost({
+      // Quando idAtual já existe (ex: "Patrocinar novamente" duplicou uma
+      // publicação anterior — ver PortalDoPatrocinador) mas ainda não tem
+      // campanha, cria a campanha vinculando o rascunho já existente em vez
+      // de criar um post do zero.
+      if (!campanhaVinculada) {
+        const dadosCampanha = {
           // Sponsor/parceiro: o servidor ignora e resolve pelo próprio login.
           // Admin: é o único jeito de dizer pra quem é a campanha.
           ...(papel === "admin" ? { sponsor_id: patrocinadorId } : {}),
@@ -195,16 +199,26 @@ export function EditorDoPatrocinador({ aberto, post, onFechar, onSalvo, papel = 
           coverage_scope: cobertura.coverage_scope,
           coverage_value: cobertura.coverage_value,
           duration_days: cobertura.duration_days,
-          post: payload,
-        });
-        if (!criada.post) throw new Error("A campanha foi criada, mas a publicação não.");
-        setIdCriado(criada.post.id);
+        };
+        const criada = idAtual
+          ? await feedGestaoApi.criarCampanhaComPost({ ...dadosCampanha, post_id: idAtual })
+          : await feedGestaoApi.criarCampanhaComPost({ ...dadosCampanha, post: payload });
+        if (!idAtual) {
+          if (!criada.post) throw new Error("A campanha foi criada, mas a publicação não.");
+          setIdCriado(criada.post.id);
+        }
         setCampanhaVinculada(criada);
+        const postId = idAtual ?? criada.post!.id;
+        if (idAtual) {
+          // Rascunho reaproveitado — salva os campos atuais do editor nele
+          // também, caso a pessoa tenha ajustado algo antes de vincular.
+          await feedApi.update(idAtual, payload);
+        }
         if (avisar) {
-          toast.success("Rascunho criado");
+          toast.success(idAtual ? "Publicação vinculada à campanha" : "Rascunho criado");
           onSalvo();
         }
-        return criada.post.id;
+        return postId;
       }
 
       if (campanhaVinculada) {

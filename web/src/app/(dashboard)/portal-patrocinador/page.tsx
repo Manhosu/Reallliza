@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, Megaphone, Pencil, Trash2, AlertTriangle,
   Eye, MousePointerClick, Users, Target, TrendingUp, Video,
-  Heart, MessageCircle, Share2, Bookmark, BarChart3,
+  Heart, MessageCircle, Share2, Bookmark, BarChart3, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -138,6 +138,22 @@ export default function PortalDoPatrocinador() {
       await carregar();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Não foi possível excluir");
+    }
+  }
+
+  // Karol (18/09): "Patrocinar novamente" — duplica o conteúdo (título,
+  // mídia, botões) como um rascunho novo, sem herdar a campanha vencida, e
+  // já abre no editor pra escolher abrangência/dias e pagar de novo.
+  const [patrocinandoNovamente, setPatrocinandoNovamente] = useState<string | null>(null);
+  async function patrocinarNovamente(postId: string) {
+    setPatrocinandoNovamente(postId);
+    try {
+      const copia = await feedApi.duplicate(postId);
+      await abrirEdicao(copia.id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível iniciar o novo patrocínio");
+    } finally {
+      setPatrocinandoNovamente(null);
     }
   }
 
@@ -269,6 +285,11 @@ export default function PortalDoPatrocinador() {
           {campanhas.map((c) => {
             const post = c.posts?.[0];
             const podeEditar = !post || post.status === "draft";
+            // Karol (18/09): patrocínio vencido (cron encerra sozinho, ver
+            // migration 095) ou encerrado manualmente pelo admin — mesmo
+            // status de post ("paused"), mas rótulo mais claro pra quem
+            // patrocina, com o caminho pra renovar do lado.
+            const patrocinioEncerrado = post?.status === "paused" && c.status === "ended";
             return (
               <Card key={c.id}>
                 <CardContent className="flex flex-wrap items-start justify-between gap-3 p-4">
@@ -277,7 +298,7 @@ export default function PortalDoPatrocinador() {
                       <h3 className="font-medium">{c.name}</h3>
                       {post && (
                         <span className={cn("rounded px-2 py-0.5 text-[11px] font-medium", SITUACAO_POST[post.status]?.cor)}>
-                          {SITUACAO_POST[post.status]?.rotulo}
+                          {patrocinioEncerrado ? "Patrocínio encerrado" : SITUACAO_POST[post.status]?.rotulo}
                         </span>
                       )}
                       <span className={cn("rounded px-2 py-0.5 text-[11px] font-medium", SITUACAO_PAGAMENTO[c.payment_status]?.cor)}>
@@ -321,6 +342,15 @@ export default function PortalDoPatrocinador() {
                           </button>
                         )}
                       </>
+                    )}
+                    {post && patrocinioEncerrado && (
+                      <button
+                        onClick={() => void patrocinarNovamente(post.id)}
+                        disabled={patrocinandoNovamente === post.id}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-60"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" /> Patrocinar novamente
+                      </button>
                     )}
                   </div>
                 </CardContent>

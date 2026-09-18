@@ -204,7 +204,32 @@ export async function POST(request: NextRequest) {
     });
 
     let post = null;
-    if (body.post && typeof body.post === "object") {
+    if (body.post_id && typeof body.post_id === "string") {
+      // Karol (18/09): "Patrocinar novamente" — reaproveita um rascunho já
+      // existente (duplicado de uma publicação cujo patrocínio venceu) em
+      // vez de criar um post do zero. Só vincula um rascunho que ainda não
+      // pertence a nenhuma campanha e que seja do próprio autor/patrocinador.
+      const { data: existente } = await supabase
+        .from("feed_posts")
+        .select("id, author_id, campaign_id")
+        .eq("id", body.post_id)
+        .maybeSingle();
+      if (!existente) throw new AuthError(404, "Publicação não encontrada");
+      if (existente.campaign_id) {
+        throw new AuthError(400, "Esta publicação já está vinculada a uma campanha");
+      }
+      if (user.role !== "admin" && existente.author_id !== user.id) {
+        throw new AuthError(403, "Esta publicação não é sua");
+      }
+      const { data: vinculado, error: vinculoErr } = await supabase
+        .from("feed_posts")
+        .update({ campaign_id: campanha.id, sponsor_id: sponsorId })
+        .eq("id", body.post_id)
+        .select("*")
+        .single();
+      if (vinculoErr) throw new Error(vinculoErr.message);
+      post = vinculado;
+    } else if (body.post && typeof body.post === "object") {
       const resultado = await criarPost(supabase, user.id, {
         ...body.post,
         campaign_id: campanha.id,
