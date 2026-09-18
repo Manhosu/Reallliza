@@ -5,6 +5,7 @@ import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { hasAccessToCourse } from "@/lib/courses/access";
 import { getQuizStatus } from "@/lib/courses/quiz-status";
+import { ASAAS_MIN_CHARGE_CENTS } from "@/lib/asaas/client";
 
 export async function GET(
   request: NextRequest,
@@ -103,6 +104,16 @@ export async function PATCH(
     if (body.category_id !== undefined) update.category_id = body.category_id || null;
     if (body.audience !== undefined) update.audience = body.audience;
     if (body.price_cents !== undefined) {
+      if (
+        typeof body.price_cents === "number" &&
+        body.price_cents > 0 &&
+        body.price_cents < ASAAS_MIN_CHARGE_CENTS
+      ) {
+        throw new AuthError(
+          400,
+          `O preço do curso precisa ser de pelo menos R$ ${(ASAAS_MIN_CHARGE_CENTS / 100).toFixed(2)} — valores menores são recusados no pagamento.`
+        );
+      }
       update.price_cents =
         typeof body.price_cents === "number" && body.price_cents > 0
           ? Math.round(body.price_cents)

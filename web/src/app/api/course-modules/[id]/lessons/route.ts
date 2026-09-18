@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { ASAAS_MIN_CHARGE_CENTS } from "@/lib/asaas/client";
 
 /**
  * POST /api/course-modules/[id]/lessons — cria aula. Apenas admin.
@@ -20,6 +21,16 @@ export async function POST(
     const lessonType = body.lesson_type ?? "video";
     if (!["video", "text", "quiz", "pdf", "image", "attachment"].includes(lessonType)) {
       throw new AuthError(400, "lesson_type invalido");
+    }
+    if (
+      typeof body.retest_price_cents === "number" &&
+      body.retest_price_cents > 0 &&
+      body.retest_price_cents < ASAAS_MIN_CHARGE_CENTS
+    ) {
+      throw new AuthError(
+        400,
+        `O preço do reteste precisa ser de pelo menos R$ ${(ASAAS_MIN_CHARGE_CENTS / 100).toFixed(2)} — valores menores são recusados no pagamento.`
+      );
     }
 
     const supabase = getAdminClient();

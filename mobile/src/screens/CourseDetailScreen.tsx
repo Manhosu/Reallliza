@@ -225,7 +225,9 @@ export function CourseDetailScreen() {
       if (result.checkout_url) {
         await Linking.openURL(result.checkout_url);
       } else {
-        Alert.alert('Compra registrada', 'Aguarde a liberação do acesso.');
+        // Sem link de pagamento pra abrir, não tem o que "aguardar" — dizer
+        // o contrário (Jéssica, 18/09) deixa o aluno achando que já pagou.
+        Alert.alert('Erro', 'Não foi possível gerar o link de pagamento agora. Tente novamente em instantes.');
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro ao iniciar compra';
@@ -246,7 +248,7 @@ export function CourseDetailScreen() {
       if (result.checkout_url) {
         await Linking.openURL(result.checkout_url);
       } else {
-        Alert.alert('Reteste registrado', 'Aguarde a confirmação do pagamento.');
+        Alert.alert('Erro', 'Não foi possível gerar o link de pagamento agora. Tente novamente em instantes.');
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Erro ao iniciar o reteste';

@@ -1140,7 +1140,7 @@ export default function CursoDetailPage({
                 <label className="text-sm font-medium">Preço do reteste (R$)</label>
                 <Input
                   type="number"
-                  min="0"
+                  min="5"
                   step="0.01"
                   value={retestPriceReais}
                   onChange={(e) => setRetestPriceReais(e.target.value)}
@@ -1150,6 +1150,7 @@ export default function CursoDetailPage({
                 <p className="text-xs text-muted-foreground">
                   Cobrado do aluno quando ele esgota as tentativas acima sem ser aprovado, pra
                   liberar mais uma tentativa. Só faz sentido com um número de tentativas definido.
+                  Mínimo de R$ 5,00 — a Asaas recusa cobranças abaixo disso.
                 </p>
               </div>
 
@@ -1365,6 +1366,9 @@ export default function CursoDetailPage({
                 onChange={(e) => setEditPriceReais(e.target.value)}
                 placeholder="0 = grátis"
               />
+              <p className="text-xs text-muted-foreground">
+                Deixe 0 pra grátis, ou pelo menos R$ 5,00 — a Asaas recusa cobranças abaixo disso.
+              </p>
             </div>
           </div>
           <label className="flex items-center gap-2 rounded-lg border bg-card p-3 text-sm">

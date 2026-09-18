@@ -18,6 +18,17 @@ function getBaseUrl(): string {
     : "https://sandbox.asaas.com/api/v3";
 }
 
+/**
+ * A Asaas recusa qualquer cobrança abaixo de R$5,00 (billingType UNDEFINED):
+ * "O valor mínimo para cobranças com a forma de pagamento Pergunte ao
+ * Cliente é R$ 5,00." Confirmado batendo direto na API em 18/09 depois de
+ * um reteste de R$4,99 falhar em silêncio (createCharge engolia o erro e
+ * caía pro modo manual, deixando o aluno sem nunca ver a página de
+ * pagamento). Qualquer preço configurado pelo admin (curso, reteste de
+ * quiz, etc.) precisa respeitar isto ANTES de chegar em createCharge.
+ */
+export const ASAAS_MIN_CHARGE_CENTS = 500;
+
 export function isAsaasConfigured(): boolean {
   return !!process.env.ASAAS_API_KEY;
 }
@@ -43,7 +54,7 @@ async function criarClienteAsaas(
     }),
   });
   if (!res.ok) {
-    throw new Error(`Asaas customer falhou: ${res.status}`);
+    throw new Error(`Asaas customer falhou: ${res.status} ${await res.text()}`);
   }
   return res.json();
 }
@@ -87,7 +98,7 @@ export async function createCharge(
     }),
   });
   if (!chargeRes.ok) {
-    throw new Error(`Asaas payment falhou: ${chargeRes.status}`);
+    throw new Error(`Asaas payment falhou: ${chargeRes.status} ${await chargeRes.text()}`);
   }
   const charge = (await chargeRes.json()) as {
     id: string;

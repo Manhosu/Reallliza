@@ -56,17 +56,25 @@ export async function POST(
 
     const priceReais = lesson.retest_price_cents / 100;
 
-    const { data: purchase, error: purchaseErr } = await supabase
-      .from("quiz_retest_purchases")
-      .insert({
-        lesson_id: lessonId,
-        user_id: user.id,
-        price_cents: lesson.retest_price_cents,
-        status: "pending",
-      })
-      .select("id")
-      .single();
-    if (purchaseErr || !purchase) throw new Error("Falha ao registrar o reteste");
+    // Já existe uma compra pendente sem checkout (tentativa anterior falhou
+    // na Asaas) — reaproveita a mesma linha em vez de empilhar uma nova a
+    // cada clique (achado 18/09: 3 linhas pendentes idênticas pro mesmo
+    // aluno/aula, todas travadas pelo mesmo motivo).
+    const purchase = existing
+      ? existing
+      : (
+          await supabase
+            .from("quiz_retest_purchases")
+            .insert({
+              lesson_id: lessonId,
+              user_id: user.id,
+              price_cents: lesson.retest_price_cents,
+              status: "pending",
+            })
+            .select("id")
+            .single()
+        ).data;
+    if (!purchase) throw new Error("Falha ao registrar o reteste");
 
     let checkoutUrl: string | null = null;
 

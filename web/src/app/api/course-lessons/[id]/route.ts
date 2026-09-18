@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getAdminClient } from "@/lib/api-helpers/supabase-admin";
 import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/auth";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
+import { ASAAS_MIN_CHARGE_CENTS } from "@/lib/asaas/client";
 
 export async function PATCH(
   request: NextRequest,
@@ -41,6 +42,19 @@ export async function PATCH(
           : null;
     }
     if (body.retest_price_cents !== undefined) {
+      if (
+        typeof body.retest_price_cents === "number" &&
+        body.retest_price_cents > 0 &&
+        body.retest_price_cents < ASAAS_MIN_CHARGE_CENTS
+      ) {
+        // Cobrança abaixo disso é recusada pela Asaas em silêncio no
+        // pagamento (createCharge engolia o erro) — o aluno nunca via a
+        // página de pagamento (Jéssica, 18/09).
+        throw new AuthError(
+          400,
+          `O preço do reteste precisa ser de pelo menos R$ ${(ASAAS_MIN_CHARGE_CENTS / 100).toFixed(2)} — valores menores são recusados no pagamento.`
+        );
+      }
       update.retest_price_cents =
         typeof body.retest_price_cents === "number" && body.retest_price_cents > 0
           ? Math.round(body.retest_price_cents)

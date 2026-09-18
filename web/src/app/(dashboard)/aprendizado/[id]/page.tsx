@@ -224,7 +224,9 @@ export default function AprendizadoDetailPage({
       if (result.checkout_url) {
         window.location.href = result.checkout_url;
       } else {
-        toast.success("Compra registrada. Aguarde a liberação do acesso.");
+        // Sem link de pagamento pra abrir, não tem o que "aguardar" — dizer
+        // o contrário (Jéssica, 18/09) deixa o aluno achando que já pagou.
+        toast.error("Não foi possível gerar o link de pagamento agora. Tente novamente em instantes.");
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao iniciar compra");
@@ -243,7 +245,7 @@ export default function AprendizadoDetailPage({
       if (result.checkout_url) {
         window.location.href = result.checkout_url;
       } else {
-        toast.success("Reteste registrado. Aguarde a confirmação do pagamento.");
+        toast.error("Não foi possível gerar o link de pagamento agora. Tente novamente em instantes.");
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao iniciar o reteste");

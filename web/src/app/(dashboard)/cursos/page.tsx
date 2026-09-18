@@ -739,6 +739,9 @@ export default function CursosAdminPage() {
                 onChange={(e) => setPriceReais(e.target.value)}
                 placeholder="0 = grátis"
               />
+              <p className="text-xs text-muted-foreground">
+                Deixe 0 pra grátis, ou pelo menos R$ 5,00 — a Asaas recusa cobranças abaixo disso.
+              </p>
             </div>
           </div>
           <label className="flex items-center gap-2 rounded-lg border bg-card p-3 text-sm">

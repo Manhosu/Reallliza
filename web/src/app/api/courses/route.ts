@@ -4,6 +4,7 @@ import { authenticateRequest, checkRole, AuthError } from "@/lib/api-helpers/aut
 import { jsonResponse, errorResponse } from "@/lib/api-helpers/response";
 import { logAudit } from "@/lib/api-helpers/audit";
 import { hasAccessToCourse } from "@/lib/courses/access";
+import { ASAAS_MIN_CHARGE_CENTS } from "@/lib/asaas/client";
 
 /**
  * GET /api/courses
@@ -82,6 +83,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     if (!body.title || typeof body.title !== "string" || !body.title.trim()) {
       throw new AuthError(400, "title obrigatorio");
+    }
+    if (
+      typeof body.price_cents === "number" &&
+      body.price_cents > 0 &&
+      body.price_cents < ASAAS_MIN_CHARGE_CENTS
+    ) {
+      // Cobrança abaixo disso é recusada pela Asaas em silêncio no
+      // pagamento — o aluno nunca via a página de pagamento (Jéssica, 18/09,
+      // achada no fluxo de reteste, mesma regra vale pra curso pago).
+      throw new AuthError(
+        400,
+        `O preço do curso precisa ser de pelo menos R$ ${(ASAAS_MIN_CHARGE_CENTS / 100).toFixed(2)} — valores menores são recusados no pagamento.`
+      );
     }
 
     const supabase = getAdminClient();
